@@ -60,7 +60,7 @@ jobs:
     
     - name: Build Gradel
       run: |
-        ./gradlew installDist
+        sudo ./scripts/docker_build.sh
 
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
