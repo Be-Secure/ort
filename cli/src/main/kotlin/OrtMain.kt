@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +31,7 @@ import com.github.ajalt.clikt.output.HelpFormatter
 import com.github.ajalt.clikt.parameters.options.associate
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.deprecated
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.switch
@@ -42,12 +42,13 @@ import java.io.File
 
 import kotlin.system.exitProcess
 
-import org.ossreviewtoolkit.cli.commands.*
 import org.ossreviewtoolkit.cli.utils.logger
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.config.OrtConfiguration
+import org.ossreviewtoolkit.utils.common.EnvironmentVariableFilter
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.expandTilde
+import org.ossreviewtoolkit.utils.common.mebibytes
 import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_DIR_ENV_NAME
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
@@ -68,14 +69,6 @@ sealed interface GroupTypes {
 }
 
 /**
- * Helper class for collecting options that can be passed to subcommands.
- */
-data class GlobalOptions(
-    val config: OrtConfiguration,
-    val forceOverwrite: Boolean
-)
-
-/**
  * The entry point for the application with [args] being the list of arguments.
  */
 fun main(args: Array<String>) {
@@ -91,6 +84,8 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
         .default(ortConfigDirectory.resolve(ORT_CONFIG_FILENAME))
 
     private val logLevel by option(help = "Set the verbosity level of log output.").switch(
+        "--error" to Level.ERROR,
+        "--warn" to Level.WARN,
         "--info" to Level.INFO,
         "--debug" to Level.DEBUG
     ).default(Level.WARN)
@@ -100,13 +95,17 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.schema=testSchema"
+                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     private val forceOverwrite by option(
         "--force-overwrite",
         help = "Overwrite any output files if they already exist."
-    ).flag()
+    ).flag().deprecated(
+        message = "--force-overwrite is deprecated, use -P ort.forceOverwrite=... on the ort " +
+                "command instead.",
+        tagValue = "use -P ort.forceOverwrite=... on the ort command instead"
+    )
 
     private val helpAll by option(
         "--help-all",
@@ -149,20 +148,7 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
             helpFormatter = OrtHelpFormatter()
         }
 
-        subcommands(
-            AdvisorCommand(),
-            AnalyzerCommand(),
-            ConfigCommand(),
-            DownloaderCommand(),
-            EvaluatorCommand(),
-            NotifierCommand(),
-            ReporterCommand(),
-            RequirementsCommand(),
-            ScannerCommand(),
-            UploadCurationsCommand(),
-            UploadResultToPostgresCommand(),
-            UploadResultToSw360Command()
-        )
+        subcommands(OrtCommand.ALL.values)
 
         versionOption(
             version = env.ortVersion,
@@ -182,9 +168,20 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
         printStackTrace = stacktrace
 
         // Make options available to subcommands and apply static configuration.
-        val ortConfiguration = OrtConfiguration.load(configArguments, configFile)
-        currentContext.findOrSetObject { GlobalOptions(ortConfiguration, forceOverwrite) }
-        LicenseFilenamePatterns.configure(ortConfiguration.licenseFilePatterns)
+        val ortConfig = OrtConfiguration.load(
+            args = buildMap {
+                if (forceOverwrite) put("ort.forceOverwrite", "true")
+                putAll(configArguments)
+            },
+            file = configFile
+        )
+        currentContext.findOrSetObject { ortConfig }
+        LicenseFilePatterns.configure(ortConfig.licenseFilePatterns)
+
+        EnvironmentVariableFilter.reset(
+            ortConfig.deniedProcessEnvironmentVariablesSubstrings,
+            ortConfig.allowedProcessEnvironmentVariableNames
+        )
 
         if (helpAll) {
             registeredSubcommands().forEach {
@@ -192,6 +189,9 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
             }
         } else {
             println(getOrtHeader(env.ortVersion))
+            println("Looking for ORT configuration in the following file:")
+            println("\t" + configFile.absolutePath + " (does not exist)".takeIf { !configFile.exists() }.orEmpty())
+            println()
         }
     }
 
@@ -205,17 +205,18 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
 
         val commandName = currentContext.invokedSubcommand?.commandName
         val command = commandName?.let { " '$commandName'" }.orEmpty()
+        val user = System.getProperty("user.name")
 
         val header = mutableListOf<String>()
-        val maxMemInMib = env.maxMemory / (1024 * 1024)
+        val maxMemInMib = env.maxMemory / 1.mebibytes
 
         """
-            ________ _____________________
-            \_____  \\______   \__    ___/ the OSS Review Toolkit, version $version.
-             /   |   \|       _/ |    |
-            /    |    \    |   \ |    |    Running$command under Java ${env.javaVersion} on ${env.os} with
-            \_______  /____|_  / |____|    ${env.processors} CPUs and a maximum of $maxMemInMib MiB of memory.
-                    \/       \/
+             ______________________________
+            /        \_______   \__    ___/ The OSS Review Toolkit, version $version.
+            |    |   | |       _/ |    |
+            |    |   | |    |   \ |    |    Running$command as '$user' under Java ${env.javaVersion} on ${env.os}
+            \________/ |____|___/ |____|    with ${env.processors} CPUs and a maximum of $maxMemInMib MiB of memory.
+
         """.trimIndent().lines().mapTo(header) { it.trimEnd() }
 
         if (variables.isNotEmpty()) {

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +19,7 @@
 
 package org.ossreviewtoolkit.reporter
 
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
@@ -33,6 +32,7 @@ import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 import org.ossreviewtoolkit.model.utils.DefaultResolutionProvider
 import org.ossreviewtoolkit.model.utils.PackageConfigurationProvider
 import org.ossreviewtoolkit.model.utils.ResolutionProvider
+import org.ossreviewtoolkit.reporter.StatisticsCalculator.getStatistics
 
 /**
  * A bundle of input to be used by [Reporter] implementations.
@@ -54,7 +54,7 @@ data class ReporterInput(
     val packageConfigurationProvider: PackageConfigurationProvider = PackageConfigurationProvider.EMPTY,
 
     /**
-     * A [ResolutionProvider], can be used to check which [OrtIssue]s and [RuleViolation]s are resolved.
+     * A [ResolutionProvider], can be used to check which [Issue]s and [RuleViolation]s are resolved.
      */
     val resolutionProvider: ResolutionProvider = DefaultResolutionProvider(),
 
@@ -76,7 +76,7 @@ data class ReporterInput(
         copyrightGarbage = copyrightGarbage,
         addAuthorsToCopyrights = ortConfig.addAuthorsToCopyrights,
         archiver = ortConfig.scanner.archive.createFileArchiver(),
-        licenseFilenamePatterns = ortConfig.licenseFilePatterns
+        licenseFilePatterns = ortConfig.licenseFilePatterns
     ),
 
     /**
@@ -86,7 +86,13 @@ data class ReporterInput(
     val licenseClassifications: LicenseClassifications = LicenseClassifications(),
 
     /**
-     * A [HowToFixTextProvider], can be used to integrate how to fix texts for [OrtIssue]s into reports.
+     * A [HowToFixTextProvider], can be used to integrate how to fix texts for [Issue]s into reports.
      */
     val howToFixTextProvider: HowToFixTextProvider = HowToFixTextProvider.NONE
-)
+) {
+    /**
+     * Statistics for [ortResult].
+     */
+    @Suppress("UNUSED") // This can be used from templates.
+    val statistics: Statistics by lazy { getStatistics(ortResult, resolutionProvider, licenseInfoResolver, ortConfig) }
+}

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 EPAM Systems, Inc.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import org.apache.logging.log4j.kotlin.Logging
 import org.ossreviewtoolkit.advisor.AbstractAdviceProviderFactory
 import org.ossreviewtoolkit.advisor.AdviceProvider
 import org.ossreviewtoolkit.clients.osv.Ecosystem
-import org.ossreviewtoolkit.clients.osv.OsvApiClient
 import org.ossreviewtoolkit.clients.osv.OsvService
 import org.ossreviewtoolkit.clients.osv.Severity
 import org.ossreviewtoolkit.clients.osv.VulnerabilitiesForPackageRequest
@@ -42,6 +41,7 @@ import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.VulnerabilityReference
 import org.ossreviewtoolkit.model.config.AdvisorConfiguration
+import org.ossreviewtoolkit.model.config.OsvConfiguration
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.enumSetOf
 import org.ossreviewtoolkit.utils.common.toUri
@@ -50,23 +50,25 @@ import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 import us.springett.cvss.Cvss
 
 /**
- * An advice provider that obtains vulnerability information from OSV.dev https://osv.dev/.
+ * An advice provider that obtains vulnerability information from Open Source Vulnerabilities (https://osv.dev/).
  */
-class Osv(name: String, advisorConfiguration: AdvisorConfiguration) : AdviceProvider(name) {
+class Osv(name: String, config: OsvConfiguration) : AdviceProvider(name) {
     companion object : Logging
 
     class Factory : AbstractAdviceProviderFactory<Osv>("OSV") {
-        override fun create(config: AdvisorConfiguration) = Osv(providerName, config)
+        override fun create(config: AdvisorConfiguration) =
+            // OSV does not require any dedicated configuration to be present.
+            Osv(type, config.forProvider { osv ?: OsvConfiguration() })
     }
 
     override val details: AdvisorDetails = AdvisorDetails(providerName, enumSetOf(AdvisorCapability.VULNERABILITIES))
 
     private val service = OsvService(
-        serverUrl = advisorConfiguration.osv?.serverUrl ?: OsvApiClient.SERVER_URL_PRODUCTION,
+        serverUrl = config.serverUrl,
         httpClient = OkHttpClientHelper.buildClient()
     )
 
-    override suspend fun retrievePackageFindings(packages: List<Package>): Map<Package, List<AdvisorResult>> {
+    override suspend fun retrievePackageFindings(packages: Set<Package>): Map<Package, List<AdvisorResult>> {
         val startTime = Instant.now()
 
         val vulnerabilitiesForPackage = getVulnerabilitiesForPackage(packages)
@@ -87,7 +89,7 @@ class Osv(name: String, advisorConfiguration: AdvisorConfiguration) : AdviceProv
         }
     }
 
-    private fun getVulnerabilitiesForPackage(packages: List<Package>): Map<Identifier, List<Vulnerability>> {
+    private fun getVulnerabilitiesForPackage(packages: Set<Package>): Map<Identifier, List<Vulnerability>> {
         val vulnerabilityIdsForPackageId = getVulnerabilityIdsForPackages(packages)
         val allVulnerabilityIds = vulnerabilityIdsForPackageId.values.flatten().toSet()
         val vulnerabilityForId = getVulnerabilitiesForIds(allVulnerabilityIds).associateBy { it.id }
@@ -97,7 +99,7 @@ class Osv(name: String, advisorConfiguration: AdvisorConfiguration) : AdviceProv
         }
     }
 
-    private fun getVulnerabilityIdsForPackages(packages: List<Package>): Map<Identifier, List<String>> {
+    private fun getVulnerabilityIdsForPackages(packages: Set<Package>): Map<Identifier, List<String>> {
         val requests = packages.mapNotNull { pkg ->
             createRequest(pkg)?.let { pkg to it }
         }
@@ -111,7 +113,7 @@ class Osv(name: String, advisorConfiguration: AdvisorConfiguration) : AdviceProv
             }
         }.onFailure {
             logger.error {
-                "Requesting vulnerabilities IDs for packages failed: ${result.exceptionOrNull()!!.collectMessages()}"
+                "Requesting vulnerabilities IDs for packages failed: ${it.collectMessages()}"
             }
         }
 
@@ -123,7 +125,7 @@ class Osv(name: String, advisorConfiguration: AdvisorConfiguration) : AdviceProv
 
         return result.getOrElse {
             logger.error {
-                "Requesting vulnerabilities IDs for packages failed: ${result.exceptionOrNull()!!.collectMessages()}"
+                "Requesting vulnerabilities IDs for packages failed: ${it.collectMessages()}"
             }
             emptyList()
         }
@@ -140,12 +142,14 @@ private fun createRequest(pkg: Package): VulnerabilitiesForPackageRequest? {
     val ecosystem = when (pkg.id.type) {
         "Bower" -> null
         "Composer" -> Ecosystem.PACKAGIST
+        "Conan" -> Ecosystem.CONAN_CENTER
         "Crate" -> Ecosystem.CRATES_IO
         "Gem" -> Ecosystem.RUBY_GEMS
         "Go" -> Ecosystem.GO
         "NPM" -> Ecosystem.NPM
         "NuGet" -> Ecosystem.NUGET
         "Maven" -> Ecosystem.MAVEN
+        "Pub" -> Ecosystem.PUB
         "PyPI" -> Ecosystem.PYPI
         else -> null
     }
@@ -160,7 +164,9 @@ private fun createRequest(pkg: Package): VulnerabilitiesForPackageRequest? {
         )
     }
 
-    // TODO: Handle C++ projects and / or requesting vulnerabilities by commit-ish.
+    // TODO: Support querying vulnerabilities by Git commit hash as described at https://osv.dev/docs/#section/OSV-API.
+    //       That would allow to generally support e.g. C / C++ projects that do not use a dedicated package manager
+    //       like Conan.
 
     return null
 }
@@ -170,7 +176,7 @@ private fun Vulnerability.toOrtVulnerability(): org.ossreviewtoolkit.model.Vulne
     // However, only one representation is actually possible currently, because the enum 'Severity.Type' contains just a
     // single element / scoring system. So, picking first severity is fine, in particular because ORT only supports a
     // single severity representation.
-    var (scoringSystem, severity) = this.severity.firstOrNull()?.let {
+    var (scoringSystem, severity) = severity.firstOrNull()?.let {
         require(it.type == Severity.Type.CVSS_V3) {
             "The severity mapping for type '${it.type}' is not implemented."
         }
@@ -184,13 +190,12 @@ private fun Vulnerability.toOrtVulnerability(): org.ossreviewtoolkit.model.Vulne
         }
     } ?: (null to null)
 
-    if (severity == null && databaseSpecific != null) {
+    val specificSeverity = databaseSpecific?.get("severity")
+    if (severity == null && specificSeverity != null) {
         // Fallback to the 'severity' property of the unspecified 'databaseSpecific' object.
         // See also https://github.com/google/osv.dev/issues/484.
-        databaseSpecific!!["severity"]?.let {
-            if (it is JsonPrimitive) {
-                severity = it.contentOrNull
-            }
+        if (specificSeverity is JsonPrimitive) {
+            severity = specificSeverity.contentOrNull
         }
     }
 

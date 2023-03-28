@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019-2021 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -100,15 +99,26 @@ internal fun getSplitCurationFile(parent: File, packageId: Identifier, fileExten
 
 /**
  * Return an approximation for the Set-Cover Problem, see https://en.wikipedia.org/wiki/Set_cover_problem.
+ * If there is a tie in the selection of the next best element, [tieComparator] can be used to inject a selection
+ * preference. By default, there is no preference so the first best element is selected.
  */
-internal fun <K, V> greedySetCover(sets: Map<K, Set<V>>): Set<K> {
+internal fun <K, V> greedySetCover(
+    sets: Map<K, Set<V>>,
+    tieComparator: Comparator<K> = Comparator { _, _ -> 0 }
+): Set<K> {
     val result = mutableSetOf<K>()
 
     val uncovered = sets.values.flatten().toMutableSet()
     val queue = sets.entries.toMutableSet()
 
+    val comparator = compareBy<Map.Entry<K, Set<V>>> {
+        it.value.intersect(uncovered).size
+    }.thenComparing { a, b ->
+        tieComparator.compare(a.key, b.key)
+    }
+
     while (queue.isNotEmpty()) {
-        val maxCover = queue.maxByOrNull { it.value.intersect(uncovered).size }!!
+        val maxCover = queue.maxWith(comparator)
 
         if (uncovered.intersect(maxCover.value).isNotEmpty()) {
             uncovered.removeAll(maxCover.value)

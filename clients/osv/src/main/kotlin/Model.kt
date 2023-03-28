@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 EPAM Systems, Inc.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,8 +54,8 @@ data class Vulnerability(
     val published: Instant? = null,
     @Serializable(InstantSerializer::class)
     val withdrawn: Instant? = null,
-    val aliases: List<String> = emptyList(),
-    val related: List<String> = emptyList(),
+    val aliases: Set<String> = emptySet(),
+    val related: Set<String> = emptySet(),
     val summary: String? = null,
     val details: String? = null,
 
@@ -64,13 +64,13 @@ data class Vulnerability(
      * using different scoring systems. See https://github.com/google/osv.dev/issues/545#issuecomment-1190880767 and
      * https://ossf.github.io/osv-schema/#severity-field.
      */
-    val severity: List<Severity> = emptyList(),
+    val severity: Set<Severity> = emptySet(),
 
-    val affected: List<Affected> = emptyList(),
-    val references: List<Reference> = emptyList(),
+    val affected: Set<Affected> = emptySet(),
+    val references: Set<Reference> = emptySet(),
     @SerialName("database_specific")
     val databaseSpecific: JsonObject? = null,
-    val credits: List<Credit> = emptyList()
+    val credits: Set<Credit> = emptySet()
 )
 
 @Serializable
@@ -78,6 +78,7 @@ data class Affected(
     @SerialName("package")
     val pkg: Package,
     val ranges: List<Range> = emptyList(),
+    val severity: Set<Severity> = emptySet(),
     val versions: List<String> = emptyList(),
     @SerialName("ecosystem_specific")
     val ecosystemSpecific: JsonObject? = null,
@@ -92,12 +93,15 @@ data class Credit(
 )
 
 /**
- * Defined package ecosystem values, see https://ossf.github.io/osv-schema/.
+ * Defined package ecosystem values, see https://ossf.github.io/osv-schema/#affectedpackage-field.
  */
 object Ecosystem {
+    const val ALPINE = "Alpine"
     const val ANDROID = "Android"
+    const val CONAN_CENTER = "ConanCenter"
     const val CRATES_IO = "crates.io"
     const val DEBIAN = "Debian"
+    const val GIHUB_ACTIONS = "GitHub Actions"
     const val GO = "Go"
     const val HEX = "Hex"
     const val LINUX = "Linux"
@@ -106,6 +110,7 @@ object Ecosystem {
     const val NUGET = "NuGet"
     const val OSS_FUZZ = "OSS-Fuzz"
     const val PACKAGIST = "Packagist"
+    const val PUB = "Pub"
     const val PYPI = "PyPI"
     const val RUBY_GEMS = "RubyGems"
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,6 @@ import io.mockk.every
 import io.mockk.mockk
 
 import java.util.SortedSet
-
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.utils.ort.Environment
 
 class CompatibilityDependencyNavigatorTest : WordSpec() {
     private val treeProject = createProject("tree", scopes = sortedSetOf(createScope("scope")))
@@ -83,15 +80,11 @@ class CompatibilityDependencyNavigatorTest : WordSpec() {
                 val project = createProject("dummy", scopeNames = sortedSetOf())
 
                 val analyzerResult = AnalyzerResult(
-                    projects = sortedSetOf(project),
-                    packages = sortedSetOf(),
+                    projects = setOf(project),
+                    packages = emptySet(),
                     dependencyGraphs = mapOf()
                 )
-                val analyzerRun = AnalyzerRun(
-                    result = analyzerResult,
-                    environment = Environment(),
-                    config = AnalyzerConfiguration()
-                )
+                val analyzerRun = AnalyzerRun.EMPTY.copy(result = analyzerResult)
                 val result = OrtResult.EMPTY.copy(analyzer = analyzerRun)
 
                 val navigator = CompatibilityDependencyNavigator.create(result)
@@ -235,23 +228,16 @@ class CompatibilityDependencyNavigatorTest : WordSpec() {
 /**
  * Construct an [OrtResult] that contains the given [projects].
  */
-private fun createOrtResult(vararg projects: Project): OrtResult {
-    val graph = DependencyGraph(packages = emptyList(), scopeRoots = sortedSetOf(), scopes = emptyMap())
-
-    val analyzerResult = AnalyzerResult(
-        projects = sortedSetOf(*projects),
-        packages = sortedSetOf(),
-        dependencyGraphs = mapOf("test" to graph)
+private fun createOrtResult(vararg projects: Project): OrtResult =
+    OrtResult.EMPTY.copy(
+        analyzer = AnalyzerRun.EMPTY.copy(
+            result = AnalyzerResult(
+                projects = setOf(*projects),
+                packages = emptySet(),
+                dependencyGraphs = mapOf("test" to DependencyGraph())
+            )
+        )
     )
-
-    val analyzerRun = AnalyzerRun(
-        result = analyzerResult,
-        environment = Environment(),
-        config = AnalyzerConfiguration()
-    )
-
-    return OrtResult.EMPTY.copy(analyzer = analyzerRun)
-}
 
 /**
  * Create a [Project] with an identifier derived from the given [name] that has the dependency information passed as

@@ -1,8 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
- * Copyright (C) 2019 Verifa Oy.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,8 +22,6 @@ package org.ossreviewtoolkit.analyzer.managers
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.readValue
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
 import java.util.SortedSet
 
@@ -47,21 +42,30 @@ import org.ossreviewtoolkit.model.Scope
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.masked
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.common.stashDirectories
 import org.ossreviewtoolkit.utils.common.textValueOrEmpty
 import org.ossreviewtoolkit.utils.common.toUri
+import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 import org.ossreviewtoolkit.utils.ort.requestPasswordAuthentication
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
 
 /**
  * The [Conan](https://conan.io/) package manager for C / C++.
  *
+ * This package manager supports the following [options][PackageManagerConfiguration.options]:
+ * - *lockfileName*: The name of the lockfile, which is used for analysis if allowDynamicVersions is set to false.
+ *   The lockfile should be located in the analysis root. Currently only one lockfile is supported per Conan project.
  * TODO: Add support for `python_requires`.
  */
 @Suppress("TooManyFunctions")
@@ -72,6 +76,11 @@ class Conan(
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     companion object : Logging {
+        /**
+         * The name of the option to specify the name of the lockfile.
+         */
+        const val OPTION_LOCKFILE_NAME = "lockfileName"
+
         private val DUMMY_COMPILER_SETTINGS = arrayOf(
             "-s", "compiler=gcc",
             "-s", "compiler.libcxx=libstdc++",
@@ -83,13 +92,13 @@ class Conan(
     }
 
     class Factory : AbstractPackageManagerFactory<Conan>("Conan") {
-        override val globsForDefinitionFiles = listOf("conanfile.txt", "conanfile.py")
+        override val globsForDefinitionFiles = listOf("conanfile*.txt", "conanfile*.py")
 
         override fun create(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Conan(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Conan(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     private val conanHome = Os.userHomeDirectory.resolve(".conan")
@@ -107,16 +116,14 @@ class Conan(
 
     override fun command(workingDir: File?) = "conan"
 
-    // TODO: Add support for Conan lock files.
-
-    // protected open fun hasLockFile(projectDir: File) = null
+    private fun hasLockFile(file: String) = File(file).isFile
 
     override fun transformVersion(output: String) =
         // Conan could report version strings like:
         // Conan version 1.18.0
         output.removePrefix("Conan version ")
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildIvy("[1.18.0,)")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create(">=1.18.0")
 
     override fun beforeResolution(definitionFiles: List<File>) = checkVersion()
 
@@ -143,10 +150,19 @@ class Conan(
         val directoryToStash = conanConfig?.let { conanHome } ?: conanStoragePath
 
         stashDirectories(directoryToStash).use {
-            conanConfig?.also { configureRemoteAuthentication(it) }
+            configureRemoteAuthentication(conanConfig)
+
+            // TODO: Support lockfiles which are located in a different directory than the definition file.
+            val lockfileName = options[OPTION_LOCKFILE_NAME]
+            requireLockfile(workingDir) { lockfileName?.let { hasLockFile(workingDir.resolve(it).path) } ?: false }
 
             val jsonFile = createOrtTempDir().resolve("info.json")
-            run(workingDir, "info", definitionFile.name, "--json", jsonFile.absolutePath, *DUMMY_COMPILER_SETTINGS)
+            if (lockfileName != null) {
+                verifyLockfileBelongsToProject(workingDir, lockfileName)
+                run(workingDir, "info", definitionFile.name, "-l", lockfileName, "--json", jsonFile.absolutePath)
+            } else {
+                run(workingDir, "info", definitionFile.name, "--json", jsonFile.absolutePath, *DUMMY_COMPILER_SETTINGS)
+            }
 
             val pkgInfos = jsonMapper.readTree(jsonFile)
             jsonFile.parentFile.safeDeleteRecursively(force = true)
@@ -156,11 +172,13 @@ class Conan(
 
             val dependenciesScope = Scope(
                 name = SCOPE_NAME_DEPENDENCIES,
-                dependencies = parseDependencies(pkgInfos, definitionFile.name, SCOPE_NAME_DEPENDENCIES, workingDir)
+                dependencies =
+                    parseDependencies(pkgInfos, definitionFile.name, SCOPE_NAME_DEPENDENCIES, workingDir)
             )
             val devDependenciesScope = Scope(
                 name = SCOPE_NAME_DEV_DEPENDENCIES,
-                dependencies = parseDependencies(pkgInfos, definitionFile.name, SCOPE_NAME_DEV_DEPENDENCIES, workingDir)
+                dependencies =
+                    parseDependencies(pkgInfos, definitionFile.name, SCOPE_NAME_DEV_DEPENDENCIES, workingDir)
             )
 
             val projectPackage = parseProjectPackage(pkgInfos, definitionFile, workingDir)
@@ -181,15 +199,25 @@ class Conan(
                         homepageUrl = projectPackage.homepageUrl,
                         scopeDependencies = sortedSetOf(dependenciesScope, devDependenciesScope)
                     ),
-                    packages = packages.values.toSortedSet()
+                    packages = packages.values.toSet()
                 )
             )
         }
     }
 
-    private fun configureRemoteAuthentication(conanConfig: File) {
-        // Install configuration from a local directory.
-        run("config", "install", conanConfig.absolutePath)
+    private fun verifyLockfileBelongsToProject(workingDir: File, lockfileName: String?) {
+        require(workingDir.resolve(lockfileName.orEmpty()).canonicalFile.startsWith(workingDir.canonicalFile)) {
+            "The provided lockfile path points to the directory outside of the analyzed project: '$lockfileName' and " +
+                    "potentially does not belong to the project. Please move the lockfile to the '$workingDir' and " +
+                    "set the path in '$ORT_CONFIG_FILENAME' accordingly."
+        }
+    }
+
+    private fun configureRemoteAuthentication(conanConfig: File?) {
+        // Install configuration from a local directory if available.
+        conanConfig?.let {
+            run("config", "install", it.absolutePath)
+        }
 
         // List configured remotes in "remotes.txt" format.
         val remoteList = run("remote", "list", "--raw")
@@ -220,8 +248,9 @@ class Conan(
 
                 if (auth != null) {
                     // Configure Conan's authentication based on ORT's authentication for the remote.
-                    val userAuth = run("user", "-r", remoteName, "-p", String(auth.password), auth.userName)
-                    if (userAuth.isError) {
+                    runCatching {
+                        run("user", "-r", remoteName, "-p", String(auth.password).masked(), auth.userName.masked())
+                    }.onFailure {
                         logger.error { "Failed to configure user authentication for remote '$remoteName'." }
                     }
                 }
@@ -328,8 +357,8 @@ class Conan(
     /**
      * Return the set of declared licenses contained in [node].
      */
-    private fun parseDeclaredLicenses(node: JsonNode): SortedSet<String> =
-        sortedSetOf<String>().also { licenses ->
+    private fun parseDeclaredLicenses(node: JsonNode): Set<String> =
+        mutableSetOf<String>().also { licenses ->
             node["license"]?.mapNotNullTo(licenses) { it.textValue() }
         }
 
@@ -461,6 +490,6 @@ class Conan(
      * Parse information about the package author from the given JSON [node]. If present, return a set containing the
      * author name; otherwise, return an empty set.
      */
-    private fun parseAuthors(node: JsonNode): SortedSet<String> =
-        parseAuthorString(node["author"]?.textValue(), '<', '(')?.let { sortedSetOf(it) } ?: sortedSetOf()
+    private fun parseAuthors(node: JsonNode): Set<String> =
+        parseAuthorString(node["author"]?.textValue(), '<', '(')?.let { setOf(it) } ?: emptySet()
 }

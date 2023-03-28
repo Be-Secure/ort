@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class GitDownloadFunTest : StringSpec() {
             val exception = shouldThrow<DownloadException> {
                 git.download(pkg, outputDir, allowMovingRevisions = true)
             }
-            exception.message shouldBe "Git failed to download from URL '$url'."
+            exception.message shouldBe "Git failed to get revisions from URL '$url'."
         }
 
         "Git can download a given revision".config(tags = setOf(ExpensiveTag)) {

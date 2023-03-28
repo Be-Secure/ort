@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021-2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,47 +24,36 @@ import java.time.Instant
 
 import org.apache.logging.log4j.kotlin.Logging
 
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseFinding
-import org.ossreviewtoolkit.model.OrtIssue
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.jsonMapper
-import org.ossreviewtoolkit.scanner.AbstractScannerFactory
-import org.ossreviewtoolkit.scanner.BuildConfig
-import org.ossreviewtoolkit.scanner.CommandLineScanner
+import org.ossreviewtoolkit.scanner.AbstractScannerWrapperFactory
+import org.ossreviewtoolkit.scanner.CommandLinePathScannerWrapper
+import org.ossreviewtoolkit.scanner.ScanContext
 import org.ossreviewtoolkit.scanner.ScanException
-import org.ossreviewtoolkit.scanner.experimental.AbstractScannerWrapperFactory
-import org.ossreviewtoolkit.scanner.experimental.PathScannerWrapper
-import org.ossreviewtoolkit.scanner.experimental.ScanContext
+import org.ossreviewtoolkit.scanner.ScannerCriteria
 import org.ossreviewtoolkit.utils.common.Os
-import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.spdx.calculatePackageVerificationCode
 
 class Licensee internal constructor(
-    name: String,
-    scannerConfig: ScannerConfiguration,
-    downloaderConfig: DownloaderConfiguration
-) : CommandLineScanner(name, scannerConfig, downloaderConfig), PathScannerWrapper {
+    private val name: String,
+    private val scannerConfig: ScannerConfiguration
+) : CommandLinePathScannerWrapper(name) {
     companion object : Logging {
         val CONFIGURATION_OPTIONS = listOf("--json")
     }
 
-    class LicenseeFactory : AbstractScannerWrapperFactory<Licensee>("Licensee") {
+    class Factory : AbstractScannerWrapperFactory<Licensee>("Licensee") {
         override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            Licensee(scannerName, scannerConfig, downloaderConfig)
+            Licensee(type, scannerConfig)
     }
 
-    class Factory : AbstractScannerFactory<Licensee>("Licensee") {
-        override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            Licensee(scannerName, scannerConfig, downloaderConfig)
-    }
-
-    override val name = "Licensee"
-    override val criteria by lazy { getScannerCriteria() }
-    override val expectedVersion = BuildConfig.LICENSEE_VERSION
+    override val criteria by lazy { ScannerCriteria.fromConfig(details, scannerConfig) }
     override val configuration = CONFIGURATION_OPTIONS.joinToString(" ")
 
     override fun command(workingDir: File?) =
@@ -73,22 +61,10 @@ class Licensee internal constructor(
 
     override fun getVersionArguments() = "version"
 
-    override fun bootstrap(): File {
-        val gem = if (Os.isWindows) "gem.cmd" else "gem"
-
-        ProcessCapture(gem, "install", "--user-install", "licensee", "-v", expectedVersion).requireSuccess()
-
-        val ruby = ProcessCapture("ruby", "-r", "rubygems", "-e", "puts Gem.user_dir").requireSuccess()
-        val userDir = ruby.stdout.trimEnd()
-
-        return File(userDir, "bin")
-    }
-
-    override fun scanPathInternal(path: File): ScanSummary {
+    override fun scanPath(path: File, context: ScanContext): ScanSummary {
         val startTime = Instant.now()
 
-        val process = ProcessCapture(
-            scannerPath.absolutePath,
+        val process = run(
             "detect",
             *CONFIGURATION_OPTIONS.toTypedArray(),
             path.absolutePath
@@ -131,14 +107,12 @@ class Licensee internal constructor(
             licenseFindings = licenseFindings,
             copyrightFindings = sortedSetOf(),
             issues = listOf(
-                OrtIssue(
-                    source = scannerName,
+                Issue(
+                    source = name,
                     message = "This scanner is not capable of detecting copyright statements.",
                     severity = Severity.HINT
                 )
             )
         )
     }
-
-    override fun scanPath(path: File, context: ScanContext) = scanPathInternal(path)
 }

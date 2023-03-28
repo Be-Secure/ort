@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,15 @@ package org.ossreviewtoolkit.downloader.vcs
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNot
+import io.kotest.matchers.string.beEmpty
 
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.runs
+import io.mockk.unmockkAll
 import io.mockk.verify
 
 import java.net.Authenticator
@@ -42,19 +45,37 @@ import org.eclipse.jgit.transport.URIish
 import org.ossreviewtoolkit.utils.ort.requestPasswordAuthentication
 
 class GitTest : WordSpec({
+    // Make sure that the initialization logic runs.
+    val git = Git()
+
     var originalCredentialsProvider: CredentialsProvider? = null
     var originalAuthenticator: Authenticator? = null
 
     beforeSpec {
         originalCredentialsProvider = CredentialsProvider.getDefault()
         originalAuthenticator = Authenticator.getDefault()
-
-        Git() // Make sure that the initialization logic runs.
     }
 
     afterSpec {
         Authenticator.setDefault(originalAuthenticator)
         CredentialsProvider.setDefault(originalCredentialsProvider)
+    }
+
+    afterTest {
+        unmockkAll()
+    }
+
+    "Git" should {
+        "be able to get the version" {
+            val version = git.getVersion()
+            println("Git version $version detected.")
+            version shouldNot beEmpty()
+        }
+
+        "detect URLs to remote repositories" {
+            git.isApplicableUrl("https://bitbucket.org/yevster/spdxtraxample.git") shouldBe true
+            git.isApplicableUrl("https://hg.sr.ht/~duangle/paniq_legacy") shouldBe false
+        }
     }
 
     "The CredentialsProvider" should {

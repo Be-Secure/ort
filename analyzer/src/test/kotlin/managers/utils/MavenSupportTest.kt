@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,46 @@ import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 
 class MavenSupportTest : WordSpec({
+    "getOriginalScm()" should {
+        "return the parent's SCM connection if the child SCM uses the parent's SCM connection implicitly" {
+            val mavenProject = MavenProject().apply {
+                scm = Scm().apply {
+                    connection = "scm:git:https://github.com/spring-projects/spring-boot.git/childArtifactName"
+                    url = "https://github.com/oss-review-toolkit/correctUrl"
+                }
+                parent = MavenProject().apply {
+                    scm = Scm().apply {
+                        connection = "scm:git:https://github.com/spring-projects/spring-boot.git"
+                        url = "https://github.com/spring-projects/spring-boot"
+                    }
+                }
+            }
+
+            MavenSupport.getOriginalScm(mavenProject)?.connection shouldBe
+                    "scm:git:https://github.com/spring-projects/spring-boot.git"
+            MavenSupport.getOriginalScm(mavenProject)?.url shouldBe "https://github.com/oss-review-toolkit/correctUrl"
+        }
+
+        "return the parent's SCM URL if the child SCM uses the parent's SCM URL implicitly" {
+            val mavenProject = MavenProject().apply {
+                scm = Scm().apply {
+                    connection = "scm:git:https://github.com/oss-review-toolkit/childConnection.git"
+                    url = "https://github.com/spring-projects/spring-boot/childArtifactName"
+                }
+                parent = MavenProject().apply {
+                    scm = Scm().apply {
+                        connection = "scm:git:https://github.com/oss-review-toolkit/parentConnection.git"
+                        url = "https://github.com/spring-projects/spring-boot"
+                    }
+                }
+            }
+
+            MavenSupport.getOriginalScm(mavenProject)?.connection shouldBe
+                    "scm:git:https://github.com/oss-review-toolkit/childConnection.git"
+            MavenSupport.getOriginalScm(mavenProject)?.url shouldBe "https://github.com/spring-projects/spring-boot"
+        }
+    }
+
     "parseVcsInfo()" should {
         "handle GitRepo URLs" {
             val mavenProject = MavenProject().apply {
@@ -98,6 +138,36 @@ class MavenSupportTest : WordSpec({
                 url = "git://github.com/netty/netty-tcnative.git",
                 revision = "",
                 path = "boringssl-static"
+            )
+        }
+
+        "handle GitHub URLs with double 'git:' prefix" {
+            val mavenProject = MavenProject().apply {
+                scm = Scm().apply {
+                    connection = "scm:git:git:github.com/MarkusAmshove/Kluent.git"
+                }
+            }
+
+            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
+                type = VcsType.GIT,
+                url = "github.com/MarkusAmshove/Kluent.git",
+                revision = "",
+                path = ""
+            )
+        }
+
+        "handle GitHub URLs with missing 'git:' provider" {
+            val mavenProject = MavenProject().apply {
+                scm = Scm().apply {
+                    connection = "scm:git@github.com/Yalantis/uCrop.git"
+                }
+            }
+
+            MavenSupport.parseVcsInfo(mavenProject) shouldBe VcsInfo(
+                type = VcsType.GIT,
+                url = "https://github.com/Yalantis/uCrop.git",
+                revision = "",
+                path = ""
             )
         }
     }

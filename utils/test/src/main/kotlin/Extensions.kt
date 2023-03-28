@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,24 +26,27 @@ import java.io.File
 import java.net.InetSocketAddress
 import java.net.Proxy
 
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.utils.FileArchiver
+import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 import org.ossreviewtoolkit.utils.ort.createOrtTempFile
 import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
+
+fun Any?.toYaml(): String = yamlMapper.writeValueAsString(this)
 
 fun Proxy.toGenericString() =
     (address() as? InetSocketAddress)?.let { address -> "${type()} @ ${address.hostString}:${address.port}" }
 
 infix fun <T : Any> T?.shouldNotBeNull(block: T.() -> Unit) {
     this.shouldNotBeNull()
-    this.block()
+    block()
 }
 
 fun FileArchiver.Companion.createDefault(): FileArchiver =
     FileArchiver(
-        patterns = LicenseFilenamePatterns.DEFAULT.allLicenseFilenames.map { "**/$it" },
+        patterns = LicenseFilePatterns.DEFAULT.allLicenseFilenames.map { "**/$it" },
         storage = LocalFileStorage(DEFAULT_ARCHIVE_DIR)
     )
 

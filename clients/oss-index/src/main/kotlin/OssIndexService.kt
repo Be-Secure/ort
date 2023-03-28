@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Sonatype, Inc.
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,28 +52,26 @@ interface OssIndexService {
          * using [user] and [password] for basic authentication, and / or a pre-built OkHttp [client].
          */
         fun create(
-            url: String,
+            url: String? = null,
             user: String? = null,
             password: String? = null,
             client: OkHttpClient? = null
         ): OssIndexService {
-            val ossIndexClient = (client ?: OkHttpClient()).newBuilder()
-                .addInterceptor { chain ->
-                    val request = chain.request()
-                    val requestBuilder = request.newBuilder()
+            val ossIndexClient = (client?.newBuilder() ?: OkHttpClient.Builder()).addInterceptor { chain ->
+                val request = chain.request()
+                val requestBuilder = request.newBuilder()
 
-                    if (user != null && password != null) {
-                        requestBuilder.header("Authorization", Credentials.basic(user, password))
-                    }
-
-                    chain.proceed(requestBuilder.build())
+                if (user != null && password != null) {
+                    requestBuilder.header("Authorization", Credentials.basic(user, password))
                 }
-                .build()
+
+                chain.proceed(requestBuilder.build())
+            }.build()
 
             val contentType = "application/json".toMediaType()
             val retrofit = Retrofit.Builder()
                 .client(ossIndexClient)
-                .baseUrl(url)
+                .baseUrl(url ?: DEFAULT_BASE_URL)
                 .addConverterFactory(JSON.asConverterFactory(contentType))
                 .build()
 

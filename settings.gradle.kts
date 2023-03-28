@@ -1,8 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2020 Bosch.IO GmbH
- * Copyright (C) 2021 Sonatype, Inc.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,6 +38,22 @@ include(":examples:notifications")
 include(":helper-cli")
 include(":model")
 include(":notifier")
+include(":plugins:package-curation-providers")
+include(":plugins:package-curation-providers:api")
+include(":plugins:package-curation-providers:clearly-defined")
+include(":plugins:package-curation-providers:file")
+include(":plugins:package-curation-providers:ort-config")
+include(":plugins:package-curation-providers:sw360")
+include(":plugins:package-managers")
+include(":plugins:package-managers:bower")
+include(":plugins:package-managers:bundler")
+include(":plugins:package-managers:cargo")
+include(":plugins:package-managers:carthage")
+include(":plugins:package-managers:composer")
+include(":plugins:package-managers:gradle")
+include(":plugins:package-managers:gradle-model")
+include(":plugins:package-managers:pub")
+include(":plugins:package-managers:python")
 include(":reporter")
 include(":reporter-web-app")
 include(":scanner")
@@ -49,6 +62,30 @@ include(":utils:ort")
 include(":utils:scripting")
 include(":utils:spdx")
 include(":utils:test")
+
+project(":clients:clearly-defined").name = "clearly-defined-client"
+project(":clients:fossid-webapp").name = "fossid-webapp-client"
+project(":clients:github-graphql").name = "github-graphql-client"
+project(":clients:nexus-iq").name = "nexus-iq-client"
+project(":clients:oss-index").name = "oss-index-client"
+project(":clients:osv").name = "osv-client"
+project(":clients:scanoss").name = "scanoss-client"
+project(":clients:vulnerable-code").name = "vulnerable-code-client"
+
+project(":plugins:package-curation-providers:api").name = "package-curation-provider-api"
+project(":plugins:package-curation-providers:clearly-defined").name = "clearly-defined-package-curation-provider"
+project(":plugins:package-curation-providers:file").name = "file-package-curation-provider"
+project(":plugins:package-curation-providers:ort-config").name = "ort-config-package-curation-provider"
+project(":plugins:package-curation-providers:sw360").name = "sw360-package-curation-provider"
+
+project(":plugins:package-managers:bower").name = "bower-package-manager"
+project(":plugins:package-managers:bundler").name = "bundler-package-manager"
+project(":plugins:package-managers:cargo").name = "cargo-package-manager"
+project(":plugins:package-managers:carthage").name = "carthage-package-manager"
+project(":plugins:package-managers:composer").name = "composer-package-manager"
+project(":plugins:package-managers:gradle").name = "gradle-package-manager"
+project(":plugins:package-managers:pub").name = "pub-package-manager"
+project(":plugins:package-managers:python").name = "python-package-manager"
 
 project(":utils:common").name = "common-utils"
 project(":utils:ort").name = "ort-utils"

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,14 +34,11 @@ import com.github.ajalt.clikt.parameters.types.file
 
 import java.io.File
 import java.lang.IllegalArgumentException
-import java.nio.file.FileSystems
-import java.nio.file.Paths
 
 import org.ossreviewtoolkit.helper.utils.PackageConfigurationOption
 import org.ossreviewtoolkit.helper.utils.createProvider
 import org.ossreviewtoolkit.helper.utils.fetchScannedSources
 import org.ossreviewtoolkit.helper.utils.getLicenseFindingsById
-import org.ossreviewtoolkit.helper.utils.getPackageOrProject
 import org.ossreviewtoolkit.helper.utils.getViolatedRulesByLicense
 import org.ossreviewtoolkit.helper.utils.readOrtResult
 import org.ossreviewtoolkit.helper.utils.replaceConfig
@@ -52,6 +48,7 @@ import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.utils.common.FileMatcher
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
 
@@ -151,9 +148,8 @@ internal class ListLicensesCommand : CliktCommand(
     private val fileAllowList by option(
         "--file-allow-list",
         help = "Output only license findings for files whose paths matches any of the given glob expressions."
-    ).convert { csv ->
-        csv.split(',').map { pattern -> FileSystems.getDefault().getPathMatcher("glob:$pattern") }
-    }.default(emptyList())
+    ).split(",")
+        .default(emptyList())
 
     override fun run() {
         val ortResult = readOrtResult(ortFile).replaceConfig(repositoryConfigurationFile)
@@ -190,9 +186,7 @@ internal class ListLicensesCommand : CliktCommand(
                     !offendingOnly || license in violatedRulesByLicense
                 }.mapValues { (license, locations) ->
                     locations.filter { location ->
-                        val isAllowedFile = fileAllowList.isEmpty() || fileAllowList.any {
-                            it.matches(Paths.get(location.path))
-                        }
+                        val isAllowedFile = fileAllowList.isEmpty() || FileMatcher.match(fileAllowList, location.path)
 
                         val isIncluded = !omitExcluded || !isPathExcluded(provenance, location.path) ||
                                 ignoreExcludedRuleIds.intersect(violatedRulesByLicense[license].orEmpty()).isNotEmpty()
@@ -228,22 +222,23 @@ internal class ListLicensesCommand : CliktCommand(
 private data class TextLocationGroup(
     val locations: Set<TextLocation>,
     val text: String? = null
-) {
+) : Comparable<TextLocationGroup> {
     companion object {
-        val COMPARATOR = compareBy<TextLocationGroup>({ it.text == null }, { -it.locations.size })
+        private val COMPARATOR = compareBy<TextLocationGroup>({ it.text == null }, { -it.locations.size })
     }
+
+    override fun compareTo(other: TextLocationGroup) = COMPARATOR.compare(this, other)
 }
 
 private fun Collection<TextLocationGroup>.assignReferenceNameAndSort(): List<Pair<TextLocationGroup, String>> {
     var i = 0
-    return sortedWith(TextLocationGroup.COMPARATOR)
-        .map {
-            if (it.text != null) {
-                Pair(it, "${i++}")
-            } else {
-                Pair(it, "-")
-            }
+    return sorted().map {
+        if (it.text != null) {
+            Pair(it, "${i++}")
+        } else {
+            Pair(it, "-")
         }
+    }
 }
 
 private fun Map<SpdxSingleLicenseExpression, List<TextLocationGroup>>.writeValueAsString(

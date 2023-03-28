@@ -9,6 +9,31 @@ on:
       - main
 
 jobs:
+  commit-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v5
+        with:
+          configFile: .commitlintrc.yml
+  copyright-license:
+    runs-on: ubuntu-22.04
+    env:
+      GRADLE_OPTS: -Dorg.gradle.daemon=false
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: temurin
+        java-version: 17
+    - name: Check copyright and license information
+      uses: gradle/gradle-build-action@v2
+      with:
+        arguments: checkCopyrightsInNoticeFile checkLicenseHeaders
   detekt-issues:
     runs-on: ubuntu-22.04
     env:
@@ -20,17 +45,16 @@ jobs:
       uses: actions/setup-java@v3
       with:
         distribution: temurin
-        java-version: 11
-        cache: gradle
+        java-version: 17
     - name: Check for Detekt Issues
-      uses: burrunan/gradle-cache-action@v1
+      uses: gradle/gradle-build-action@v2
       with:
-        arguments: --stacktrace detekt
+        arguments: detekt detektTest
     - name: Upload SARIF File
       uses: github/codeql-action/upload-sarif@v2
       if: ${{ always() }} # Upload even if the previous step failed.
       with:
-        sarif_file: build/reports/detekt/detekt.sarif
+        sarif_file: build/reports/detekt/merged.sarif
   markdown-links:
     runs-on: ubuntu-22.04
     steps:
@@ -43,6 +67,18 @@ jobs:
         check-modified-files-only: yes
         max-depth: 2
         use-quiet-mode: yes
+  qodana-scan:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Qodana Scan
+      uses: JetBrains/qodana-action@v2022.3.4
+    - uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: ${{runner.temp}}/qodana/results/qodana.sarif.json
   reuse-tool:
     runs-on: ubuntu-22.04
     steps:

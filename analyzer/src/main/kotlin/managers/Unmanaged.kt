@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ class Unmanaged(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Unmanaged(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Unmanaged(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     /**
@@ -113,7 +113,7 @@ class Unmanaged(
         return listOf(
             ProjectAnalyzerResult(
                 project = Project.EMPTY.copy(id = id, vcsProcessed = vcsInfo),
-                packages = sortedSetOf()
+                packages = emptySet()
             )
         )
     }

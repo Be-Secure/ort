@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 EPAM Systems, Inc.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,31 +24,32 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNot
 
-import java.io.File
 import java.time.Instant
 
 import org.ossreviewtoolkit.advisor.advisors.Osv
 import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
-import org.ossreviewtoolkit.model.config.AdvisorConfiguration
+import org.ossreviewtoolkit.model.config.OsvConfiguration
 import org.ossreviewtoolkit.model.readValue
+import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class OsvFunTest : StringSpec({
     "retrievePackageFindings() returns vulnerabilities for the supported ecosystems" {
         val osv = createOsv()
-        val packages = listOf(
+        val packages = setOf(
             "Crate::sys-info:0.7.0",
+            "Composer:prestashop:ps_facetedsearch:3.0.0",
             "Gem::rack:2.0.4",
             "Go::github.com/nats-io/nats-server/v2:2.1.0",
             "Maven:com.jfinal:jfinal:1.4",
             "NPM::rebber:1.0.0",
             "NuGet::Microsoft.ChakraCore:1.10.0",
+            "Pub::http:0.13.1",
             "PyPI::Plone:3.2"
-            // TODO: Add an identifier for a composer package after https://github.com/google/osv.dev/issues/497 got
-            //       fixed. That issue causes queries for vulnerabilities of the "Packagist" ecosystem to always return
-            //       an empty result.
-        ).map { identifierToPackage(it) }
+        ).mapTo(mutableSetOf()) {
+            identifierToPackage(it)
+        }
 
         val packageFindings = osv.retrievePackageFindings(packages)
 
@@ -59,19 +60,21 @@ class OsvFunTest : StringSpec({
     }
 
     "retrievePackageFindings() returns the expected result for the given package(s)" {
-        val expectedResult = File("src/funTest/assets").resolve("retrieve-package-findings-expected-result.json")
+        val expectedResult = getAssetFile("retrieve-package-findings-expected-result.json")
             .readValue<Map<Identifier, List<AdvisorResult>>>()
         val osv = createOsv()
         // The following packages have been chosen because they have only one vulnerability with the oldest possible
         // modified date from the current OSV database, in order to hopefully minimize the flakiness.
-        val packages = listOf(
+        val packages = setOf(
             // Package with severity:
             "NPM::find-my-way:3.0.0",
             // Package without severity, but with severity inside the databaseSpecific JSON object:
             "NPM::discord-markdown:2.3.0",
             // Package without severity:
             "PyPI::donfig:0.2.0"
-        ).map { identifierToPackage(it) }
+        ).mapTo(mutableSetOf()) {
+            identifierToPackage(it)
+        }
 
         val packageFindings = osv.retrievePackageFindings(packages).mapKeys { it.key.id }
 
@@ -83,15 +86,15 @@ private fun identifierToPackage(id: String): Package =
     Package.EMPTY.copy(id = Identifier(id))
 
 private fun createOsv(): Osv =
-    Osv("OSV", AdvisorConfiguration())
+    Osv("OSV", OsvConfiguration(serverUrl = null))
 
 private fun Map<Identifier, List<AdvisorResult>>.patchTimes(): Map<Identifier, List<AdvisorResult>> =
     mapValues { (_, advisorResults) ->
         advisorResults.map { advisorResult ->
             advisorResult.copy(
                 summary = advisorResult.summary.copy(
-                    startTime = Instant.MIN,
-                    endTime = Instant.MIN
+                    startTime = Instant.EPOCH,
+                    endTime = Instant.EPOCH
                 )
             )
         }

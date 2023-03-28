@@ -1,87 +1,77 @@
 [versions]
-buildConfigPlugin = "3.1.0"
-detektPlugin = "1.21.0"
-dokkaPlugin = "1.7.10"
+dependencyAnalysisPlugin = "1.19.0"
+detektPlugin = "1.22.0"
+dokkaPlugin = "1.8.10"
+downloadPlugin = "5.4.0"
 graalPlugin = "0.12.0"
-# @pin this version until https://github.com/ExpediaGroup/graphql-kotlin/issues/1526 is resolved.
-graphQlPlugin = "5.5.0"
-ideaExtPlugin = "1.1.6"
-kotlinPlugin = "1.7.10"
-shadowPlugin = "7.1.2"
-svnToolsPlugin = "3.1"
-taskInfoPlugin = "1.4.0"
-versionCatalogUpdatePlugin = "0.6.0"
-versionsPlugin = "0.42.0"
+graphQlPlugin = "6.4.0"
+ideaExtPlugin = "1.1.7"
+kotlinPlugin = "1.8.10"
+versionCatalogUpdatePlugin = "0.8.0"
+versionsPlugin = "0.46.0"
 
-antlr = "4.10.1"
-asciidoctorj = "2.5.5"
-asciidoctorjPdf = "2.3.0"
-clikt = "3.5.0"
-commonsCompress = "1.21"
-commonsEmail = "1.5"
-config4k = "0.4.2"
+antlr = "4.11.1"
+asciidoctorj = "2.5.7"
+asciidoctorjPdf = "2.3.4"
+clikt = "3.5.2"
+commonsCompress = "1.23.0"
 cvssCalculator = "1.4.1"
-cyclonedx = "7.2.0"
+cyclonedx = "7.3.2"
 diskLruCache = "2.0.2"
-exposed = "0.39.2"
+exposed = "0.41.1"
 flexmark = "0.64.0"
-freemarker = "2.3.31"
+freemarker = "2.3.32"
 # @keep this version which is only being used via get().
 graal = "22.2.0"
-greenmail = "1.6.10"
+greenmail = "2.0.0"
 hikari = "5.0.1"
-hoplite = "2.6.1"
-jackson = "2.13.3"
-jgit = "6.2.0.202206071550-r"
+hoplite = "2.7.3"
+jackson = "2.14.2"
+jakartaMail = "2.0.1"
+jgit = "6.5.0.202303070854-r"
 jiraRestClient = "5.2.4"
-jruby = "9.3.7.0"
-# @pin this version as upgrading requires more testing.
-jschAgentProxy = "0.0.7"
-jslt = "0.1.12"
-jsonSchemaValidator = "1.0.72"
-kotest = "5.4.2"
+jruby = "9.4.2.0"
+jslt = "0.1.14"
+jsonSchemaValidator = "1.0.79"
+kotest = "5.5.5"
 kotlinxCoroutines = "1.6.4"
 kotlinxHtml = "0.8.0"
-kotlinxSerialization = "1.4.0"
-# @pin this version as it needs to be aligned with "graphQlPlugin".
-ktor = "1.6.8"
-log4jApi = "2.18.0"
+kotlinxSerialization = "1.5.0"
+ktor = "2.2.4"
+log4jApi = "2.20.0"
 log4jApiKotlin = "1.2.0"
-logbackImpl = "1.2.11"
-maven = "3.8.6"
+logback = "1.4.6"
+maven = "3.9.1"
 # @pin this version as it needs to be aligned with "maven".
-mavenResolver = "1.7.3"
-mockk = "1.12.7"
-okhttp = "4.9.3"
-poiOoxml = "5.2.2"
-postgres = "42.4.2"
+mavenResolver = "1.9.4"
+mockk = "1.13.4"
+okhttp = "4.10.0"
+poiOoxml = "5.2.3"
+postgres = "42.6.0"
 postgresEmbedded = "1.0.1"
 reflections = "0.10.2"
 retrofit = "2.9.0"
 retrofitConverterKotlinxSerialization = "0.8.0"
-saxonHe = "11.4"
+saxonHe = "12.1"
 scanoss = "1.1.6"
-semver4j = "3.1.0"
-springCore = "5.3.22"
-svnkit = "1.10.7"
-# @pin this version as there are only newer weekly releases.
-sw360Client = "13.2.0-28"
+semver4j = "4.3.0"
+springCore = "5.3.26"
+svnkit = "1.10.11"
+sw360Client = "16.0.0-m1"
 toml4j = "0.7.2"
-wiremock = "2.33.2"
+wiremock = "2.35.0"
 xz = "1.9"
 
 [plugins]
-buildConfig = { id = "com.github.gmazzo.buildconfig", version.ref = "buildConfigPlugin" }
+dependencyAnalysis = { id = "com.autonomousapps.dependency-analysis", version.ref = "dependencyAnalysisPlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detektPlugin" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokkaPlugin" }
+download = { id = "de.undercouch.download", version.ref = "downloadPlugin" }
 graal = { id = "com.palantir.graal", version.ref = "graalPlugin" }
 graphQl = { id = "com.expediagroup.graphql", version.ref = "graphQlPlugin" }
 ideaExt = { id = "org.jetbrains.gradle.plugin.idea-ext", version.ref = "ideaExtPlugin" }
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlinPlugin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlinPlugin" }
-shadow = { id = "com.github.johnrengelman.shadow", version.ref = "shadowPlugin" }
-svnTools = { id = "at.bxm.svntools", version.ref = "svnToolsPlugin" }
-taskInfo = { id = "org.barfuin.gradle.taskinfo", version.ref = "taskInfoPlugin" }
 versionCatalogUpdate = { id = "nl.littlerobots.version-catalog-update", version.ref = "versionCatalogUpdatePlugin" }
 versions = { id = "com.github.ben-manes.versions", version.ref = "versionsPlugin" }
 
@@ -91,11 +81,10 @@ asciidoctorj = { module = "org.asciidoctor:asciidoctorj", version.ref = "asciido
 asciidoctorjPdf = { module = "org.asciidoctor:asciidoctorj-pdf", version.ref = "asciidoctorjPdf" }
 clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
 commonsCompress = { module = "org.apache.commons:commons-compress", version.ref = "commonsCompress" }
-commonsEmail = { module = "org.apache.commons:commons-email", version.ref = "commonsEmail" }
-config4k = { module = "io.github.config4k:config4k", version.ref = "config4k" }
 cvssCalculator = { module = "us.springett:cvss-calculator", version.ref = "cvssCalculator" }
 cyclonedx = { module = "org.cyclonedx:cyclonedx-core-java", version.ref = "cyclonedx" }
 detektApi = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detektPlugin" }
+detektTest = { module = "io.gitlab.arturbosch.detekt:detekt-test", version.ref = "detektPlugin" }
 diskLruCache = { module = "com.jakewharton:disklrucache", version.ref = "diskLruCache" }
 exposedCore = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
 exposedDao = { module = "org.jetbrains.exposed:exposed-dao", version.ref = "exposed" }
@@ -107,19 +96,19 @@ graphQlKtorClient = { module = "com.expediagroup:graphql-kotlin-ktor-client", ve
 greenmail = { module = "com.icegreen:greenmail", version.ref = "greenmail" }
 hikari = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
 hopliteCore = { module = "com.sksamuel.hoplite:hoplite-core", version.ref = "hoplite" }
-hopliteHocon = { module = "com.sksamuel.hoplite:hoplite-hocon", version.ref = "hoplite" }
+hopliteYaml = { module = "com.sksamuel.hoplite:hoplite-yaml", version.ref = "hoplite" }
+jacksonCore = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
 jacksonDatabind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
 jacksonDataformatXml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-xml", version.ref = "jackson" }
 jacksonDataformatYaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
 jacksonDatatypeJsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
-jacksonModuleJaxbAnnotations = { module = "com.fasterxml.jackson.module:jackson-module-jaxb-annotations", version.ref = "jackson" }
 jacksonModuleKotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
+jakartaMail = { module = "com.sun.mail:jakarta.mail", version.ref = "jakartaMail" }
 jgit = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
-jgitJsch = { module = "org.eclipse.jgit:org.eclipse.jgit.ssh.jsch", version.ref = "jgit" }
+jgitSshApacheAgent = { module = "org.eclipse.jgit:org.eclipse.jgit.ssh.apache.agent", version.ref = "jgit" }
 jiraRestClientApi = { module = "com.atlassian.jira:jira-rest-java-client-api", version.ref = "jiraRestClient" }
 jiraRestClientApp = { module = "com.atlassian.jira:jira-rest-java-client-app", version.ref = "jiraRestClient" }
-jruby = { module = "org.jruby:jruby-complete", version.ref = "jruby" }
-jschAgentProxy = { module = "com.jcraft:jsch.agentproxy.jsch", version.ref = "jschAgentProxy" }
+jruby = { module = "org.jruby:jruby", version.ref = "jruby" }
 jslt = { module = "com.schibsted.spt.data:jslt", version.ref = "jslt" }
 jsonSchemaValidator = { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
 kotestAssertionsCore = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
@@ -130,14 +119,15 @@ kotestFrameworkEngine = { module = "io.kotest:kotest-framework-engine", version.
 kotestRunnerJunit5 = { module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
 kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinxHtml = { module = "org.jetbrains.kotlinx:kotlinx-html-jvm", version.ref = "kotlinxHtml" }
-kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+kotlinxSerializationCore = { module = "org.jetbrains.kotlinx:kotlinx-serialization-core", version.ref = "kotlinxSerialization" }
+kotlinxSerializationJson = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 ktorClientCore = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktorClientOkHttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 # @keep this library which is only being used via force().
 log4jApi = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4jApi" }
 log4jApiKotlin = { module = "org.apache.logging.log4j:log4j-api-kotlin", version.ref = "log4jApiKotlin" }
 log4jApiToSlf4j = { module = "org.apache.logging.log4j:log4j-to-slf4j", version.ref = "log4jApi" }
-logbackClassic = { module = "ch.qos.logback:logback-classic", version.ref = "logbackImpl" }
+logbackClassic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 mavenCompat = { module = "org.apache.maven:maven-compat", version.ref = "maven" }
 mavenCore = { module = "org.apache.maven:maven-core", version.ref = "maven" }
 mavenResolverConnectorBasic = { module = "org.apache.maven.resolver:maven-resolver-connector-basic", version.ref = "mavenResolver" }
@@ -156,7 +146,7 @@ retrofitConverterKotlinxSerialization = { module = "com.jakewharton.retrofit:ret
 retrofitConverterScalars = { module = "com.squareup.retrofit2:converter-scalars", version.ref = "retrofit" }
 saxonHe = { module = "net.sf.saxon:Saxon-HE", version.ref = "saxonHe" }
 scanoss = { module = "com.scanoss:scanner", version.ref = "scanoss" }
-semver4j = { module = "com.vdurmont:semver4j", version.ref = "semver4j" }
+semver4j = { module = "org.semver4j:semver4j", version.ref = "semver4j" }
 springCore = { module = "org.springframework:spring-core", version.ref = "springCore" }
 svnkit = { module = "org.tmatesoft.svnkit:svnkit", version.ref = "svnkit" }
 sw360Client = { module = "org.eclipse.sw360:client", version.ref = "sw360Client" }
@@ -166,6 +156,6 @@ xz = { module = "org.tukaani:xz", version.ref = "xz" }
 
 [bundles]
 exposed = ["exposedCore", "exposedDao", "exposedJdbc", "exposedJavaTime"]
-hoplite = ["hopliteCore", "hopliteHocon"]
-maven = ["mavenCore", "mavenCompat"]
+hoplite = ["hopliteCore", "hopliteYaml"]
+kotlinxSerialization = ["kotlinxSerializationCore", "kotlinxSerializationJson"]
 mavenResolver = ["mavenResolverConnectorBasic", "mavenResolverTransportFile", "mavenResolverTransportHttp", "mavenResolverTransportWagon"]

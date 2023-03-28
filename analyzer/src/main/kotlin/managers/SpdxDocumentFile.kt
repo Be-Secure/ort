@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import org.ossreviewtoolkit.analyzer.managers.utils.SpdxResolvedDocument
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.PackageReference
@@ -50,6 +50,7 @@ import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.model.utils.toPurl
+import org.ossreviewtoolkit.utils.common.collapseWhitespace
 import org.ossreviewtoolkit.utils.common.getQueryParameters
 import org.ossreviewtoolkit.utils.common.toUri
 import org.ossreviewtoolkit.utils.common.withoutPrefix
@@ -193,25 +194,25 @@ private fun String.mapNotPresentToEmpty(): String = takeUnless { SpdxConstants.i
  * Sanitize a string for use as an [Identifier] property where colons are not supported by replacing them with spaces,
  * trimming, and finally collapsing multiple consecutive spaces.
  */
-private fun String.sanitize(): String = replace(':', ' ').trim().replace(Regex("\\s{2,}"), " ")
+private fun String.sanitize(): String = replace(':', ' ').collapseWhitespace()
 
 /**
  * Wrap any "present" SPDX value in a sorted set, or return an empty sorted set otherwise.
  */
-private fun String?.wrapPresentInSortedSet(): SortedSet<String> {
+private fun String?.wrapPresentInSet(): Set<String> {
     if (SpdxConstants.isPresent(this)) {
         withoutPrefix(SpdxConstants.PERSON)?.let { persons ->
             // In case of a person, allow a comma-separated list of persons.
-            return persons.split(',').mapTo(sortedSetOf()) { it.trim() }
+            return persons.split(',').mapTo(mutableSetOf()) { it.trim() }
         }
 
         // Do not split an organization like "Acme, Inc." by comma.
         withoutPrefix(SpdxConstants.ORGANIZATION)?.let {
-            return sortedSetOf(it)
+            return setOf(it)
         }
     }
 
-    return sortedSetOf()
+    return emptySet()
 }
 
 /**
@@ -272,7 +273,7 @@ class SpdxDocumentFile(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = SpdxDocumentFile(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = SpdxDocumentFile(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     private val spdxDocumentCache = SpdxDocumentCache()
@@ -314,8 +315,8 @@ class SpdxDocumentFile(
             id = id,
             purl = locateExternalReference(SpdxExternalReference.Type.Purl) ?: id.toPurl(),
             cpe = locateCpe(),
-            authors = originator.wrapPresentInSortedSet(),
-            declaredLicenses = sortedSetOf(licenseDeclared),
+            authors = originator.wrapPresentInSet(),
+            declaredLicenses = setOf(licenseDeclared),
             concludedLicense = getConcludedLicense(),
             description = packageDescription,
             homepageUrl = homepage.mapNotPresentToEmpty(),
@@ -336,7 +337,7 @@ class SpdxDocumentFile(
         packages: MutableSet<Package>
     ): SortedSet<PackageReference> =
         getDependencies(pkgId, doc, packages, SpdxRelationship.Type.DEPENDENCY_OF) { target ->
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
             getPackageManagerDependency(target, doc) ?: doc.getSpdxPackageForId(target, issues)?.let { dependency ->
                 packages += dependency.toPackage(doc.getDefinitionFile(target), doc)
 
@@ -357,16 +358,16 @@ class SpdxDocumentFile(
 
         val scope = spdxPackage.extractScopeFromExternalReferences() ?: return null
 
-        val packageFile = definitionFile.parentFile.resolve(spdxPackage.packageFilename)
+        val packageFile = definitionFile.resolveSibling(spdxPackage.packageFilename)
 
         if (packageFile.isFile) {
-            val managedFiles = findManagedFiles(packageFile.parentFile, ALL)
+            val managedFiles = findManagedFiles(packageFile.parentFile)
             managedFiles.forEach { (factory, files) ->
                 if (files.any { it.canonicalPath == packageFile.canonicalPath }) {
                     // TODO: The data from the spdxPackage is currently ignored, check if some fields need to be
                     //       preserved somehow.
                     return PackageManagerDependencyHandler.createPackageManagerDependency(
-                        packageManager = factory.managerName,
+                        packageManager = factory.type,
                         definitionFile = VersionControlSystem.getPathInfo(packageFile).path,
                         scope = scope,
                         linkage = PackageLinkage.PROJECT_STATIC // TODO: Set linkage based on SPDX reference type.
@@ -391,7 +392,7 @@ class SpdxDocumentFile(
         dependsOnCase: (String) -> PackageReference? = { null }
     ): SortedSet<PackageReference> =
         doc.relationships.mapNotNullTo(sortedSetOf()) { (source, relation, target, _) ->
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
 
             val isDependsOnRelation = relation == SpdxRelationship.Type.DEPENDS_ON || hasDefaultScopeLinkage(
                 source, target, relation, doc.relationships
@@ -490,7 +491,7 @@ class SpdxDocumentFile(
         val scopes = sortedSetOf<Scope>()
 
         val projectPackage = if (!spdxDocument.isProject()) {
-            spdxDocument.packages[0]
+            spdxDocument.packages.first()
         } else {
             requireNotNull(spdxDocument.projectPackage()) {
                 "The SPDX document file at '$definitionFile' does not describe a project."
@@ -515,14 +516,14 @@ class SpdxDocumentFile(
             id = projectPackage.toIdentifier(),
             cpe = projectPackage.locateCpe(),
             definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
-            authors = projectPackage.originator.wrapPresentInSortedSet(),
-            declaredLicenses = sortedSetOf(projectPackage.licenseDeclared),
+            authors = projectPackage.originator.wrapPresentInSet(),
+            declaredLicenses = setOf(projectPackage.licenseDeclared),
             vcs = processProjectVcs(definitionFile.parentFile, VcsInfo.EMPTY),
             homepageUrl = projectPackage.homepage.mapNotPresentToEmpty(),
             scopeDependencies = scopes
         )
 
-        return listOf(ProjectAnalyzerResult(project, packages.toSortedSet()))
+        return listOf(ProjectAnalyzerResult(project, packages))
     }
 
     /**

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,9 +63,9 @@ data class FileBasedStorageConfiguration(
     val backend: FileStorageConfiguration,
 
     /**
-     * The way that scan results are stored, defaults to [StorageType.PACKAGE_BASED].
+     * The way that scan results are stored, defaults to [StorageType.PROVENANCE_BASED].
      */
-    val type: StorageType = StorageType.PACKAGE_BASED
+    val type: StorageType = StorageType.PROVENANCE_BASED
 ) : ScanStorageConfiguration
 
 /**
@@ -79,9 +78,9 @@ data class PostgresStorageConfiguration(
     val connection: PostgresConnection,
 
     /**
-     * The way that scan results are stored, defaults to [StorageType.PACKAGE_BASED].
+     * The way that scan results are stored, defaults to [StorageType.PROVENANCE_BASED].
      */
-    val type: StorageType = StorageType.PACKAGE_BASED
+    val type: StorageType = StorageType.PROVENANCE_BASED
 ) : ScanStorageConfiguration
 
 /**

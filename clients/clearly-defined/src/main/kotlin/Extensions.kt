@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,11 @@ import okio.Buffer
  * Return the request body as a string, see https://github.com/square/okhttp/issues/1891.
  */
 fun RequestBody.string() = Buffer().also { writeTo(it) }.readUtf8()
+
+/**
+ * Convert a [SourceLocation] to a [Coordinates] object.
+ */
+fun SourceLocation.toCoordinates(): Coordinates = Coordinates(type, provider, namespace, name, revision)
 
 /**
  * Return this string lower-cased except for the first character which is upper-cased.

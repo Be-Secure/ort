@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
- * Copyright (C) 2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +21,6 @@ package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.core.JsonToken
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer
-import com.fasterxml.jackson.module.kotlin.jacksonTypeRef
 
 import java.util.SortedMap
 
@@ -44,7 +37,6 @@ data class AdvisorRecord(
     /**
      * The [AdvisorResult]s for all [Package]s.
      */
-    @JsonDeserialize(using = AdvisorResultsDeserializer::class)
     val advisorResults: SortedMap<Identifier, List<AdvisorResult>>
 ) {
     companion object {
@@ -75,12 +67,14 @@ data class AdvisorRecord(
         }
     }
 
-    fun collectIssues(): Map<Identifier, Set<OrtIssue>> {
-        val collectedIssues = mutableMapOf<Identifier, MutableSet<OrtIssue>>()
+    fun collectIssues(): Map<Identifier, Set<Issue>> {
+        val collectedIssues = mutableMapOf<Identifier, MutableSet<Issue>>()
 
         advisorResults.forEach { (id, results) ->
             results.forEach { result ->
-                collectedIssues.getOrPut(id) { mutableSetOf() } += result.summary.issues
+                if (result.summary.issues.isNotEmpty()) {
+                    collectedIssues.getOrPut(id) { mutableSetOf() } += result.summary.issues
+                }
             }
         }
 
@@ -88,13 +82,9 @@ data class AdvisorRecord(
     }
 
     /**
-     * True if any of the [advisorResults] contain [OrtIssue]s.
+     * True if any of the [advisorResults] contain [Issue]s.
      */
-    val hasIssues by lazy {
-        advisorResults.any { (_, results) ->
-            results.any { it.summary.issues.isNotEmpty() }
-        }
-    }
+    val hasIssues by lazy { collectIssues().isNotEmpty() }
 
     /**
      * Return a map of all [Package]s and the associated [Vulnerabilities][Vulnerability].
@@ -154,20 +144,4 @@ private fun Collection<Vulnerability>.mergeVulnerabilities(): List<Vulnerability
 private fun Collection<Vulnerability>.mergeReferences(): Vulnerability {
     val references = flatMapTo(mutableSetOf()) { it.references }
     return Vulnerability(id = first().id, references = references.toList())
-}
-
-/**
- * A custom deserializer to support deserialization of old [AdvisorRecord]s where [AdvisorRecord.advisorResults] was a
- * `List<AdvisorResultContainer>`.
- */
-private class AdvisorResultsDeserializer : StdDeserializer<SortedMap<Identifier, List<AdvisorResult>>>(
-    SortedMap::class.java
-) {
-    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): SortedMap<Identifier, List<AdvisorResult>> =
-        if (p.currentToken == JsonToken.START_ARRAY) {
-            val containers = jsonMapper.readValue(p, jacksonTypeRef<List<AdvisorResultContainer>>())
-            containers.associateTo(sortedMapOf()) { it.id to it.results }
-        } else {
-            jsonMapper.readValue(p, jacksonTypeRef<SortedMap<Identifier, List<AdvisorResult>>>())
-        }
 }

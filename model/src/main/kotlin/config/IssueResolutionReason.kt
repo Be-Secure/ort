@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,10 @@
 
 package org.ossreviewtoolkit.model.config
 
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 
 /**
- * Possible reasons for resolving an [OrtIssue] using a [IssueResolution].
+ * Possible reasons for resolving an [Issue] using a [IssueResolution].
  */
 enum class IssueResolutionReason {
     /**

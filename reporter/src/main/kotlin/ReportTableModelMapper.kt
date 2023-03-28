@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,8 @@ package org.ossreviewtoolkit.reporter
 
 import org.ossreviewtoolkit.model.DependencyNavigator
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseSource
-import org.ossreviewtoolkit.model.OrtIssue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.RuleViolation
@@ -68,13 +68,13 @@ private fun Project.getScopesForDependencies(
 }
 
 /**
- * A mapper which converts an [OrtIssue] to a [ReportTableModel] view model.
+ * A mapper which converts an [Issue] to a [ReportTableModel] view model.
  */
 class ReportTableModelMapper(
     private val resolutionProvider: ResolutionProvider,
     private val howToFixTextProvider: HowToFixTextProvider
 ) {
-    private fun OrtIssue.toResolvableIssue(): ResolvableIssue {
+    private fun Issue.toResolvableIssue(): ResolvableIssue {
         val resolutions = resolutionProvider.getIssueResolutionsFor(this)
         return ResolvableIssue(
             source = this@toResolvableIssue.source,
@@ -119,7 +119,7 @@ class ReportTableModelMapper(
         val summaryRows = mutableMapOf<Identifier, SummaryRow>()
 
         val analyzerResult = ortResult.analyzer?.result
-        val scanRecord = ortResult.scanner?.results
+        val scanResults = ortResult.scanner?.scanResults
         val excludes = ortResult.getExcludes()
 
         val projectTables = analyzerResult?.projects?.associateWith { project ->
@@ -131,7 +131,7 @@ class ReportTableModelMapper(
 
             val projectIssues = ortResult.dependencyNavigator.projectIssues(project)
             val tableRows = allIds.map { id ->
-                val scanResult = scanRecord?.scanResults?.get(id)
+                val scanResult = scanResults?.get(id)
 
                 val resolvedLicenseInfo = licenseInfoResolver.resolveLicenseInfo(id)
 
@@ -147,7 +147,7 @@ class ReportTableModelMapper(
                     it.summary.issues
                 }.orEmpty()
 
-                val packageForId = ortResult.getPackage(id)?.pkg ?: ortResult.getProject(id)?.toPackage()
+                val packageForId = ortResult.getPackage(id)?.metadata ?: ortResult.getProject(id)?.toPackage()
 
                 DependencyRow(
                     id = id,
@@ -161,7 +161,7 @@ class ReportTableModelMapper(
                         LicenseView.CONCLUDED_OR_DECLARED_AND_DETECTED,
                         ortResult.getPackageLicenseChoices(id),
                         ortResult.getRepositoryLicenseChoices()
-                    )?.sort(),
+                    )?.sorted(),
                     analyzerIssues = analyzerIssues.map { it.toResolvableIssue() },
                     scanIssues = scanIssues.map { it.toResolvableIssue() }
                 ).also { row ->
@@ -175,7 +175,7 @@ class ReportTableModelMapper(
                         id = row.id,
                         scopes = sortedMapOf(project.id to row.scopes),
                         concludedLicenses = row.concludedLicense?.let { setOf(it) }.orEmpty(),
-                        declaredLicenses = row.declaredLicenses.mapTo(sortedSetOf()) { it.license.toString() },
+                        declaredLicenses = row.declaredLicenses.mapTo(mutableSetOf()) { it.license.toString() },
                         detectedLicenses = row.detectedLicenses.mapTo(sortedSetOf()) { it.license.toString() },
                         analyzerIssues = if (nonExcludedAnalyzerIssues.isNotEmpty()) {
                             sortedMapOf(project.id to nonExcludedAnalyzerIssues)
@@ -221,13 +221,13 @@ class ReportTableModelMapper(
                 ortResult.getDefinitionFilePathRelativeToAnalyzerRoot(project),
                 pathExcludes
             )
-        }.orEmpty().toSortedMap()
+        }.orEmpty().toSortedMap(compareBy { it.id })
 
-        val issueSummaryTable = IssueTable(issueSummaryRows.values.toList().sortedBy { it.id })
+        val issueSummaryTable = IssueTable(issueSummaryRows.values.sortedBy { it.id })
 
         val summaryTable = SummaryTable(
             // Sort excluded rows to the end of the list.
-            summaryRows.values.toList().sortedWith(compareBy({ ortResult.isExcluded(it.id) }, { it.id }))
+            summaryRows.values.sortedWith(compareBy({ ortResult.isExcluded(it.id) }, { it.id }))
         )
 
         // TODO: Use the prefixes up until the first '.' (which below get discarded) for some visual grouping in the

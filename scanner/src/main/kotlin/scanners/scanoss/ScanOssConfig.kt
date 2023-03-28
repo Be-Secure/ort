@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import org.ossreviewtoolkit.model.config.ScannerConfiguration
  */
 internal data class ScanOssConfig(
     /** URL of the ScanOSS server. */
-    val apiUrl: String,
+    val apiUrl: String?,
 
     /** API Key required to authenticate with the ScanOSS server. */
     val apiKey: String
@@ -41,14 +41,12 @@ internal data class ScanOssConfig(
         const val API_KEY_PROPERTY = "apiKey"
 
         fun create(scannerConfig: ScannerConfiguration): ScanOssConfig {
-            val scanOssIdScannerOptions = scannerConfig.options?.get("ScanOss")
+            val scanOssOptions = scannerConfig.options?.get("ScanOss")
 
-            requireNotNull(scanOssIdScannerOptions) { "No ScanOSS Scanner configuration found." }
+            val apiUrl = scanOssOptions?.get(API_URL_PROPERTY)
+            val apiKey = scanOssOptions?.get(API_KEY_PROPERTY).orEmpty()
 
-            val apiURL = scanOssIdScannerOptions[API_URL_PROPERTY] ?: "https://osskb.org/api/"
-            val apiKey = scanOssIdScannerOptions[API_KEY_PROPERTY].orEmpty()
-
-            return ScanOssConfig(apiURL, apiKey)
+            return ScanOssConfig(apiUrl, apiKey)
         }
     }
 }

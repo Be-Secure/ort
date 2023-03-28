@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,6 +40,15 @@ data class Excludes(
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val scopes: List<ScopeExclude> = emptyList()
 ) {
+    companion object {
+        /**
+         * A constant for an [Excludes] instance that does not contain any excludes. Using this instance therefore
+         * does not exclude any elements.
+         */
+        @JvmField
+        val EMPTY = Excludes()
+    }
+
     /**
      * Return the [PathExclude]s matching the provided [path].
      */

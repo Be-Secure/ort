@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class FossIdClientNewProjectTest : StringSpec({
 
     beforeSpec {
         server.start()
-        service = FossIdRestService.createService("http://localhost:${server.port()}")
+        service = FossIdRestService.create("http://localhost:${server.port()}")
     }
 
     afterSpec {

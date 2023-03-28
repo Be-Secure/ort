@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ package org.ossreviewtoolkit.model.config
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.containExactly
+import io.kotest.matchers.maps.containExactly as containExactlyEntries
 import io.kotest.matchers.nulls.beNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
@@ -30,7 +31,20 @@ import io.kotest.matchers.shouldNot
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class AnalyzerConfigurationTest : WordSpec({
-    "getPackageManagerConfiguration" should {
+    "AnalyzerConfiguration()" should {
+        "throw an exception on duplicate package manager configuration" {
+            shouldThrow<IllegalArgumentException> {
+                AnalyzerConfiguration(
+                    packageManagers = mapOf(
+                        "Gradle" to PackageManagerConfiguration(),
+                        "gradle" to PackageManagerConfiguration()
+                    )
+                )
+            }
+        }
+    }
+
+    "getPackageManagerConfiguration()" should {
         "be case-insensitive" {
             val config = AnalyzerConfiguration(
                 packageManagers = mapOf(
@@ -44,41 +58,42 @@ class AnalyzerConfigurationTest : WordSpec({
         }
     }
 
-    "merge" should {
+    "merge()" should {
         "overwrite properties with values from other" {
             val self = AnalyzerConfiguration(
                 allowDynamicVersions = false,
                 enabledPackageManagers = listOf("Gradle"),
-                disabledPackageManagers = listOf("NPM"),
-                sw360Configuration = sw360Config1
+                disabledPackageManagers = listOf("NPM")
             )
 
-            val other = AnalyzerConfiguration(
+            val other = RepositoryAnalyzerConfiguration(
                 allowDynamicVersions = true,
                 enabledPackageManagers = listOf("Maven"),
                 disabledPackageManagers = listOf("SBT"),
-                sw360Configuration = sw360Config2
+                skipExcluded = true
             )
 
             with(self.merge(other)) {
                 allowDynamicVersions shouldBe true
                 enabledPackageManagers should containExactly("Maven")
                 disabledPackageManagers should containExactly("SBT")
-                sw360Configuration shouldBe sw360Config2
+                skipExcluded shouldBe true
             }
         }
 
         "keep values which are null in other" {
             val self = AnalyzerConfiguration(
+                allowDynamicVersions = true,
                 enabledPackageManagers = listOf("Gradle"),
                 disabledPackageManagers = listOf("NPM"),
-                sw360Configuration = sw360Config1
+                skipExcluded = true
             )
 
-            val other = AnalyzerConfiguration(
+            val other = RepositoryAnalyzerConfiguration(
+                allowDynamicVersions = null,
                 enabledPackageManagers = null,
                 disabledPackageManagers = null,
-                sw360Configuration = null
+                skipExcluded = null
             )
 
             self.merge(other) shouldBe self
@@ -94,7 +109,7 @@ class AnalyzerConfigurationTest : WordSpec({
                 )
             )
 
-            val other = AnalyzerConfiguration(
+            val other = RepositoryAnalyzerConfiguration(
                 packageManagers = mapOf(
                     "gradle" to PackageManagerConfiguration(
                         mustRunAfter = listOf("NPM"),
@@ -106,7 +121,7 @@ class AnalyzerConfigurationTest : WordSpec({
 
             with(self.merge(other)) {
                 packageManagers shouldNotBeNull {
-                    this should io.kotest.matchers.maps.containExactly(
+                    this should containExactlyEntries(
                         "Gradle" to PackageManagerConfiguration(
                             mustRunAfter = listOf("NPM"),
                             options = mapOf("option1" to "value1", "option2" to "value2")
@@ -118,30 +133,47 @@ class AnalyzerConfigurationTest : WordSpec({
         }
     }
 
-    "AnalyzerConfiguration" should {
-        "throw an exception on duplicate package manager configuration" {
-            shouldThrow<IllegalArgumentException> {
-                AnalyzerConfiguration(
-                    packageManagers = mapOf(
-                        "Gradle" to PackageManagerConfiguration(),
-                        "gradle" to PackageManagerConfiguration()
+    "withPackageManagerOption()" should {
+        "override an existing entry" {
+            val original = AnalyzerConfiguration(
+                packageManagers = mapOf(
+                    "Gradle" to PackageManagerConfiguration(
+                        mustRunAfter = listOf("Npm"),
+                        options = mapOf("gradleVersion" to "7.6.1")
+                    ),
+                    "Npm" to PackageManagerConfiguration(
+                        mustRunAfter = listOf("Yarn")
                     )
                 )
-            }
+            )
+
+            val patched = AnalyzerConfiguration(
+                packageManagers = mapOf(
+                    "Gradle" to PackageManagerConfiguration(
+                        mustRunAfter = listOf("Npm"),
+                        options = mapOf("gradleVersion" to "8.0.2")
+                    ),
+                    "Npm" to PackageManagerConfiguration(
+                        mustRunAfter = listOf("Yarn")
+                    )
+                )
+            )
+
+            original.withPackageManagerOption("Gradle", "gradleVersion", "8.0.2") shouldBe patched
+        }
+
+        "add a non-existing entry" {
+            val original = AnalyzerConfiguration()
+
+            val patched = AnalyzerConfiguration(
+                packageManagers = mapOf(
+                    "Gradle" to PackageManagerConfiguration(
+                        options = mapOf("gradleVersion" to "8.0.2")
+                    )
+                )
+            )
+
+            original.withPackageManagerOption("Gradle", "gradleVersion", "8.0.2") shouldBe patched
         }
     }
 })
-
-private val sw360Config1 = Sw360StorageConfiguration(
-    restUrl = "url1",
-    authUrl = "auth1",
-    username = "user1",
-    clientId = "client1"
-)
-
-private val sw360Config2 = Sw360StorageConfiguration(
-    restUrl = "url2",
-    authUrl = "auth2",
-    username = "user2",
-    clientId = "client2"
-)

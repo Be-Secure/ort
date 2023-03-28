@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ package org.ossreviewtoolkit.analyzer.managers
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.module.kotlin.readValue
-
-import com.vdurmont.semver4j.Requirement
 
 import java.io.File
 import java.io.IOException
@@ -52,6 +50,9 @@ import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
+
 /**
  * The [Stack](https://haskellstack.org/) package manager for Haskell.
  */
@@ -77,7 +78,7 @@ class Stack(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Stack(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Stack(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -103,7 +104,7 @@ class Stack(
         // Version 2.1.1, Git revision f612ea85316bbc327a64e4ad8d9f0b150dc12d4b (7648 commits) x86_64 hpack-0.31.2
         output.removePrefix("Version ").substringBefore(',').substringBefore(' ')
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildIvy("[2.1.1,)")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create(">=2.1.1")
 
     override fun beforeResolution(definitionFiles: List<File>) = checkVersion()
 
@@ -166,7 +167,7 @@ class Stack(
             val fallback = Package.EMPTY.copy(
                 id = id,
                 purl = id.toPurl(),
-                declaredLicenses = sortedSetOf(dependency.license)
+                declaredLicenses = setOf(dependency.license)
             )
 
             val pkg = when (dependency.location?.type) {
@@ -221,7 +222,7 @@ class Stack(
             scopeDependencies = scopes
         )
 
-        return listOf(ProjectAnalyzerResult(project, dependencyPackageMap.values.toSortedSet()))
+        return listOf(ProjectAnalyzerResult(project, dependencyPackageMap.values.toSet()))
     }
 
     private fun getPackageUrl(name: String, version: String) =
@@ -336,7 +337,7 @@ class Stack(
         val vcsType = (map["source-repository-this-type"] ?: map["source-repository-head-type"]).orEmpty()
         val vcsUrl = (map["source-repository-this-location"] ?: map["source-repository-head-location"]).orEmpty()
         val vcs = VcsInfo(
-            type = VcsType(vcsType),
+            type = VcsType.forName(vcsType),
             revision = map["source-repository-this-tag"].orEmpty(),
             url = vcsUrl
         )
@@ -349,8 +350,8 @@ class Stack(
                 .split(',')
                 .map(String::trim)
                 .filter(String::isNotEmpty)
-                .mapTo(sortedSetOf(), ::parseAuthorString),
-            declaredLicenses = map["license"]?.let { sortedSetOf(it) } ?: sortedSetOf(),
+                .mapNotNullTo(mutableSetOf(), ::parseAuthorString),
+            declaredLicenses = map["license"]?.let { setOf(it) } ?: emptySet(),
             description = map["description"].orEmpty(),
             homepageUrl = homepageUrl,
             binaryArtifact = RemoteArtifact.EMPTY,

@@ -1,12 +1,11 @@
 /*
- * Copyright (C) 2019-2021 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,7 +17,7 @@
  * License-Filename: LICENSE
  */
 
-import MetaData from './MetaData';
+import Metadata from './Metadata';
 import Repository from './Repository';
 import Statistics from './Statistics';
 import WebAppCopyright from './WebAppCopyright';
@@ -54,6 +53,8 @@ class WebAppOrtResult {
 
     #detectedLicensesProcessed = [];
 
+    #effectiveLicensePackages = [];
+
     #issues = [];
 
     #issuesByPackageIndexMap = new Map();
@@ -68,7 +69,7 @@ class WebAppOrtResult {
 
     #licensesIndexesByNameMap = new Map();
 
-    #metaData = {};
+    #metadata = {};
 
     #packages = [];
 
@@ -128,8 +129,8 @@ class WebAppOrtResult {
                 }
             }
 
-            if (obj.meta_data || obj.metaData) {
-                this.#metaData = new MetaData(obj.meta_data || obj.metaData);
+            if (obj.meta_data || obj.metaData || obj.metadata) {
+                this.#metadata = new Metadata(obj.meta_data || obj.metaData || obj.metadata);
             }
 
             if (obj.packages) {
@@ -159,6 +160,11 @@ class WebAppOrtResult {
                         ...webAppPackage.detectedLicenses
                     ]);
                     this.#detectedLicenses = Array.from(detectedLicenses).sort();
+
+                    if (webAppPackage.effectiveLicense
+                        && webAppPackage.effectiveLicense.length > 0) {
+                        this.#effectiveLicensePackages.push(webAppPackage);
+                    }
                 }
             }
 
@@ -396,6 +402,10 @@ class WebAppOrtResult {
         return this.#detectedLicensesProcessed;
     }
 
+    get effectiveLicensePackages() {
+        return this.#effectiveLicensePackages;
+    }
+
     get issues() {
         return this.#issues;
     }
@@ -416,8 +426,8 @@ class WebAppOrtResult {
         return this.#licenses;
     }
 
-    get metaData() {
-        return this.#metaData;
+    get metadata() {
+        return this.#metadata;
     }
 
     get packages() {
@@ -566,6 +576,10 @@ class WebAppOrtResult {
 
     hasDetectedLicensesProcessed() {
         return this.#detectedLicensesProcessed.length > 0;
+    }
+
+    hasEffectiveLicenses() {
+        return this.#effectiveLicensePackages.length > 0;
     }
 
     hasExcludes() {

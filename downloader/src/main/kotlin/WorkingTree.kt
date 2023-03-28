@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,10 +81,9 @@ abstract class WorkingTree(val workingDir: File, val vcsType: VcsType) {
     abstract fun listRemoteTags(): List<String>
 
     /**
-     * Search (symbolic) names of VCS revisions for a match with the given [project] and [version].
-     *
-     * @return The matching VCS revision, never blank.
-     * @throws IOException If no or multiple matching revisions are found.
+     * Search tags / symbolic names for fixed VCS revisions for a match based on the given [project] and [version].
+     * Return the matching VCS revision (which is never blank), or throw an [IOException] if no or multiple matching
+     * revisions are found.
      */
     fun guessRevisionName(project: String, version: String): String {
         if (version.isBlank()) throw IOException("Cannot guess a revision name from a blank version.")

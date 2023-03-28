@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,20 +25,23 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
-import java.io.File
-
 import org.ossreviewtoolkit.downloader.VersionControlSystem
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
+import org.ossreviewtoolkit.model.config.ScopeExclude
+import org.ossreviewtoolkit.model.config.ScopeExcludeReason
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
 import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.patchActualResult
 import org.ossreviewtoolkit.utils.test.patchExpectedResult
+import org.ossreviewtoolkit.utils.test.toYaml
 
 class MavenFunTest : StringSpec() {
-    private val projectDir = File("src/funTest/assets/projects/synthetic/maven").absoluteFile
+    private val projectDir = getAssetFile("projects/synthetic/maven")
     private val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
     private val vcsUrl = vcsDir.getRemoteUrl()
     private val vcsRevision = vcsDir.getRevision()
@@ -47,7 +50,7 @@ class MavenFunTest : StringSpec() {
         "Root project dependencies are detected correctly" {
             val pomFile = projectDir.resolve("pom.xml")
             val expectedResult = patchExpectedResult(
-                projectDir.parentFile.resolve("maven-expected-output-root.yml"),
+                projectDir.resolveSibling("maven-expected-output-root.yml"),
                 url = normalizeVcsUrl(vcsUrl),
                 revision = vcsRevision
             )
@@ -61,7 +64,7 @@ class MavenFunTest : StringSpec() {
             val pomFileApp = projectDir.resolve("app/pom.xml")
             val pomFileLib = projectDir.resolve("lib/pom.xml")
             val expectedResult = patchExpectedResult(
-                projectDir.parentFile.resolve("maven-expected-output-app.yml"),
+                projectDir.resolveSibling("maven-expected-output-app.yml"),
                 url = normalizeVcsUrl(vcsUrl),
                 revision = vcsRevision
             )
@@ -80,12 +83,30 @@ class MavenFunTest : StringSpec() {
         "External dependencies are detected correctly" {
             val pomFile = projectDir.resolve("lib/pom.xml")
             val expectedResult = patchExpectedResult(
-                projectDir.parentFile.resolve("maven-expected-output-lib.yml"),
+                projectDir.resolveSibling("maven-expected-output-lib.yml"),
                 url = normalizeVcsUrl(vcsUrl),
                 revision = vcsRevision
             )
 
             val result = createMaven().resolveSingleProject(pomFile, resolveScopes = true)
+
+            result.toYaml() shouldBe expectedResult
+        }
+
+        "Scopes can be excluded" {
+            val pomFile = projectDir.resolve("lib/pom.xml")
+            val expectedResult = patchExpectedResult(
+                projectDir.resolveSibling("maven-expected-output-scope-excludes.yml"),
+                url = normalizeVcsUrl(vcsUrl),
+                revision = vcsRevision
+            )
+
+            val analyzerConfig = AnalyzerConfiguration(skipExcluded = true)
+            val scopeExclude = ScopeExclude("test.*", ScopeExcludeReason.TEST_DEPENDENCY_OF)
+            val repoConfig = RepositoryConfiguration(excludes = Excludes(scopes = listOf(scopeExclude)))
+
+            val result = createMaven(analyzerConfig, repoConfig)
+                .resolveSingleProject(pomFile, resolveScopes = true)
 
             result.toYaml() shouldBe expectedResult
         }
@@ -96,10 +117,10 @@ class MavenFunTest : StringSpec() {
                 .resolve(".m2/repository/org/springframework/boot/spring-boot-starter-parent/1.5.3.RELEASE")
                 .safeDeleteRecursively(force = true)
 
-            val projectDir = File("src/funTest/assets/projects/synthetic/maven-parent").absoluteFile
+            val projectDir = getAssetFile("projects/synthetic/maven-parent")
             val pomFile = projectDir.resolve("pom.xml")
             val expectedResult = patchExpectedResult(
-                projectDir.parentFile.resolve("maven-parent-expected-output-root.yml"),
+                projectDir.resolveSibling("maven-parent-expected-output-root.yml"),
                 url = normalizeVcsUrl(vcsUrl),
                 revision = vcsRevision
             )
@@ -110,10 +131,10 @@ class MavenFunTest : StringSpec() {
         }
 
         "Maven Wagon extensions can be loaded" {
-            val projectDir = File("src/funTest/assets/projects/synthetic/maven-wagon").absoluteFile
+            val projectDir = getAssetFile("projects/synthetic/maven-wagon")
             val pomFile = projectDir.resolve("pom.xml")
             val expectedResult = patchExpectedResult(
-                projectDir.parentFile.resolve("maven-wagon-expected-output.yml"),
+                projectDir.resolveSibling("maven-wagon-expected-output.yml"),
                 url = normalizeVcsUrl(vcsUrl),
                 revision = vcsRevision
             )
@@ -124,6 +145,9 @@ class MavenFunTest : StringSpec() {
         }
     }
 
-    private fun createMaven() =
-        Maven("Maven", USER_DIR, DEFAULT_ANALYZER_CONFIGURATION, DEFAULT_REPOSITORY_CONFIGURATION)
+    private fun createMaven(
+        analyzerConfig: AnalyzerConfiguration = AnalyzerConfiguration(),
+        repositoryConfig: RepositoryConfiguration = RepositoryConfiguration()
+    ) =
+        Maven("Maven", USER_DIR, analyzerConfig, repositoryConfig)
 }

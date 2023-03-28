@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +19,6 @@
 
 package org.ossreviewtoolkit.cli.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.groups.default
@@ -29,6 +27,7 @@ import com.github.ajalt.clikt.parameters.groups.required
 import com.github.ajalt.clikt.parameters.groups.single
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.options.split
@@ -38,9 +37,11 @@ import com.github.ajalt.clikt.parameters.types.file
 
 import java.io.File
 
-import org.ossreviewtoolkit.cli.GlobalOptions
+import kotlin.time.measureTime
+
 import org.ossreviewtoolkit.cli.GroupTypes.FileType
 import org.ossreviewtoolkit.cli.GroupTypes.StringType
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.OPTION_GROUP_INPUT
 import org.ossreviewtoolkit.cli.utils.configurationGroup
 import org.ossreviewtoolkit.cli.utils.inputGroup
@@ -57,6 +58,7 @@ import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.RemoteArtifact
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
+import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.licenses.LicenseCategorization
 import org.ossreviewtoolkit.model.licenses.LicenseClassifications
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
@@ -76,7 +78,10 @@ import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
 
-class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source code from a remote location.") {
+class DownloaderCommand : OrtCommand(
+    name = "download",
+    help = "Fetch source code from a remote location."
+) {
     private val input by mutuallyExclusiveOptions(
         option(
             "--ort-file", "-i",
@@ -177,15 +182,24 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
                 "result to limit downloads to. If not specified, all packages are downloaded."
     ).split(",")
 
-    private val globalOptionsForSubcommands by requireObject<GlobalOptions>()
+    private val skipExcluded by option(
+        "--skip-excluded",
+        help = "Do not download excluded projects or packages. Works only with the '--ort-file' parameter."
+    ).flag()
+
+    private val ortConfig by requireObject<OrtConfiguration>()
 
     override fun run() {
         val failureMessages = mutableListOf<String>()
 
-        when (input) {
-            is FileType -> downloadFromOrtResult((input as FileType).file, failureMessages)
-            is StringType -> downloadFromProjectUrl((input as StringType).string, failureMessages)
+        val duration = measureTime {
+            when (input) {
+                is FileType -> downloadFromOrtResult((input as FileType).file, failureMessages)
+                is StringType -> downloadFromProjectUrl((input as StringType).string, failureMessages)
+            }
         }
+
+        println("The download took $duration.")
 
         if (failureMessages.isNotEmpty()) {
             logger.error {
@@ -203,9 +217,8 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
         )
 
         val ortResult = readOrtResult(ortFile)
-        val analyzerResult = ortResult.analyzer?.result
 
-        if (analyzerResult == null) {
+        if (ortResult.analyzer?.result == null) {
             logger.warn {
                 "Cannot run the downloader as the provided ORT result file '${ortFile.canonicalPath}' does " +
                         "not contain an analyzer result. Nothing will be downloaded."
@@ -216,11 +229,11 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
 
         val packages = mutableListOf<Package>().apply {
             if (PackageType.PROJECT in packageTypes) {
-                addAll(consolidateProjectPackagesByVcs(analyzerResult.projects).keys)
+                addAll(consolidateProjectPackagesByVcs(ortResult.getProjects(skipExcluded)).keys)
             }
 
             if (PackageType.PACKAGE in packageTypes) {
-                addAll(analyzerResult.packages.map { it.pkg })
+                addAll(ortResult.getPackages(skipExcluded).map { it.metadata })
             }
         }
 
@@ -238,7 +251,7 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
             }
         }
 
-        val includedLicenseCategories = globalOptionsForSubcommands.config.downloader.includedLicenseCategories
+        val includedLicenseCategories = ortConfig.downloader.includedLicenseCategories
         if (includedLicenseCategories.isNotEmpty() && licenseClassificationsFile.isFile) {
             val originalCount = packages.size
 
@@ -269,7 +282,7 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
 
         packageDownloadDirs.forEach { (pkg, dir) ->
             try {
-                Downloader(globalOptionsForSubcommands.config.downloader).download(pkg, dir)
+                Downloader(ortConfig.downloader).download(pkg, dir)
 
                 if (archiveMode == ArchiveMode.ENTITY) {
                     val zipFile = outputDir.resolve("${pkg.id.toPath("-")}.zip")
@@ -353,7 +366,7 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
                 Package.EMPTY.copy(id = dummyId, sourceArtifact = RemoteArtifact.EMPTY.copy(url = projectUrl))
             } else {
                 val vcs = VersionControlSystem.forUrl(projectUrl)
-                val vcsType = vcsTypeOption?.let { VcsType(it) } ?: (vcs?.type ?: VcsType.UNKNOWN)
+                val vcsType = vcsTypeOption?.let { VcsType.forName(it) } ?: (vcs?.type ?: VcsType.UNKNOWN)
                 val vcsRevision = vcsRevisionOption ?: vcs?.getDefaultBranchName(projectUrl).orEmpty()
 
                 val vcsInfo = VcsInfo(
@@ -370,7 +383,7 @@ class DownloaderCommand : CliktCommand(name = "download", help = "Fetch source c
             // Always allow moving revisions when directly downloading a single project only. This is for
             // convenience as often the latest revision (referred to by some VCS-specific symbolic name) of a
             // project needs to be downloaded.
-            val config = globalOptionsForSubcommands.config.downloader.copy(allowMovingRevisions = true)
+            val config = ortConfig.downloader.copy(allowMovingRevisions = true)
             val provenance = Downloader(config).download(dummyPackage, outputDir)
             println("Successfully downloaded $provenance.")
         }.onFailure {

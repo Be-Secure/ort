@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import org.ossreviewtoolkit.helper.utils.logger
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.yamlMapper
-import org.ossreviewtoolkit.scanner.ScanResultsStorage
+import org.ossreviewtoolkit.scanner.ScanStorages
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
@@ -57,16 +57,18 @@ internal class ListStoredScanResultsCommand : CliktCommand(
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.schema=testSchema"
+                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     override fun run() {
         val config = OrtConfiguration.load(configArguments, configFile)
-        ScanResultsStorage.configure(config.scanner)
+        val scanStorages = ScanStorages.createFromConfig(config.scanner)
 
-        println("Searching for scan results of '${packageId.toCoordinates()}' in ${ScanResultsStorage.storage.name}.")
+        println(
+            "Searching for scan results of '${packageId.toCoordinates()}' in ${scanStorages.readers.size} storage(s)."
+        )
 
-        val scanResults = ScanResultsStorage.storage.read(packageId).getOrElse {
+        val scanResults = runCatching { scanStorages.read(packageId) }.getOrElse {
             logger.error { "Could not read scan results: ${it.message}" }
             throw ProgramResult(1)
         }

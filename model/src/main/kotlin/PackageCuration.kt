@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,17 @@ package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonProperty
 
-import com.vdurmont.semver4j.Requirement
-import com.vdurmont.semver4j.Semver
-
 import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.utils.ort.showStackTrace
+
+import org.semver4j.RangesListFactory
+import org.semver4j.Semver
+
+/**
+ * A list of Strings that are used to identify a version string as a version range in the [PackageCuration]'s version.
+ */
+private val versionRangeIndicators = listOf(",", "~", "*", "+", ">", "<", "=", " - ", "^", ".x", "||")
 
 /**
  * Return true if this string equals the [other] string, or if either string is blank.
@@ -65,10 +70,20 @@ data class PackageCuration(
      */
     private fun isApplicableIvyVersion(pkgId: Identifier) =
         runCatching {
-            // TODO: This check does not completely comply to the Ivy version-matchers specification. E.g. the version
-            //       '1.0' does not satisfy the version range [1.0,2.0], see
-            //       https://github.com/vdurmont/semver4j/issues/67.
-            Requirement.buildIvy(id.version).isSatisfiedBy(Semver(pkgId.version, Semver.SemverType.LOOSE))
+            if (id.version == pkgId.version) return true
+
+            if (id.version.isVersionRange()) {
+                // `Semver.satisfies(String)` requires a valid version range to work as expected, see:
+                // https://github.com/semver4j/semver4j/issues/132.
+                val range = RangesListFactory.create(id.version)
+                require(range.get().size > 0) {
+                    "'${id.version}' is not a valid version range."
+                }
+
+                return Semver.coerce(pkgId.version).satisfies(range)
+            }
+
+            return false
         }.onFailure {
             logger.warn {
                 "Failed to check if package curation version '${id.version}' is applicable to package version " +
@@ -77,6 +92,8 @@ data class PackageCuration(
 
             it.showStackTrace()
         }.getOrDefault(false)
+
+    private fun String.isVersionRange() = versionRangeIndicators.any { contains(it, ignoreCase = true) }
 
     /**
      * Return true if this [PackageCuration] is applicable to the package with the given [identifier][pkgId]. The
@@ -93,9 +110,9 @@ data class PackageCuration(
      * @see [PackageCurationData.apply]
      */
     fun apply(targetPackage: CuratedPackage): CuratedPackage {
-        require(isApplicable(targetPackage.pkg.id)) {
+        require(isApplicable(targetPackage.metadata.id)) {
             "Package curation identifier '${id.toCoordinates()}' does not match package identifier " +
-                    "'${targetPackage.pkg.id.toCoordinates()}'."
+                    "'${targetPackage.metadata.id.toCoordinates()}'."
         }
 
         return data.apply(targetPackage)

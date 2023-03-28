@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,13 +41,13 @@ class RepositoryConfigurationTest : WordSpec({
             val configuration = """
                 excludes:
                   paths:
-                  - pattern: "android/**build.gradle"
+                  - pattern: "android/**/build.gradle"
                     reason: "BUILD_TOOL_OF"
                     comment: "project comment"
                 """.trimIndent()
 
             val config = yamlMapper.readValue<RepositoryConfiguration>(configuration)
-            config.excludes.paths[0].matches("android/project1/build.gradle") shouldBe true
+            config.excludes.paths.first().matches("android/project1/build.gradle") shouldBe true
         }
 
         "throw ValueInstantiationException if no given is supplied for repository_license_choices" {
@@ -77,7 +77,7 @@ class RepositoryConfigurationTest : WordSpec({
                     reason: "BUILD_TOOL_OF"
                     comment: "project comment"
                   scopes:
-                  - name: "scope"
+                  - pattern: "scope"
                     reason: "TEST_DEPENDENCY_OF"
                     comment: "scope comment"
                 resolutions:
@@ -131,11 +131,11 @@ class RepositoryConfigurationTest : WordSpec({
 
             val paths = repositoryConfiguration.excludes.paths
             paths should haveSize(1)
-
-            val path = paths[0]
-            path.pattern shouldBe "project1/path"
-            path.reason shouldBe PathExcludeReason.BUILD_TOOL_OF
-            path.comment shouldBe "project comment"
+            with(paths.first()) {
+                pattern shouldBe "project1/path"
+                reason shouldBe PathExcludeReason.BUILD_TOOL_OF
+                comment shouldBe "project comment"
+            }
 
             val scopes = repositoryConfiguration.excludes.scopes
             scopes should haveSize(1)

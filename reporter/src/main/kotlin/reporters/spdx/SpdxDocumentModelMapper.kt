@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
+import org.ossreviewtoolkit.model.licenses.LicenseView
 import org.ossreviewtoolkit.reporter.LicenseTextProvider
 import org.ossreviewtoolkit.utils.common.replaceCredentialsInUri
 import org.ossreviewtoolkit.utils.ort.Environment
@@ -49,6 +50,7 @@ import org.ossreviewtoolkit.utils.spdx.model.SpdxExtractedLicenseInfo
 import org.ossreviewtoolkit.utils.spdx.model.SpdxPackage
 import org.ossreviewtoolkit.utils.spdx.model.SpdxPackageVerificationCode
 import org.ossreviewtoolkit.utils.spdx.model.SpdxRelationship
+import org.ossreviewtoolkit.utils.spdx.toSpdx
 import org.ossreviewtoolkit.utils.spdx.toSpdxId
 
 /**
@@ -70,7 +72,8 @@ object SpdxDocumentModelMapper {
         val packages = mutableListOf<SpdxPackage>()
         val relationships = mutableListOf<SpdxRelationship>()
 
-        val projectPackages = ortResult.getProjects(omitExcluded = true, includeSubProjects = false).map { project ->
+        val projects = ortResult.getProjects(omitExcluded = true, includeSubProjects = false).sortedBy { it.id }
+        val projectPackages = projects.map { project ->
             val spdxProjectPackage = project.toPackage().toSpdxPackage(licenseInfoResolver, isProject = true)
 
             ortResult.collectDependencies(project.id, 1).mapTo(relationships) { dependency ->
@@ -84,8 +87,8 @@ object SpdxDocumentModelMapper {
             spdxProjectPackage
         }
 
-        ortResult.getPackages(omitExcluded = true).forEach { curatedPackage ->
-            val pkg = curatedPackage.pkg
+        ortResult.getPackages(omitExcluded = true).sortedBy { it.metadata.id }.forEach { curatedPackage ->
+            val pkg = curatedPackage.metadata
             val binaryPackage = pkg.toSpdxPackage(licenseInfoResolver)
 
             ortResult.collectDependencies(pkg.id, 1).mapTo(relationships) { dependency ->
@@ -99,8 +102,9 @@ object SpdxDocumentModelMapper {
             packages += binaryPackage
 
             if (pkg.vcsProcessed.url.isNotBlank()) {
-                val vcsScanResult =
-                    ortResult.getScanResultsForId(curatedPackage.pkg.id).find { it.provenance is RepositoryProvenance }
+                val vcsScanResult = ortResult.getScanResultsForId(curatedPackage.metadata.id).find {
+                    it.provenance is RepositoryProvenance
+                }
                 val provenance = vcsScanResult?.provenance as? RepositoryProvenance
 
                 val (filesAnalyzed, packageVerificationCode) =
@@ -131,8 +135,9 @@ object SpdxDocumentModelMapper {
             }
 
             if (pkg.sourceArtifact.url.isNotBlank()) {
-                val sourceArtifactScanResult =
-                    ortResult.getScanResultsForId(curatedPackage.pkg.id).find { it.provenance is ArtifactProvenance }
+                val sourceArtifactScanResult = ortResult.getScanResultsForId(curatedPackage.metadata.id).find {
+                    it.provenance is ArtifactProvenance
+                }
 
                 val (filesAnalyzed, packageVerificationCode) =
                     if (sourceArtifactScanResult?.summary?.packageVerificationCode?.isNotEmpty() == true) {
@@ -145,7 +150,7 @@ object SpdxDocumentModelMapper {
                 val sourceArtifactPackage = binaryPackage.copy(
                     spdxId = "${binaryPackage.spdxId}-source-artifact",
                     filesAnalyzed = filesAnalyzed,
-                    downloadLocation = curatedPackage.pkg.sourceArtifact.url.nullOrBlankToSpdxNone(),
+                    downloadLocation = curatedPackage.metadata.sourceArtifact.url.nullOrBlankToSpdxNone(),
                     licenseConcluded = SpdxConstants.NOASSERTION,
                     licenseDeclared = SpdxConstants.NOASSERTION,
                     packageVerificationCode = packageVerificationCode
@@ -232,6 +237,12 @@ private fun Package.toSpdxPackage(licenseInfoResolver: LicenseInfoResolver, isPr
         homepage = homepageUrl.nullOrBlankToSpdxNone(),
         licenseConcluded = concludedLicense.nullOrBlankToSpdxNoassertionOrNone(),
         licenseDeclared = declaredLicensesProcessed.toSpdxDeclaredLicense(),
+        licenseInfoFromFiles = licenseInfoResolver.resolveLicenseInfo(id)
+            .filterExcluded()
+            .filter(LicenseView.ONLY_DETECTED)
+            .map { it.license.nullOrBlankToSpdxNoassertionOrNone() }
+            .distinct()
+            .sorted(),
         name = id.name,
         summary = description.nullOrBlankToSpdxNone(),
         versionInfo = id.version
@@ -239,11 +250,18 @@ private fun Package.toSpdxPackage(licenseInfoResolver: LicenseInfoResolver, isPr
 
 private fun ProcessedDeclaredLicense.toSpdxDeclaredLicense(): String =
     when {
-        unmapped.isEmpty() -> spdxExpression.nullOrBlankToSpdxNoassertionOrNone()
-        spdxExpression == null -> SpdxConstants.NOASSERTION
-        spdxExpression.toString().isBlank() -> SpdxConstants.NOASSERTION
-        spdxExpression.toString() == SpdxConstants.NONE -> SpdxConstants.NOASSERTION
-        else -> spdxExpression.toString()
+        // If there are unmapped licenses, represent this by adding NOASSERTION.
+        unmapped.isNotEmpty() -> {
+            spdxExpression?.let {
+                if (SpdxConstants.NOASSERTION !in it.licenses()) {
+                    (it and SpdxConstants.NOASSERTION.toSpdx()).toString()
+                } else {
+                    it.toString()
+                }
+            } ?: SpdxConstants.NOASSERTION
+        }
+
+        else -> spdxExpression.nullOrBlankToSpdxNoassertionOrNone()
     }
 
 private fun String?.nullOrBlankToSpdxNone(): String = if (isNullOrBlank()) SpdxConstants.NONE else this

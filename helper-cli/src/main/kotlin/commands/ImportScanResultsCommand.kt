@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ internal class ImportScanResultsCommand : CliktCommand(
     override fun run() {
         val ortResult = readOrtResult(ortFile)
         val scanResultsStorage = FileBasedStorage(LocalFileStorage(scanResultsStorageDir))
-        val ids = ortResult.getProjects().map { it.id } + ortResult.getPackages().map { it.pkg.id }
+        val ids = ortResult.getProjects().map { it.id } + ortResult.getPackages().map { it.metadata.id }
 
         ids.forEach { id ->
             ortResult.getScanResultsForId(id).forEach { scanResult ->

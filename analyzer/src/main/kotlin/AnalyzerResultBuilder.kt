@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,45 +19,44 @@
 
 package org.ossreviewtoolkit.analyzer
 
-import kotlin.time.measureTimedValue
-
 import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.analyzer.managers.utils.PackageManagerDependencyHandler
 import org.ossreviewtoolkit.model.AnalyzerResult
-import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.DependencyGraphNavigator
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
+import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.utils.DependencyGraphBuilder
 import org.ossreviewtoolkit.model.utils.convertToDependencyGraph
 import org.ossreviewtoolkit.utils.common.getDuplicates
 
-class AnalyzerResultBuilder(private val curationProvider: PackageCurationProvider = PackageCurationProvider.EMPTY) {
+class AnalyzerResultBuilder {
     companion object : Logging
 
-    private val projects = sortedSetOf<Project>()
-    private val packages = sortedSetOf<CuratedPackage>()
-    private val issues = sortedMapOf<Identifier, List<OrtIssue>>()
-    private val dependencyGraphs = sortedMapOf<String, DependencyGraph>()
+    private val projects = mutableSetOf<Project>()
+    private val packages = mutableSetOf<Package>()
+    private val issues = mutableMapOf<Identifier, List<Issue>>()
+    private val dependencyGraphs = mutableMapOf<String, DependencyGraph>()
 
-    fun build(): AnalyzerResult {
-        val duplicateIds = (projects.map { it.id } + packages.map { it.pkg.id }).getDuplicates()
-        require(duplicateIds.isEmpty()) {
-            "AnalyzerResult contains packages that are also projects. Duplicates: '$duplicateIds'."
+    fun build(excludes: Excludes = Excludes.EMPTY): AnalyzerResult {
+        val duplicates = (projects.map { it.toPackage() } + packages).getDuplicates { it.id }
+        require(duplicates.isEmpty()) {
+            "Unable to create the AnalyzerResult as it contains packages and projects with the same ids: " +
+                    duplicates.values
         }
 
         return AnalyzerResult(projects, packages, issues, dependencyGraphs)
-            .convertToDependencyGraph()
+            .convertToDependencyGraph(excludes)
             .resolvePackageManagerDependencies()
     }
 
-    fun addResult(projectAnalyzerResult: ProjectAnalyzerResult): AnalyzerResultBuilder {
+    fun addResult(projectAnalyzerResult: ProjectAnalyzerResult) = apply {
         // TODO: It might be, e.g. in the case of PIP "requirements.txt" projects, that different projects with
         //       the same ID exist. We need to decide how to handle that case.
         val existingProject = projects.find { it.id == projectAnalyzerResult.project.id }
@@ -89,39 +87,22 @@ class AnalyzerResultBuilder(private val curationProvider: PackageCurationProvide
                 issues[projectAnalyzerResult.project.id] = projectAnalyzerResult.issues
             }
         }
-
-        return this
     }
 
     /**
      * Add the given [packageSet] to this builder. This function can be used for packages that have been obtained
      * independently of a [ProjectAnalyzerResult].
      */
-    fun addPackages(packageSet: Set<Package>): AnalyzerResultBuilder {
-        val (curations, duration) = measureTimedValue { curationProvider.getCurationsFor(packageSet.map { it.id }) }
-
-        logger.info { "Getting package curations took $duration." }
-
-        packages += packageSet.map { pkg ->
-            curations[pkg.id].orEmpty().fold(pkg.toCuratedPackage()) { cur, packageCuration ->
-                logger.debug {
-                    "Applying curation '$packageCuration' to package '${pkg.id.toCoordinates()}'."
-                }
-
-                packageCuration.apply(cur)
-            }
-        }
-
-        return this
+    fun addPackages(packageSet: Set<Package>) = apply {
+        packages += packageSet
     }
 
     /**
      * Add a [DependencyGraph][graph] with all dependencies detected by the [PackageManager] with the given
      * [name][packageManagerName] to the result produced by this builder.
      */
-    fun addDependencyGraph(packageManagerName: String, graph: DependencyGraph): AnalyzerResultBuilder {
+    fun addDependencyGraph(packageManagerName: String, graph: DependencyGraph) = apply {
         dependencyGraphs[packageManagerName] = graph
-        return this
     }
 }
 

@@ -35,7 +35,7 @@ _ort() {
           [[ ${i} -gt COMP_CWORD ]] && in_param='--config' || in_param=''
           continue
           ;;
-        --info|--performance|--debug)
+        --error|--warn|--info|--debug)
           __skip_opt_eq
           in_param=''
           continue
@@ -137,7 +137,7 @@ _ort() {
   done
   local word="${COMP_WORDS[$COMP_CWORD]}"
   if [[ "${word}" =~ ^[-] ]]; then
-    COMPREPLY=($(compgen -W '--config -c --info --performance --debug --stacktrace -P --force-overwrite --help-all --generate-completion --version -v -h --help' -- "${word}"))
+    COMPREPLY=($(compgen -W '--config -c --error --warn --info --debug --stacktrace -P --force-overwrite --help-all --generate-completion --version -v -h --help' -- "${word}"))
     return
   fi
 
@@ -150,7 +150,7 @@ _ort() {
     --config)
        COMPREPLY=($(compgen -o default -- "${word}"))
       ;;
-    --performance)
+    --error)
       ;;
     --stacktrace)
       ;;
@@ -311,18 +311,6 @@ _ort_analyze() {
           [[ ${i} -gt COMP_CWORD ]] && in_param='--output-formats' || in_param=''
           continue
           ;;
-        --package-curations-file)
-          __skip_opt_eq
-          (( i = i + 1 ))
-          [[ ${i} -gt COMP_CWORD ]] && in_param='--package-curations-file' || in_param=''
-          continue
-          ;;
-        --package-curations-dir)
-          __skip_opt_eq
-          (( i = i + 1 ))
-          [[ ${i} -gt COMP_CWORD ]] && in_param='--package-curations-dir' || in_param=''
-          continue
-          ;;
         --repository-configuration-file)
           __skip_opt_eq
           (( i = i + 1 ))
@@ -333,21 +321,6 @@ _ort_analyze() {
           __skip_opt_eq
           (( i = i + 1 ))
           [[ ${i} -gt COMP_CWORD ]] && in_param='--resolutions-file' || in_param=''
-          continue
-          ;;
-        --clearly-defined-curations)
-          __skip_opt_eq
-          in_param=''
-          continue
-          ;;
-        --ort-curations)
-          __skip_opt_eq
-          in_param=''
-          continue
-          ;;
-        --sw360-curations)
-          __skip_opt_eq
-          in_param=''
           continue
           ;;
         --label|-l)
@@ -385,7 +358,7 @@ _ort_analyze() {
   done
   local word="${COMP_WORDS[$COMP_CWORD]}"
   if [[ "${word}" =~ ^[-] ]]; then
-    COMPREPLY=($(compgen -W '--input-dir -i --output-dir -o --output-formats -f --package-curations-file --package-curations-dir --repository-configuration-file --resolutions-file --clearly-defined-curations --ort-curations --sw360-curations --label -l --package-managers -m --not-package-managers -n -h --help' -- "${word}"))
+    COMPREPLY=($(compgen -W '--input-dir -i --output-dir -o --output-formats -f --repository-configuration-file --resolutions-file --label -l --package-managers -m --not-package-managers -n -h --help' -- "${word}"))
     return
   fi
 
@@ -404,23 +377,11 @@ _ort_analyze() {
     --output-formats)
       COMPREPLY=($(compgen -W 'JSON XML YAML' -- "${word}"))
       ;;
-    --package-curations-file)
-       COMPREPLY=($(compgen -o default -- "${word}"))
-      ;;
-    --package-curations-dir)
-       COMPREPLY=($(compgen -o default -- "${word}"))
-      ;;
     --repository-configuration-file)
        COMPREPLY=($(compgen -o default -- "${word}"))
       ;;
     --resolutions-file)
        COMPREPLY=($(compgen -o default -- "${word}"))
-      ;;
-    --clearly-defined-curations)
-      ;;
-    --ort-curations)
-      ;;
-    --sw360-curations)
       ;;
     --label)
       ;;
@@ -463,6 +424,18 @@ _ort_config() {
           in_param=''
           continue
           ;;
+        --check-syntax)
+          __skip_opt_eq
+          (( i = i + 1 ))
+          [[ ${i} -gt COMP_CWORD ]] && in_param='--check-syntax' || in_param=''
+          continue
+          ;;
+        --hocon-to-yaml)
+          __skip_opt_eq
+          (( i = i + 1 ))
+          [[ ${i} -gt COMP_CWORD ]] && in_param='--hocon-to-yaml' || in_param=''
+          continue
+          ;;
         -h|--help)
           __skip_opt_eq
           in_param=''
@@ -480,7 +453,7 @@ _ort_config() {
   done
   local word="${COMP_WORDS[$COMP_CWORD]}"
   if [[ "${word}" =~ ^[-] ]]; then
-    COMPREPLY=($(compgen -W '--show-default --show-active --show-reference -h --help' -- "${word}"))
+    COMPREPLY=($(compgen -W '--show-default --show-active --show-reference --check-syntax --hocon-to-yaml -h --help' -- "${word}"))
     return
   fi
 
@@ -495,6 +468,12 @@ _ort_config() {
     --show-active)
       ;;
     --show-reference)
+      ;;
+    --check-syntax)
+       COMPREPLY=($(compgen -o default -- "${word}"))
+      ;;
+    --hocon-to-yaml)
+       COMPREPLY=($(compgen -o default -- "${word}"))
       ;;
     --help)
       ;;
@@ -580,6 +559,17 @@ _ort_download() {
           [[ ${i} -gt COMP_CWORD ]] && in_param='--package-types' || in_param=''
           continue
           ;;
+        --package-ids)
+          __skip_opt_eq
+          (( i = i + 1 ))
+          [[ ${i} -gt COMP_CWORD ]] && in_param='--package-ids' || in_param=''
+          continue
+          ;;
+        --skip-excluded)
+          __skip_opt_eq
+          in_param=''
+          continue
+          ;;
         -h|--help)
           __skip_opt_eq
           in_param=''
@@ -597,7 +587,7 @@ _ort_download() {
   done
   local word="${COMP_WORDS[$COMP_CWORD]}"
   if [[ "${word}" =~ ^[-] ]]; then
-    COMPREPLY=($(compgen -W '--ort-file -i --project-url --project-name --vcs-type --vcs-revision --vcs-path --license-classifications-file --output-dir -o --archive --archive-all --package-types -h --help' -- "${word}"))
+    COMPREPLY=($(compgen -W '--ort-file -i --project-url --project-name --vcs-type --vcs-revision --vcs-path --license-classifications-file --output-dir -o --archive --archive-all --package-types --package-ids --skip-excluded -h --help' -- "${word}"))
     return
   fi
 
@@ -632,6 +622,10 @@ _ort_download() {
       ;;
     --package-types)
       COMPREPLY=($(compgen -W 'PACKAGE PROJECT' -- "${word}"))
+      ;;
+    --package-ids)
+      ;;
+    --skip-excluded)
       ;;
     --help)
       ;;
@@ -843,6 +837,12 @@ _ort_notify() {
           [[ ${i} -gt COMP_CWORD ]] && in_param='--notifications-file' || in_param=''
           continue
           ;;
+        --resolutions-file)
+          __skip_opt_eq
+          (( i = i + 1 ))
+          [[ ${i} -gt COMP_CWORD ]] && in_param='--resolutions-file' || in_param=''
+          continue
+          ;;
         --label|-l)
           __skip_opt_eq
           (( i = i + 1 ))
@@ -866,7 +866,7 @@ _ort_notify() {
   done
   local word="${COMP_WORDS[$COMP_CWORD]}"
   if [[ "${word}" =~ ^[-] ]]; then
-    COMPREPLY=($(compgen -W '--ort-file -i --notifications-file -n --label -l -h --help' -- "${word}"))
+    COMPREPLY=($(compgen -W '--ort-file -i --notifications-file -n --resolutions-file --label -l -h --help' -- "${word}"))
     return
   fi
 
@@ -880,6 +880,9 @@ _ort_notify() {
        COMPREPLY=($(compgen -o default -- "${word}"))
       ;;
     --notifications-file)
+       COMPREPLY=($(compgen -o default -- "${word}"))
+      ;;
+    --resolutions-file)
        COMPREPLY=($(compgen -o default -- "${word}"))
       ;;
     --label)
@@ -1134,16 +1137,16 @@ _ort_scan() {
           [[ ${i} -gt COMP_CWORD ]] && in_param='--label' || in_param=''
           continue
           ;;
-        --scanner|-s)
+        --scanners|-s)
           __skip_opt_eq
           (( i = i + 1 ))
-          [[ ${i} -gt COMP_CWORD ]] && in_param='--scanner' || in_param=''
+          [[ ${i} -gt COMP_CWORD ]] && in_param='--scanners' || in_param=''
           continue
           ;;
-        --project-scanner)
+        --project-scanners)
           __skip_opt_eq
           (( i = i + 1 ))
-          [[ ${i} -gt COMP_CWORD ]] && in_param='--project-scanner' || in_param=''
+          [[ ${i} -gt COMP_CWORD ]] && in_param='--project-scanners' || in_param=''
           continue
           ;;
         --package-types)
@@ -1163,11 +1166,6 @@ _ort_scan() {
           [[ ${i} -gt COMP_CWORD ]] && in_param='--resolutions-file' || in_param=''
           continue
           ;;
-        --experimental)
-          __skip_opt_eq
-          in_param=''
-          continue
-          ;;
         -h|--help)
           __skip_opt_eq
           in_param=''
@@ -1185,7 +1183,7 @@ _ort_scan() {
   done
   local word="${COMP_WORDS[$COMP_CWORD]}"
   if [[ "${word}" =~ ^[-] ]]; then
-    COMPREPLY=($(compgen -W '--ort-file -i --input-path -p --output-dir -o --output-formats -f --label -l --scanner -s --project-scanner --package-types --skip-excluded --resolutions-file --experimental -h --help' -- "${word}"))
+    COMPREPLY=($(compgen -W '--ort-file -i --input-path -p --output-dir -o --output-formats -f --label -l --scanners -s --project-scanners --package-types --skip-excluded --resolutions-file -h --help' -- "${word}"))
     return
   fi
 
@@ -1209,9 +1207,9 @@ _ort_scan() {
       ;;
     --label)
       ;;
-    --scanner)
+    --scanners)
       ;;
-    --project-scanner)
+    --project-scanners)
       ;;
     --package-types)
       COMPREPLY=($(compgen -W 'PACKAGE PROJECT' -- "${word}"))
@@ -1220,8 +1218,6 @@ _ort_scan() {
       ;;
     --resolutions-file)
        COMPREPLY=($(compgen -o default -- "${word}"))
-      ;;
-    --experimental)
       ;;
     --help)
       ;;

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021-2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +19,7 @@
 
 package org.ossreviewtoolkit.cli.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.BadParameterValue
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.requireObject
@@ -36,15 +35,12 @@ import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
 import java.io.File
+import java.time.Duration
 
-import kotlin.time.measureTimedValue
+import kotlin.time.toKotlinDuration
 
-import org.ossreviewtoolkit.analyzer.curation.FilePackageCurationProvider
-import org.ossreviewtoolkit.cli.GlobalOptions
-import org.ossreviewtoolkit.cli.GroupTypes.FileType
-import org.ossreviewtoolkit.cli.GroupTypes.StringType
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.OPTION_GROUP_CONFIGURATION
-import org.ossreviewtoolkit.cli.utils.OPTION_GROUP_RULE
 import org.ossreviewtoolkit.cli.utils.PackageConfigurationOption
 import org.ossreviewtoolkit.cli.utils.SeverityStats
 import org.ossreviewtoolkit.cli.utils.configurationGroup
@@ -58,7 +54,8 @@ import org.ossreviewtoolkit.evaluator.Evaluator
 import org.ossreviewtoolkit.model.FileFormat
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
+import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.config.createFileArchiver
 import org.ossreviewtoolkit.model.config.orEmpty
@@ -71,17 +68,22 @@ import org.ossreviewtoolkit.model.readValueOrDefault
 import org.ossreviewtoolkit.model.utils.CompositePackageConfigurationProvider
 import org.ossreviewtoolkit.model.utils.DefaultResolutionProvider
 import org.ossreviewtoolkit.model.utils.SimplePackageConfigurationProvider
+import org.ossreviewtoolkit.model.utils.addPackageConfigurations
+import org.ossreviewtoolkit.model.utils.addResolutions
 import org.ossreviewtoolkit.model.utils.mergeLabels
+import org.ossreviewtoolkit.plugins.packagecurationproviders.file.FilePackageCurationProvider
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.ort.ORT_COPYRIGHT_GARBAGE_FILENAME
 import org.ossreviewtoolkit.utils.ort.ORT_EVALUATOR_RULES_FILENAME
 import org.ossreviewtoolkit.utils.ort.ORT_LICENSE_CLASSIFICATIONS_FILENAME
-import org.ossreviewtoolkit.utils.ort.ORT_REPO_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.ort.ORT_RESOLUTIONS_FILENAME
 import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
 
-class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT result files against policy rules.") {
+class EvaluatorCommand : OrtCommand(
+    name = "evaluate",
+    help = "Evaluate ORT result files against policy rules."
+) {
     private val ortFile by option(
         "--ort-file", "-i",
         help = "The ORT result file to read as input."
@@ -104,20 +106,18 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
         help = "The list of output formats to be used for the ORT result file(s)."
     ).enum<FileFormat>().split(",").default(listOf(FileFormat.YAML)).outputGroup()
 
-    private val rules by mutuallyExclusiveOptions(
-        option(
-            "--rules-file", "-r",
-            help = "The name of a script file containing rules. Must not be used together with '--rules-resource'."
-        ).convert { it.expandTilde() }
-            .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
-            .convert { FileType(it.absoluteFile.normalize()) },
-        option(
-            "--rules-resource",
-            help = "The name of a script resource on the classpath that contains rules. Must not be used together " +
-                    "with '--rules-file'."
-        ).convert { StringType(it) },
-        name = OPTION_GROUP_RULE
-    ).single()
+    private val rulesFile by option(
+        "--rules-file", "-r",
+        help = "The name of a script file containing rules."
+    ).convert { it.expandTilde() }
+        .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
+        .convert { it.absoluteFile.normalize() }
+        .default(ortConfigDirectory.resolve(ORT_EVALUATOR_RULES_FILENAME))
+
+    private val rulesResource by option(
+        "--rules-resource",
+        help = "The name of a script resource on the classpath that contains rules."
+    )
 
     private val copyrightGarbageFile by option(
         "--copyright-garbage-file",
@@ -176,8 +176,8 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
 
     private val repositoryConfigurationFile by option(
         "--repository-configuration-file",
-        help = "A file containing the repository configuration. If set, the '$ORT_REPO_CONFIG_FILENAME' overrides " +
-                "the repository configuration contained in the ORT result from the input file."
+        help = "A file containing the repository configuration. If set, overrides the repository configuration " +
+                "contained in the ORT result input file."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
@@ -203,9 +203,18 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
         help = "Do not evaluate the script but only check its syntax. No output is written in this case."
     ).flag()
 
-    private val globalOptionsForSubcommands by requireObject<GlobalOptions>()
+    private val ortConfig by requireObject<OrtConfiguration>()
 
     override fun run() {
+        val scriptUrls = listOfNotNull(
+            rulesFile.takeIf { it.isFile }?.toURI()?.toURL(),
+            rulesResource?.let { javaClass.getResource(it) }
+        )
+
+        if (scriptUrls.isEmpty()) {
+            throw BadParameterValue("Neither a rules file nor a rules resource was specified.")
+        }
+
         val configurationFiles = listOfNotNull(
                 copyrightGarbageFile,
                 licenseClassificationsFile,
@@ -228,7 +237,7 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
                 absoluteOutputDir.resolve("evaluation-result.${format.fileExtension}")
             }
 
-            if (!globalOptionsForSubcommands.forceOverwrite) {
+            if (!ortConfig.forceOverwrite) {
                 val existingOutputFiles = outputFiles.filter { it.exists() }
                 if (existingOutputFiles.isNotEmpty()) {
                     throw UsageError("None of the output files $existingOutputFiles must exist yet.", statusCode = 2)
@@ -236,34 +245,21 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
             }
         }
 
-        val script = when (rules) {
-            is FileType -> (rules as FileType).file.readText()
-
-            is StringType -> {
-                val rulesResource = (rules as StringType).string
-                javaClass.getResource(rulesResource)?.readText()
-                    ?: throw UsageError("Invalid rules resource '$rulesResource'.")
-            }
-
-            null -> {
-                val rulesFile = ortConfigDirectory.resolve(ORT_EVALUATOR_RULES_FILENAME)
-
-                if (!rulesFile.isFile) {
-                    throw UsageError("No rule option specified and no default rule found at '$rulesFile'.")
-                }
-
-                rulesFile.readText()
-            }
-        }
-
         if (checkSyntax) {
-            if (Evaluator().checkSyntax(script)) {
-                println("Syntax check succeeded.")
-                return
+            val evaluator = Evaluator()
+
+            var allChecksSucceeded = true
+
+            scriptUrls.forEach {
+                if (evaluator.checkSyntax(it.readText())) {
+                    println("Syntax check for $it succeeded.")
+                } else {
+                    println("Syntax check for $it failed.")
+                    allChecksSucceeded = false
+                }
             }
 
-            println("Syntax check failed.")
-            throw ProgramResult(2)
+            if (allChecksSucceeded) return else throw ProgramResult(2)
         }
 
         val existingOrtFile = requireNotNull(ortFile) {
@@ -277,14 +273,12 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
             ortResultInput = ortResultInput.replaceConfig(config)
         }
 
-        val curations = FilePackageCurationProvider.from(packageCurationsFile, packageCurationsDir).packageCurations
-        if (curations.isNotEmpty()) {
-            ortResultInput = ortResultInput.replacePackageCurations(curations)
+        if (packageCurationsDir != null || packageCurationsFile != null) {
+            val provider = FilePackageCurationProvider(packageCurationsFile, packageCurationsDir)
+            ortResultInput = ortResultInput.replacePackageCurations(provider, providerId = "EvaluatorCommandOption")
         }
 
-        val config = globalOptionsForSubcommands.config
-
-        val packageConfigurationProvider = if (config.enableRepositoryPackageConfigurations) {
+        val packageConfigurationProvider = if (ortConfig.enableRepositoryPackageConfigurations) {
             CompositePackageConfigurationProvider(
                 SimplePackageConfigurationProvider(ortResultInput.repository.config.packageConfigurations),
                 packageConfigurationOption.createProvider()
@@ -302,9 +296,9 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
         val licenseInfoResolver = LicenseInfoResolver(
             provider = DefaultLicenseInfoProvider(ortResultInput, packageConfigurationProvider),
             copyrightGarbage = copyrightGarbage,
-            addAuthorsToCopyrights = config.addAuthorsToCopyrights,
-            archiver = config.scanner.archive.createFileArchiver(),
-            licenseFilenamePatterns = LicenseFilenamePatterns.getInstance()
+            addAuthorsToCopyrights = ortConfig.addAuthorsToCopyrights,
+            archiver = ortConfig.scanner.archive.createFileArchiver(),
+            licenseFilePatterns = LicenseFilePatterns.getInstance()
         )
 
         val resolutionProvider = DefaultResolutionProvider.create(ortResultInput, resolutionsFile)
@@ -312,16 +306,21 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
             licenseClassificationsFile.takeIf { it.isFile }?.readValue<LicenseClassifications>().orEmpty()
         val evaluator = Evaluator(ortResultInput, licenseInfoResolver, resolutionProvider, licenseClassifications)
 
-        val (evaluatorRun, duration) = measureTimedValue { evaluator.run(script) }
+        val scripts = scriptUrls.map { it.readText() }
+        val evaluatorRun = evaluator.run(*scripts.toTypedArray())
 
-        logger.info { "Executed the evaluator in $duration." }
+        val duration = with(evaluatorRun) { Duration.between(startTime, endTime).toKotlinDuration() }
+        println("The evaluation of ${scriptUrls.size} script(s) took $duration.")
 
         evaluatorRun.violations.forEach { violation ->
             println(violation.format())
         }
 
         // Note: This overwrites any existing EvaluatorRun from the input file.
-        val ortResultOutput = ortResultInput.copy(evaluator = evaluatorRun).mergeLabels(labels)
+        val ortResultOutput = ortResultInput.copy(evaluator = evaluatorRun)
+            .mergeLabels(labels)
+            .addPackageConfigurations(packageConfigurationProvider)
+            .addResolutions(resolutionProvider)
 
         outputDir?.let { absoluteOutputDir ->
             absoluteOutputDir.safeMkdirs()
@@ -332,7 +331,7 @@ class EvaluatorCommand : CliktCommand(name = "evaluate", help = "Evaluate ORT re
             evaluatorRun.violations.partition { resolutionProvider.isResolved(it) }
         val severityStats = SeverityStats.createFromRuleViolations(resolvedViolations, unresolvedViolations)
 
-        severityStats.print().conclude(config.severeRuleViolationThreshold, 2)
+        severityStats.print().conclude(ortConfig.severeRuleViolationThreshold, 2)
     }
 }
 

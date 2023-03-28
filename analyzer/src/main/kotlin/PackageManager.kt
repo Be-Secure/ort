@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +26,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
-import java.util.ServiceLoader
 
+import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.time.measureTime
 
 import org.apache.logging.log4j.kotlin.Logging
@@ -43,9 +42,12 @@ import org.ossreviewtoolkit.model.ProjectAnalyzerResult
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.Options
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
+import org.ossreviewtoolkit.utils.common.Plugin
 import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.isSymbolicLink
@@ -67,14 +69,10 @@ abstract class PackageManager(
     val repoConfig: RepositoryConfiguration
 ) {
     companion object : Logging {
-        private val LOADER = ServiceLoader.load(PackageManagerFactory::class.java)!!
-
         /**
-         * The set of all available [package manager factories][PackageManagerFactory] in the classpath, sorted by name.
+         * All [package manager factories][PackageManagerFactory] available in the classpath, associated by their names.
          */
-        val ALL: Set<PackageManagerFactory> by lazy {
-            LOADER.iterator().asSequence().toSortedSet(compareBy { it.managerName })
-        }
+        val ALL by lazy { Plugin.getAll<PackageManagerFactory>() }
 
         private val PACKAGE_MANAGER_DIRECTORIES = listOf(
             // Ignore intermediate build system directories.
@@ -96,22 +94,38 @@ abstract class PackageManager(
 
         /**
          * Recursively search the [directory] for files managed by any of the [packageManagers]. The search is performed
-         * depth-first so that root project files are found before any subproject files for a specific manager.
+         * depth-first so that root project files are found before any subproject files for a specific manager. Path
+         * excludes defined by the given [excludes] are taken into account; the corresponding directories are skipped.
          */
-        fun findManagedFiles(directory: File, packageManagers: Set<PackageManagerFactory> = ALL): ManagedProjectFiles {
+        fun findManagedFiles(
+            directory: File,
+            packageManagers: Collection<PackageManagerFactory> = ALL.values,
+            excludes: Excludes = Excludes.EMPTY
+        ): ManagedProjectFiles {
             require(directory.isDirectory) {
                 "The provided path is not a directory: ${directory.absolutePath}"
             }
 
+            logger.debug { "Searching for managed files using the following excludes: $excludes" }
+
             val result = mutableMapOf<PackageManagerFactory, MutableList<File>>()
+            val rootPath = directory.toPath()
 
             Files.walkFileTree(
-                directory.toPath(),
+                rootPath,
                 object : SimpleFileVisitor<Path>() {
                     override fun preVisitDirectory(dir: Path, attributes: BasicFileAttributes): FileVisitResult {
                         if (IGNORED_DIRECTORY_MATCHERS.any { it.matches(dir) }) {
                             logger.info {
                                 "Not analyzing directory '$dir' as it is hard-coded to be ignored."
+                            }
+
+                            return FileVisitResult.SKIP_SUBTREE
+                        }
+
+                        if (excludes.isPathExcluded(rootPath, dir)) {
+                            logger.info {
+                                "Not analyzing directory '$dir' as it is excluded."
                             }
 
                             return FileVisitResult.SKIP_SUBTREE
@@ -126,9 +140,11 @@ abstract class PackageManager(
                             return FileVisitResult.SKIP_SUBTREE
                         }
 
-                        val filesInDir = dirAsFile.walk().maxDepth(1).filter { it.isFile }.toList()
+                        val filesInDir = dirAsFile.walk().maxDepth(1).filter {
+                            it.isFile && !excludes.isPathExcluded(rootPath, it.toPath())
+                        }.toList()
 
-                        packageManagers.forEach { manager ->
+                        packageManagers.distinct().forEach { manager ->
                             // Create a list of lists of matching files per glob.
                             val matchesPerGlob = manager.matchersForDefinitionFiles.mapNotNull { glob ->
                                 // Create a list of files in the current directory that match the current glob.
@@ -200,7 +216,41 @@ abstract class PackageManager(
             val vcsFromWorkingTree = VersionControlSystem.getPathInfo(projectDir).normalize()
             return vcsFromWorkingTree.merge(processPackageVcs(vcsFromProject, *fallbackUrls))
         }
+
+        /**
+         * Return an [Excludes] instance to be applied during analysis based on the given [repositoryConfiguration].
+         * If this [AnalyzerConfiguration] has the [AnalyzerConfiguration.skipExcluded] flag set to true, the
+         * excludes configured in [repositoryConfiguration] are actually applied. Otherwise, return an empty [Excludes]
+         * object. This means that all dependencies are collected, and excludes are applied later on the report level.
+         */
+        internal fun AnalyzerConfiguration.excludes(repositoryConfiguration: RepositoryConfiguration): Excludes =
+            repositoryConfiguration.excludes.takeIf { skipExcluded } ?: Excludes.EMPTY
+
+        /**
+         * Check whether the given [path] interpreted relatively against [root] is matched by a path exclude in this
+         * [Excludes] object.
+         */
+        private fun Excludes.isPathExcluded(root: Path, path: Path): Boolean =
+            isPathExcluded(root.relativize(path).invariantSeparatorsPathString)
+
+        /**
+         * Get a fallback project name from the [definitionFile] path relative to the [analysisRoot]. This function
+         * should be used if the project name cannot be determined from the project's metadata.
+         */
+        fun getFallbackProjectName(analysisRoot: File, definitionFile: File) =
+            definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath
     }
+
+    /**
+     * The [Options] from the [PackageManagerConfiguration] for this [package manager][managerName].
+     */
+    protected val options: Options = analyzerConfig.getPackageManagerConfiguration(managerName)?.options.orEmpty()
+
+    /**
+     * The [Excludes] to take into account during analysis. The [Excludes] from the [RepositoryConfiguration] are
+     * taken into account only if this is enabled in the [AnalyzerConfiguration].
+     */
+    val excludes by lazy { analyzerConfig.excludes(repoConfig) }
 
     /**
      * Optional mapping of found [definitionFiles] before dependency resolution.
@@ -288,7 +338,7 @@ abstract class PackageManager(
                         )
                     )
 
-                    result[definitionFile] = listOf(ProjectAnalyzerResult(projectWithIssues, sortedSetOf(), issues))
+                    result[definitionFile] = listOf(ProjectAnalyzerResult(projectWithIssues, emptySet(), issues))
                 }
             }
 
@@ -329,7 +379,7 @@ abstract class PackageManager(
             entry.value.map { projectResult ->
                 val projectReferences = projectResult.packages.filterTo(mutableSetOf()) { it.id in projectIds }
                 projectResult.takeIf { projectReferences.isEmpty() }
-                    ?: projectResult.copy(packages = (projectResult.packages - projectReferences).toSortedSet())
+                    ?: projectResult.copy(packages = projectResult.packages - projectReferences)
                         .also {
                             logger.info { "Removing ${projectReferences.size} packages that are projects." }
 

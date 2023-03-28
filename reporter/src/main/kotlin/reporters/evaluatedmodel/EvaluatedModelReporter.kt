@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +21,6 @@ package org.ossreviewtoolkit.reporter.reporters.evaluatedmodel
 
 import java.io.File
 
-import kotlin.time.measureTimedValue
-
 import org.ossreviewtoolkit.model.FileFormat
 import org.ossreviewtoolkit.reporter.Reporter
 import org.ossreviewtoolkit.reporter.ReporterInput
@@ -42,16 +40,14 @@ class EvaluatedModelReporter : Reporter {
         const val OPTION_DEDUPLICATE_DEPENDENCY_TREE = "deduplicateDependencyTree"
     }
 
-    override val reporterName = "EvaluatedModel"
+    override val type = "EvaluatedModel"
 
     override fun generateReport(
         input: ReporterInput,
         outputDir: File,
         options: Map<String, String>
     ): List<File> {
-        val evaluatedModel = measureTimedValue {
-            EvaluatedModel.create(input, options[OPTION_DEDUPLICATE_DEPENDENCY_TREE].toBoolean())
-        }
+        val evaluatedModel = EvaluatedModel.create(input, options[OPTION_DEDUPLICATE_DEPENDENCY_TREE].toBoolean())
 
         val outputFiles = mutableListOf<File>()
         val outputFileFormats = options[OPTION_OUTPUT_FILE_FORMATS]
@@ -64,8 +60,8 @@ class EvaluatedModelReporter : Reporter {
 
             outputFile.bufferedWriter().use {
                 when (fileFormat) {
-                    FileFormat.JSON -> evaluatedModel.value.toJson(it)
-                    FileFormat.YAML -> evaluatedModel.value.toYaml(it)
+                    FileFormat.JSON -> evaluatedModel.toJson(it)
+                    FileFormat.YAML -> evaluatedModel.toYaml(it)
                     else -> throw IllegalArgumentException("Unsupported Evaluated Model file format '$fileFormat'.")
                 }
             }

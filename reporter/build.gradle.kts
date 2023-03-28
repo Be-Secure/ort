@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,10 +54,14 @@ repositories {
 dependencies {
     api(project(":model"))
 
-    implementation(project(":clients:fossid-webapp"))
+    implementation(project(":clients:fossid-webapp-client"))
     implementation(project(":downloader"))
     implementation(project(":utils:ort-utils"))
+    implementation(project(":utils:scripting-utils"))
     implementation(project(":utils:spdx-utils"))
+
+    implementation("org.jetbrains.kotlin:kotlin-scripting-common")
+    implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host")
 
     implementation(libs.asciidoctorj)
     implementation(libs.asciidoctorjPdf)
@@ -78,6 +80,7 @@ dependencies {
     // the HTML generated in StaticHtmlReporter is slightly different with different Java versions.
     implementation(libs.saxonHe)
 
-    testImplementation(libs.kotestAssertionsJson)
     testImplementation(libs.mockk)
+
+    funTestImplementation(libs.kotestAssertionsJson)
 }

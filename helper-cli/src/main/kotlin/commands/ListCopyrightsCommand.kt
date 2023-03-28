@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -101,10 +101,10 @@ internal class ListCopyrightsCommand : CliktCommand(
             .mapValues { it.value.flatten().toSortedSet() }
 
         val result = buildString {
-            copyrightStatements.forEach { (processedStatement, unprocessedStatements) ->
+            copyrightStatements.toSortedMap().forEach { (processedStatement, unprocessedStatements) ->
                 appendLine(processedStatement)
                 if (showRawStatements && unprocessedStatements.size > 1) {
-                    unprocessedStatements.forEach {
+                    unprocessedStatements.sorted().forEach {
                         appendLine("  $it")
                     }
                 }

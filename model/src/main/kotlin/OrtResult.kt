@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,16 +20,18 @@
 package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 
-import java.util.SortedSet
+import org.apache.logging.log4j.kotlin.Logging
 
+import org.ossreviewtoolkit.model.ResolvedPackageCurations.Companion.REPOSITORY_CONFIGURATION_PROVIDER_ID
 import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.LicenseFindingCuration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.config.Resolutions
 import org.ossreviewtoolkit.model.config.orEmpty
+import org.ossreviewtoolkit.model.utils.ConfigurationResolver
+import org.ossreviewtoolkit.model.utils.PackageCurationProvider
 import org.ossreviewtoolkit.utils.common.zipWithCollections
 import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
 
@@ -38,7 +39,6 @@ import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
  * The common output format for the analyzer and scanner. It contains information about the scanned repository, and the
  * analyzer and scanner will add their result to it.
  */
-@JsonIgnoreProperties("data")
 @Suppress("TooManyFunctions")
 data class OrtResult(
     /**
@@ -71,13 +71,19 @@ data class OrtResult(
     val evaluator: EvaluatorRun? = null,
 
     /**
+     * A [ResolvedConfiguration] containing data resolved during the analysis which augments the automatically
+     * determined data.
+     */
+    val resolvedConfiguration: ResolvedConfiguration = ResolvedConfiguration(),
+
+    /**
      * User defined labels associated to this result. Labels are not used by ORT itself, but can be used in parts of ORT
      * which are customizable by the user, for example in evaluator rules or in the notice reporter.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val labels: Map<String, String> = emptyMap()
 ) {
-    companion object {
+    companion object : Logging {
         /**
          * A constant for an [OrtResult] with an empty repository and all other properties `null`.
          */
@@ -115,7 +121,11 @@ data class OrtResult(
         )
     }
 
-    private data class PackageEntry(val curatedPackage: CuratedPackage?, val isExcluded: Boolean)
+    private data class PackageEntry(
+        val pkg: Package?,
+        val curatedPackage: CuratedPackage?,
+        val isExcluded: Boolean
+    )
 
     /**
      * A map of packages and their excluded state. Calculating this map once brings massive performance improvements
@@ -124,7 +134,11 @@ data class OrtResult(
      */
     private val packages: Map<Identifier, PackageEntry> by lazy {
         val projects = getProjects()
-        val packages = getPackages().associateBy { it.pkg.id }
+        val packages = analyzer?.result?.packages.orEmpty().associateBy { it.id }
+        val curatedPackages = applyPackageCurations(
+            packages.values,
+            resolvedConfiguration.getAllPackageCurations()
+        ).associateBy { it.metadata.id }
 
         val allDependencies = packages.keys.toMutableSet()
         val includedDependencies = mutableSetOf<Identifier>()
@@ -142,13 +156,14 @@ data class OrtResult(
 
         allDependencies.associateWithTo(mutableMapOf()) { id ->
             PackageEntry(
-                curatedPackage = packages[id],
+                pkg = packages[id],
+                curatedPackage = curatedPackages[id],
                 isExcluded = id !in includedDependencies
             )
         }
     }
 
-    private val scanResultsById: Map<Identifier, List<ScanResult>> by lazy { scanner?.results?.scanResults.orEmpty() }
+    private val scanResultsById: Map<Identifier, List<ScanResult>> by lazy { scanner?.scanResults.orEmpty() }
 
     private val advisorResultsById: Map<Identifier, List<AdvisorResult>> by lazy {
         advisor?.results?.advisorResults.orEmpty()
@@ -174,11 +189,11 @@ data class OrtResult(
     }
 
     /**
-     * Return a map of all de-duplicated [OrtIssue]s associated by [Identifier].
+     * Return a map of all de-duplicated [Issue]s associated by [Identifier].
      */
-    fun collectIssues(): Map<Identifier, Set<OrtIssue>> {
+    fun collectIssues(): Map<Identifier, Set<Issue>> {
         val analyzerIssues = analyzer?.result?.collectIssues().orEmpty()
-        val scannerIssues = scanner?.results?.collectIssues().orEmpty()
+        val scannerIssues = scanner?.collectIssues().orEmpty()
         val advisorIssues = advisor?.results?.collectIssues().orEmpty()
 
         val analyzerAndScannerIssues = analyzerIssues.zipWithCollections(scannerIssues)
@@ -194,7 +209,7 @@ data class OrtResult(
         val projects = getProjects(includeSubProjects = includeSubProjects)
 
         projects.mapTo(projectsAndPackages) { it.id }
-        getPackages().mapTo(projectsAndPackages) { it.pkg.id }
+        getPackages().mapTo(projectsAndPackages) { it.metadata.id }
 
         return projectsAndPackages
     }
@@ -205,8 +220,8 @@ data class OrtResult(
      * to packages in the result. If no analyzer result is present an empty set is returned.
      */
     @Suppress("UNUSED") // This is intended to be mostly used via scripting.
-    fun getOrgPackages(vararg names: String, omitExcluded: Boolean = false): SortedSet<Package> {
-        val vendorPackages = sortedSetOf<Package>()
+    fun getOrgPackages(vararg names: String, omitExcluded: Boolean = false): Set<Package> {
+        val vendorPackages = mutableSetOf<Package>()
 
         getProjects().filter {
             it.id.isFromOrg(*names) && (!omitExcluded || !isExcluded(it.id))
@@ -217,15 +232,28 @@ data class OrtResult(
         getPackages().filter { (pkg, _) ->
             pkg.id.isFromOrg(*names) && (!omitExcluded || !isPackageExcluded(pkg.id))
         }.mapTo(vendorPackages) {
-            it.pkg
+            it.metadata
         }
 
         return vendorPackages
     }
 
-    fun getUncuratedPackageById(id: Identifier): Package? =
-        getPackage(id)?.toUncuratedPackage()
-            ?: getProject(id)?.toPackage()
+    /**
+     * Return all uncurated [Package]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
+     * true.
+     */
+    @JsonIgnore
+    fun getUncuratedPackages(omitExcluded: Boolean = false): Set<Package> =
+        packages.mapNotNullTo(mutableSetOf()) { (_, entry) ->
+            entry.pkg.takeUnless { omitExcluded && entry.isExcluded }
+        }
+
+    /**
+     * Return an uncurated [Package] which represents either a [Package] if the given [id] corresponds to a [Package],
+     * a [Project] if the given [id] corresponds to a [Project] or `null` otherwise.
+     */
+    fun getUncuratedPackageOrProject(id: Identifier): Package? =
+        packages[id]?.pkg ?: getProject(id)?.toPackage()
 
     /**
      * Return the path of the definition file of the [project], relative to the analyzer root. If the project was
@@ -302,38 +330,74 @@ data class OrtResult(
     fun isProjectExcluded(id: Identifier): Boolean = projects[id]?.isExcluded ?: false
 
     /**
-     * Return a copy of this [OrtResult] with the [Repository.config] replaced by [config].
+     * Return a copy of this [OrtResult] with the [Repository.config] replaced by [config]. The package curations
+     * within the given config only take effect in case the corresponding feature was enabled during the initial
+     * creation of this [OrtResult].
      */
-    fun replaceConfig(config: RepositoryConfiguration): OrtResult = copy(repository = repository.copy(config = config))
-
-    /**
-     * Return a copy of this [OrtResult] with the [PackageCuration]s replaced by the given [curations].
-     */
-    fun replacePackageCurations(curations: Collection<PackageCuration>): OrtResult =
+    fun replaceConfig(config: RepositoryConfiguration): OrtResult =
         copy(
-            analyzer = analyzer?.copy(
-                result = analyzer.result.copy(
-                    packages = getPackages().map { curatedPackage ->
-                        val uncuratedPackage = CuratedPackage(curatedPackage.toUncuratedPackage())
-                        curations
-                            .filter { it.isApplicable(curatedPackage.pkg.id) }
-                            .fold(uncuratedPackage) { current, packageCuration -> packageCuration.apply(current) }
-                    }.toSortedSet()
-                )
+            repository = repository.copy(
+                config = config
+            ),
+            resolvedConfiguration = resolvedConfiguration.copy(
+                packageCurations = resolvedConfiguration.packageCurations.map {
+                    if (it.provider.id != REPOSITORY_CONFIGURATION_PROVIDER_ID) {
+                        it
+                    } else {
+                        it.copy(curations = config.curations.packages.toSet())
+                    }
+                }
             )
         )
 
+    /**
+     * Return a copy of this [OrtResult] with the [PackageCuration]s replaced by the ones from the given [provider]
+     * associated with the given [providerId].
+     */
+    fun replacePackageCurations(provider: PackageCurationProvider, providerId: String): OrtResult {
+        require(providerId != REPOSITORY_CONFIGURATION_PROVIDER_ID) {
+            "Cannot replace curations for id '$REPOSITORY_CONFIGURATION_PROVIDER_ID' which is reserved and not allowed."
+        }
+
+        val packageCurations = resolvedConfiguration.packageCurations.find {
+            it.provider.id == REPOSITORY_CONFIGURATION_PROVIDER_ID
+        }.let { listOfNotNull(it) } + ConfigurationResolver.resolvePackageCurations(
+            packages = getUncuratedPackages(),
+            curationProviders = listOf(providerId to provider)
+        )
+
+        return copy(
+            resolvedConfiguration = resolvedConfiguration.copy(
+                packageCurations = packageCurations
+            )
+        )
+    }
+
+    /**
+     * Return the [Project] denoted by the given [id].
+     */
     fun getProject(id: Identifier): Project? = projects[id]?.project
 
+    /**
+     * Return the [CuratedPackage] denoted by the given [id].
+     */
     fun getPackage(id: Identifier): CuratedPackage? = packages[id]?.curatedPackage
 
     /**
-     * Return all [Package]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is true.
+     * Return a [CuratedPackage] which represents either a [Package] if the given [id] corresponds to a [Package],
+     * a [Project] if the given [id] corresponds to a [Project] or `null` otherwise.
+     */
+    fun getPackageOrProject(id: Identifier): CuratedPackage? =
+        getPackage(id) ?: getProject(id)?.toPackage()?.toCuratedPackage()
+
+    /**
+     * Return all [CuratedPackage]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
+     * true.
      */
     @JsonIgnore
     fun getPackages(omitExcluded: Boolean = false): Set<CuratedPackage> =
-        analyzer?.result?.packages.orEmpty().filterTo(mutableSetOf()) { pkg ->
-            !omitExcluded || !isExcluded(pkg.pkg.id)
+        packages.mapNotNullTo(mutableSetOf()) { (_, entry) ->
+            entry.curatedPackage.takeUnless { omitExcluded && entry.isExcluded }
         }
 
     /**
@@ -383,6 +447,7 @@ data class OrtResult(
     /**
      * Return the list of [AdvisorResult]s for the given [id].
      */
+    @Suppress("UNUSED")
     fun getAdvisorResultsForId(id: Identifier): List<AdvisorResult> = advisorResultsById[id].orEmpty()
 
     /**
@@ -498,4 +563,46 @@ data class OrtResult(
      */
     fun getLabelValues(key: String): Set<String> =
         labels[key]?.split(',').orEmpty().mapTo(mutableSetOf()) { it.trim() }
+
+    /**
+     * Return true if a [label] with [value] exists in this [OrtResult]. If [value] is null the value of the label is
+     * ignored. If [splitValue] is true, the label value is interpreted as comma-separated list.
+     */
+    fun hasLabel(label: String, value: String? = null, splitValue: Boolean = true) =
+        if (value == null) {
+            label in labels
+        } else if (splitValue) {
+            value in getLabelValues(label)
+        } else {
+            labels[label] == value
+        }
+}
+
+/**
+ * Return a set containing exactly one [CuratedPackage] for each given [Package], derived from applying all
+ * given [curations] to the packages they apply to. The given [curations] must be ordered highest-priority-first, which
+ * is the inverse order of their application.
+ */
+private fun applyPackageCurations(
+    packages: Collection<Package>,
+    curations: List<PackageCuration>
+): Set<CuratedPackage> {
+    val curationsForId = packages.associateBy(
+        keySelector = { pkg -> pkg.id },
+        valueTransform = { pkg ->
+            curations.filter { curation ->
+                curation.isApplicable(pkg.id)
+            }
+        }
+    )
+
+    return packages.mapTo(mutableSetOf()) { pkg ->
+        curationsForId[pkg.id].orEmpty().asReversed().fold(pkg.toCuratedPackage()) { cur, packageCuration ->
+            OrtResult.logger.debug {
+                "Applying curation '$packageCuration' to package '${pkg.id.toCoordinates()}'."
+            }
+
+            packageCuration.apply(cur)
+        }
+    }
 }

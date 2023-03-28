@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 HERE Europe B.V.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ class DownloadResultsFromPostgresCommand : CliktCommand(
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.schema=testSchema"
+                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     private val startId by option(
@@ -170,8 +170,8 @@ private class OrtResultStorage(private val storageDir: File) {
         val ortResultFile = ortResultFile(id)
         ortResultFile.parentFile.mkdirs()
 
-        XZCompressorOutputStream(ortResultFile.outputStream()).use {
-            ortResultJson.byteInputStream().copyTo(it)
+        XZCompressorOutputStream(ortResultFile.outputStream()).use { outputStream ->
+            ortResultJson.byteInputStream().use { it.copyTo(outputStream) }
         }
 
         val hash = HashAlgorithm.MD5.calculate(ortResultFile)

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@
 package org.ossreviewtoolkit.utils.common
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.extensions.system.withEnvironment
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 
 class ProcessCaptureTest : StringSpec({
     "Environment variables should be passed correctly" {
@@ -33,5 +35,38 @@ class ProcessCaptureTest : StringSpec({
 
         proc.exitValue shouldBe 0
         proc.stdout.trimEnd() shouldBe "This is some path: /foo/bar"
+    }
+
+    "Only allowed environment variables should be passed" {
+        val env = mapOf("DB_USER" to "scott", "DB_PASSWORD" to "tiger", "DB_CONN" to "my-db.example.org")
+
+        withEnvironment(env) {
+            val proc = if (Os.isWindows) {
+                ProcessCapture("cmd.exe", "/c", "echo %DB_USER%:%DB_PASSWORD%.%DB_CONN%")
+            } else {
+                ProcessCapture("sh", "-c", "echo \$DB_USER:\$DB_PASSWORD.\$DB_CONN")
+            }
+
+            proc.exitValue shouldBe 0
+            proc.stdout.trimEnd() shouldBe if (Os.isWindows) {
+                "%DB_USER%:%DB_PASSWORD%.my-db.example.org"
+            } else {
+                ":.my-db.example.org"
+            }
+        }
+    }
+
+    "Masked strings should be processed correctly" {
+        val masked = MaskedString("echo unmasked")
+        val proc = if (Os.isWindows) {
+            ProcessCapture("cmd.exe", "/c", masked)
+        } else {
+            ProcessCapture("sh", "-c", masked)
+        }
+
+        proc.exitValue shouldBe 0
+        proc.stdout.trimEnd() shouldBe "unmasked"
+
+        proc.commandLine shouldContain MaskedString.DEFAULT_MASK
     }
 })

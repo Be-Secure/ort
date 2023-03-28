@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ private data class Manifest(
 )
 
 /**
- * The include tag of a wrapping "manifest.xml" file, see
+ * The "include" tag of a "manifest.xml" file, see
  * https://gerrit.googlesource.com/git-repo/+/refs/heads/master/docs/manifest-format.md#Element-include.
  */
 private data class Include(
@@ -160,7 +160,7 @@ class GitRepo : VersionControlSystem(), CommandLineTool {
         logger.info {
             val revisionDetails = manifestRevision?.let { " with revision '$it'" }.orEmpty()
             val pathDetails = manifestPath?.let { " using manifest '$it'" }.orEmpty()
-            "Initializing git-repo from $repoUrl$revisionDetails$pathDetails."
+            "Initializing $type working tree from $repoUrl$revisionDetails$pathDetails."
         }
 
         runRepo(

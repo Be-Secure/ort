@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ import java.util.SortedSet
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.DependencyGraphEdge
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.PackageReference
@@ -242,7 +242,7 @@ class DependencyGraphBuilderTest : WordSpec({
         "take issues into account when checking for illegal references" {
             val depLang = createDependency("org.apache.commons", "commons-lang3", "3.11")
             val depIssuesPkg = createDependency(NO_PACKAGE_NAMESPACE, "errors", "1.2").copy(
-                issues = listOf(OrtIssue(source = "test", message = "test issue"))
+                issues = listOf(Issue(source = "test", message = "test issue"))
             )
             val depLog =
                 createDependency("commons-logging", "commons-logging", "1.2", dependencies = listOf(depIssuesPkg))
@@ -364,10 +364,10 @@ private object PackageRefDependencyHandler : DependencyHandler<PackageReference>
 
     override fun linkageFor(dependency: PackageReference): PackageLinkage = dependency.linkage
 
-    override fun createPackage(dependency: PackageReference, issues: MutableList<OrtIssue>): Package? =
+    override fun createPackage(dependency: PackageReference, issues: MutableList<Issue>): Package? =
         Package.EMPTY.copy(id = dependency.id).takeUnless { dependency.id.namespace == NO_PACKAGE_NAMESPACE }
 
-    override fun issuesForDependency(dependency: PackageReference): Collection<OrtIssue> =
+    override fun issuesForDependency(dependency: PackageReference): Collection<Issue> =
         dependency.issues
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,10 @@ import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.analyzer.managers.SpdxDocumentFile
 import org.ossreviewtoolkit.model.Hash
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.createAndLogIssue
+import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 import org.ossreviewtoolkit.utils.ort.addBasicAuthorization
@@ -56,7 +57,7 @@ internal data class SpdxResolvedDocument(
 
     /**
      * The name of the package manager that uses this document. This is mainly used to fill the source in generated
-     * [OrtIssue]s.
+     * [Issue]s.
      */
     val managerName: String,
 
@@ -83,14 +84,14 @@ internal data class SpdxResolvedDocument(
      * A map storing issues that were encountered when resolving external document references. These issues are also
      * assigned to [SpdxPackage]s defined in the corresponding external documents.
      */
-    private val issuesByReferenceId: Map<String, OrtIssue>
+    private val issuesByReferenceId: Map<String, Issue>
 ) {
     companion object : Logging {
         fun load(cache: SpdxDocumentCache, rootDocumentFile: File, managerName: String): SpdxResolvedDocument {
             val rootDocument = cache.load(rootDocumentFile).getOrThrow()
 
             val references = mutableMapOf<SpdxExternalDocumentReference, ResolvedSpdxDocument>()
-            val issues = mutableMapOf<String, OrtIssue>()
+            val issues = mutableMapOf<String, Issue>()
             resolveAllReferences(
                 cache,
                 managerName,
@@ -116,7 +117,7 @@ internal data class SpdxResolvedDocument(
      * Get the [SpdxPackage] for the given [identifier] by resolving against packages or external document references
      * contained in this document. If the package cannot be resolved, add an issue to [issues].
      */
-    fun getSpdxPackageForId(identifier: String, issues: MutableList<OrtIssue>): SpdxPackage? {
+    fun getSpdxPackageForId(identifier: String, issues: MutableList<Issue>): SpdxPackage? {
         val pkg = packagesById[identifier]
         val issue = issuesByReferenceId[identifier.substringBefore(':', "")]
 
@@ -177,7 +178,7 @@ private fun resolveAllReferences(
     document: SpdxDocument,
     baseUri: URI,
     references: MutableMap<SpdxExternalDocumentReference, ResolvedSpdxDocument>,
-    issues: MutableMap<String, OrtIssue>,
+    issues: MutableMap<String, Issue>,
     knownUris: MutableSet<URI>
 ) {
     document.resolveReferences(cache, baseUri, managerName).forEach { (ref, resolvedDoc) ->
@@ -228,7 +229,7 @@ private fun collectAndQualifyRelations(
 
 /**
  * A data class to hold the result of an operation to resolve an [SpdxDocument] from an external reference. Resolving
- * of the document may fail, then the document is *null*, and a corresponding [OrtIssue] is present.
+ * of the document may fail, then the document is *null*, and a corresponding [Issue] is present.
  */
 internal data class ResolutionResult(
     /**
@@ -243,7 +244,7 @@ internal data class ResolutionResult(
      * An issue that occurred while resolving the document. If the document could not be resolved, this gives details
      * about the underlying error. It could also be a warning.
      */
-    val issue: OrtIssue?
+    val issue: Issue?
 )
 
 /**
@@ -290,7 +291,7 @@ internal fun SpdxExternalDocumentReference.resolve(
 
 /**
  * Resolve this [SpdxExternalDocumentReference] from [uri] if it points to a file on the local file system. Use
- * [cache] to load the file. In case of a failure, create an [OrtIssue] whose message includes [baseUri], and
+ * [cache] to load the file. In case of a failure, create an [Issue] whose message includes [baseUri], and
  * [managerName].
  */
 private fun SpdxExternalDocumentReference.resolveFromFile(
@@ -325,7 +326,7 @@ private fun SpdxExternalDocumentReference.resolveFromFile(
 
 /**
  * Resolve this [SpdxExternalDocumentReference] from [uri] if it requires a download from a server. Use [cache] to
- * parse the document after it has been downloaded. In case of a failure, create an [OrtIssue] whose message includes
+ * parse the document after it has been downloaded. In case of a failure, create an [Issue] whose message includes
  * [baseUri], and [managerName].
  */
 private fun SpdxExternalDocumentReference.resolveFromDownload(
@@ -349,14 +350,14 @@ private fun SpdxExternalDocumentReference.resolveFromDownload(
             }
         }
 
-        val file = client.downloadFile(uri.toString(), tempDir).getOrNull() ?: run {
+        val file = client.downloadFile(uri.toString(), tempDir).getOrElse {
             return ResolutionResult(
                 document = null,
                 uri = uri,
                 issue = SpdxResolvedDocument.createAndLogIssue(
                     source = managerName,
                     message = "Failed to download SPDX document from $uri (referred from $baseUri as part of " +
-                            "'$externalDocumentId')."
+                            "'$externalDocumentId'): ${it.collectMessages()}"
                 )
             )
         }
@@ -381,9 +382,9 @@ private fun SpdxExternalDocumentReference.resolveFromDownload(
 
 /**
  * Verify that the resolved or downloaded [file] this [SpdxExternalDocumentReference] refers to matches the expected
- * checksum. If not, return an [OrtIssue] based on the document [uri] and [managerName].
+ * checksum. If not, return an [Issue] based on the document [uri] and [managerName].
  */
-private fun SpdxExternalDocumentReference.verifyChecksum(file: File, uri: URI, managerName: String): OrtIssue? {
+private fun SpdxExternalDocumentReference.verifyChecksum(file: File, uri: URI, managerName: String): Issue? {
     val hash = Hash.create(checksum.checksumValue, checksum.algorithm.name)
     if (hash.verify(file)) return null
 

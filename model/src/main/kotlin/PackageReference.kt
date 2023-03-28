@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,19 +19,13 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonInclude
 
 import java.util.Deque
 import java.util.LinkedList
 import java.util.SortedSet
 
-// A custom value filter for [PackageLinkage] to work around
-// https://github.com/FasterXML/jackson-module-kotlin/issues/193.
-@Suppress("EqualsOrHashCode", "EqualsWithHashCodeExist")
-class PackageLinkageValueFilter {
-    override fun equals(other: Any?) = other == PackageLinkage.DYNAMIC
-}
+import org.ossreviewtoolkit.model.utils.PackageLinkageValueFilter
 
 /**
  * A human-readable reference to a software [Package]. Each package reference itself refers to other package
@@ -54,16 +48,15 @@ data class PackageReference(
     override val linkage: PackageLinkage = PackageLinkage.DYNAMIC,
 
     /**
-     * The list of references to packages this package depends on. Note that this list depends on the scope in
-     * which this package reference is used.
+     * The set of [references to packages][PackageReference] this package depends on. Note that this list depends on the
+     * [scope][Scope] in which this package is referenced.
      */
     val dependencies: SortedSet<PackageReference> = sortedSetOf(),
 
     /**
-     * A list of [OrtIssue]s that occurred handling this [PackageReference].
+     * A list of [Issue]s that occurred handling this [PackageReference].
      */
-    @JsonAlias("errors")
-    override val issues: List<OrtIssue> = emptyList()
+    override val issues: List<Issue> = emptyList()
 ) : Comparable<PackageReference>, DependencyNode {
     /**
      * Return the set of [Identifier]s the package referred by this [PackageReference] transitively depends on,

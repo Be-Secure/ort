@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,6 +36,7 @@ import kotlinx.coroutines.withContext
 
 import org.apache.logging.log4j.kotlin.Logging
 
+import org.ossreviewtoolkit.analyzer.PackageManager.Companion.excludes
 import org.ossreviewtoolkit.analyzer.managers.Unmanaged
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.AnalyzerResult
@@ -44,8 +44,11 @@ import org.ossreviewtoolkit.model.AnalyzerRun
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Repository
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.orEmpty
+import org.ossreviewtoolkit.model.utils.ConfigurationResolver
+import org.ossreviewtoolkit.model.utils.PackageCurationProvider
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
@@ -66,7 +69,7 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
     @JvmOverloads
     fun findManagedFiles(
         absoluteProjectPath: File,
-        packageManagers: Set<PackageManagerFactory> = PackageManager.ALL,
+        packageManagers: Collection<PackageManagerFactory> = PackageManager.ALL.values,
         repositoryConfiguration: RepositoryConfiguration = RepositoryConfiguration()
     ): ManagedFileInfo {
         require(absoluteProjectPath.isAbsolute)
@@ -75,14 +78,20 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
             "Using the following configuration settings:\n${yamlMapper.writeValueAsString(repositoryConfiguration)}"
         }
 
+        val distinctPackageManagers = packageManagers.distinct()
+
         // Associate files by the package manager factory that manages them.
-        val factoryFiles = if (packageManagers.size == 1 && absoluteProjectPath.isFile) {
+        val factoryFiles = if (distinctPackageManagers.size == 1 && absoluteProjectPath.isFile) {
             // If only one package manager is activated and the project path is in fact a file, assume that the file is
             // a definition file for that package manager. This is useful to limit analysis to a single project e.g. for
             // debugging purposes.
-            mutableMapOf(packageManagers.first() to listOf(absoluteProjectPath))
+            mutableMapOf(distinctPackageManagers.first() to listOf(absoluteProjectPath))
         } else {
-            PackageManager.findManagedFiles(absoluteProjectPath, packageManagers).toMutableMap()
+            PackageManager.findManagedFiles(
+                absoluteProjectPath,
+                distinctPackageManagers,
+                config.excludes(repositoryConfiguration)
+            ).toMutableMap()
         }
 
         // Associate mapped files by the package manager that manages them.
@@ -100,7 +109,7 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
         }
 
         if (!hasOnlyManagedDirs) {
-            packageManagers.find { it is Unmanaged.Factory }
+            distinctPackageManagers.find { it is Unmanaged.Factory }
                 ?.create(absoluteProjectPath, config, repositoryConfiguration)
                 ?.run { managedFiles[this] = listOf(absoluteProjectPath) }
         }
@@ -108,15 +117,19 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
         return ManagedFileInfo(absoluteProjectPath, managedFiles, repositoryConfiguration)
     }
 
+    /**
+     * Return the result of analyzing the given [managed file][info]. The given [curationProviders] must be ordered
+     * highest-priority-first.
+     */
     @JvmOverloads
     fun analyze(
         info: ManagedFileInfo,
-        curationProvider: PackageCurationProvider = PackageCurationProvider.EMPTY
+        curationProviders: List<Pair<String, PackageCurationProvider>> = emptyList()
     ): OrtResult {
         val startTime = Instant.now()
 
         // Resolve dependencies per package manager.
-        val analyzerResult = analyzeInParallel(info.managedFiles, curationProvider)
+        val analyzerResult = analyzeInParallel(info.managedFiles)
 
         val workingTree = VersionControlSystem.forDirectory(info.absoluteProjectPath)
         val vcs = workingTree?.getInfo().orEmpty()
@@ -137,28 +150,27 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
         }
 
         val run = AnalyzerRun(startTime, endTime, Environment(toolVersions = toolVersions), config, analyzerResult)
+        val resolvedConfiguration = ConfigurationResolver.resolveConfiguration(analyzerResult, curationProviders)
 
-        return OrtResult(repository, run)
+        return OrtResult(
+            repository = repository,
+            analyzer = run,
+            resolvedConfiguration = resolvedConfiguration
+        )
     }
 
-    private fun analyzeInParallel(
-        managedFiles: Map<PackageManager, List<File>>,
-        curationProvider: PackageCurationProvider
-    ): AnalyzerResult {
-        val state = AnalyzerState(curationProvider)
+    private fun analyzeInParallel(managedFiles: Map<PackageManager, List<File>>): AnalyzerResult {
+        val state = AnalyzerState()
 
         val packageManagerDependencies = determinePackageManagerDependencies(managedFiles)
 
         runBlocking {
             managedFiles.entries.map { (manager, files) ->
-                val mustRunAfter = config.getPackageManagerConfiguration(manager.managerName)?.mustRunAfter?.toSet()
-                    ?: packageManagerDependencies[manager]?.mapTo(mutableSetOf()) { it.managerName }.orEmpty()
-
                 PackageManagerRunner(
                     manager = manager,
                     definitionFiles = files,
                     labels = labels,
-                    mustRunAfter = mustRunAfter,
+                    mustRunAfter = packageManagerDependencies[manager].orEmpty(),
                     finishedPackageManagersState = state.finishedPackageManagersState,
                     onResult = { result -> state.addResult(manager, result) }
                 )
@@ -169,21 +181,28 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
             }
         }
 
-        return state.buildResult()
+        val excludes = managedFiles.keys.firstOrNull()?.excludes ?: Excludes.EMPTY
+        return state.buildResult(excludes)
     }
 
     private fun determinePackageManagerDependencies(
         managedFiles: Map<PackageManager, List<File>>
-    ): Map<PackageManager, Set<PackageManager>> {
-        val allPackageManagers =
-            managedFiles.keys.associateBy { it.managerName }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+    ): Map<PackageManager, Set<String>> {
+        val packageManagersWithFiles = managedFiles.keys.associateByTo(sortedMapOf(String.CASE_INSENSITIVE_ORDER)) {
+            it.managerName
+        }
 
-        val result = mutableMapOf<PackageManager, MutableSet<PackageManager>>()
+        val result = mutableMapOf<PackageManager, MutableSet<String>>()
 
         managedFiles.keys.forEach { packageManager ->
             val dependencies = packageManager.findPackageManagerDependencies(managedFiles)
-            dependencies.mustRunAfter.forEach { name ->
-                val managerForName = allPackageManagers[name]
+            val mustRunAfterConfig = config.getPackageManagerConfiguration(packageManager.managerName)?.mustRunAfter
+
+            // Configured mustRunAfter dependencies override programmatic mustRunAfter dependencies.
+            val mustRunAfter = mustRunAfterConfig?.toSet() ?: dependencies.mustRunAfter
+
+            mustRunAfter.forEach { name ->
+                val managerForName = packageManagersWithFiles[name]
 
                 if (managerForName == null) {
                     logger.debug {
@@ -191,12 +210,15 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
                                 "definition files for $name."
                     }
                 } else {
-                    result.getOrPut(packageManager) { mutableSetOf() } += managerForName
+                    result.getOrPut(packageManager) { mutableSetOf() } += name
                 }
             }
 
-            dependencies.mustRunBefore.forEach { name ->
-                val managerForName = allPackageManagers[name]
+            // Configured mustRunAfter dependencies override programmatic mustRunBefore dependencies.
+            val mustRunBefore = dependencies.mustRunBefore.takeUnless { mustRunAfterConfig != null }
+
+            mustRunBefore?.forEach { name ->
+                val managerForName = packageManagersWithFiles[name]
 
                 if (managerForName == null) {
                     logger.debug {
@@ -204,7 +226,7 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
                                 "definition files for $name."
                     }
                 } else {
-                    result.getOrPut(managerForName) { mutableSetOf() } += packageManager
+                    result.getOrPut(managerForName) { mutableSetOf() } += packageManager.managerName
                 }
             }
         }
@@ -213,8 +235,8 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
     }
 }
 
-private class AnalyzerState(curationProvider: PackageCurationProvider) {
-    private val builder = AnalyzerResultBuilder(curationProvider)
+private class AnalyzerState {
+    private val builder = AnalyzerResultBuilder()
     private val scope = CoroutineScope(Dispatchers.Default)
     private val addMutex = Mutex()
 
@@ -250,7 +272,7 @@ private class AnalyzerState(curationProvider: PackageCurationProvider) {
         }
     }
 
-    fun buildResult() = builder.build()
+    fun buildResult(excludes: Excludes) = builder.build(excludes)
 }
 
 /**
@@ -278,7 +300,7 @@ private class PackageManagerRunner(
     val mustRunAfter: Set<String>,
 
     /**
-     * A [StateFlow] that updates with the list of already finished package managers.
+     * A [StateFlow] that updates with the set of already finished package managers.
      */
     val finishedPackageManagersState: StateFlow<Set<String>>,
 
@@ -293,17 +315,12 @@ private class PackageManagerRunner(
      */
     suspend fun start() {
         if (mustRunAfter.isNotEmpty()) {
-            Analyzer.logger.info {
-                "${manager.managerName} is waiting for the following package managers to complete: " +
-                        mustRunAfter.joinToString(postfix = ".")
-            }
-
             finishedPackageManagersState.first { finishedPackageManagers ->
                 val remaining = mustRunAfter - finishedPackageManagers
 
                 if (remaining.isNotEmpty()) {
                     Analyzer.logger.info {
-                        "${manager.managerName} is still waiting for the following package managers to complete: " +
+                        "${manager.managerName} is waiting for the following package managers to complete: " +
                                 remaining.joinToString(postfix = ".")
                     }
                 }

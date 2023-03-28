@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,16 @@ import kotlin.script.experimental.api.defaultImports
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.utils.scripting.OrtScriptCompilationConfiguration
 
-class NotificationScriptCompilationConfiguration : ScriptCompilationConfiguration(
+@KotlinScript(
+    displayName = "ORT Notifications Script",
+    fileExtension = "notifications.kts",
+    compilationConfiguration = NotificationsScriptCompilationConfiguration::class
+)
+open class NotificationsScriptTemplate(
+    val ortResult: OrtResult
+)
+
+class NotificationsScriptCompilationConfiguration : ScriptCompilationConfiguration(
     OrtScriptCompilationConfiguration(),
     body = {
         defaultImports(
@@ -37,13 +46,4 @@ class NotificationScriptCompilationConfiguration : ScriptCompilationConfiguratio
             "org.ossreviewtoolkit.notifier.modules.*"
         )
     }
-)
-
-@KotlinScript(
-    displayName = "ORT Notifications Script",
-    fileExtension = "notifications.kts",
-    compilationConfiguration = NotificationScriptCompilationConfiguration::class
-)
-open class NotificationsScriptTemplate(
-    val ortResult: OrtResult
 )

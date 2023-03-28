@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019-2021 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +40,7 @@ import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.downloader.Downloader
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageCuration
@@ -103,7 +102,7 @@ internal fun List<ScopeExclude>.minimize(projectScopes: List<String>): List<Scop
 internal fun OrtResult.fetchScannedSources(id: Identifier): File {
     val tempDir = createTempDirectory(Paths.get("."), ORTH_NAME).toFile()
 
-    val pkg = getPackageOrProject(id)!!.let {
+    val pkg = getPackageOrProject(id)!!.metadata.let {
         if (getProvenance(id) is ArtifactProvenance) {
             it.copy(vcs = VcsInfo.EMPTY, vcsProcessed = VcsInfo.EMPTY)
         } else {
@@ -129,8 +128,6 @@ internal fun OrtResult.processAllCopyrightStatements(
 ): List<ProcessedCopyrightStatement> {
     val result = mutableListOf<ProcessedCopyrightStatement>()
 
-    val processor = CopyrightStatementsProcessor()
-
     val licenseInfoResolver = createLicenseInfoResolver(
         packageConfigurationProvider = packageConfigurationProvider,
         copyrightGarbage = CopyrightGarbage(copyrightGarbage.toSortedSet()),
@@ -148,7 +145,7 @@ internal fun OrtResult.processAllCopyrightStatements(
                 resolvedCopyright.findings.map { it.statement }
             }
 
-            val processResult = processor.process(copyrights)
+            val processResult = CopyrightStatementsProcessor.process(copyrights)
 
             processResult.processedStatements.filterNot { it.key in copyrightGarbage }.forEach {
                 result += ProcessedCopyrightStatement(
@@ -192,7 +189,7 @@ internal fun OrtResult.getLicenseFindingsById(
             packageConfigurationProvider.getPackageConfigurations(id, provenance).flatMap { it.licenseFindingCurations }
         }
 
-    scanner?.results?.scanResults?.get(id)?.forEach { scanResult ->
+    scanner?.scanResults?.get(id)?.forEach { scanResult ->
         val findingsForProvenance = result.getOrPut(scanResult.provenance) { mutableMapOf() }
 
         scanResult.summary.licenseFindings.let { findings ->
@@ -234,12 +231,6 @@ internal fun OrtResult.getViolatedRulesByLicense(
         .mapValues { (_, ruleViolations) -> ruleViolations.map { it.rule } }
 
 /**
- * Return the Package with the given [id] denoting either a [Project] or a [Package].
- */
-internal fun OrtResult.getPackageOrProject(id: Identifier): Package? =
-    getProject(id)?.toPackage() ?: getPackage(id)?.pkg
-
-/**
  * Return the [Provenance] of the first scan result matching the given [id] or null if there is no match.
  */
 internal fun OrtResult.getProvenance(id: Identifier): Provenance? = getScanResultsForId(id).firstOrNull()?.provenance
@@ -248,10 +239,10 @@ internal fun OrtResult.getProvenance(id: Identifier): Provenance? = getScanResul
  * Return all issues from scan results. Issues for excludes [Project]s or [Package]s are not returned if and only if
  * the given [omitExcluded] is true.
  */
-internal fun OrtResult.getScanIssues(omitExcluded: Boolean = false): List<OrtIssue> {
-    val result = mutableListOf<OrtIssue>()
+internal fun OrtResult.getScanIssues(omitExcluded: Boolean = false): List<Issue> {
+    val result = mutableListOf<Issue>()
 
-    scanner?.results?.scanResults?.forEach { (id, results) ->
+    scanner?.scanResults?.forEach { (id, results) ->
         if (!omitExcluded || !isExcluded(id)) {
             results.forEach { scanResult ->
                 result += scanResult.summary.issues
@@ -266,7 +257,7 @@ internal fun OrtResult.getScanIssues(omitExcluded: Boolean = false): List<OrtIss
  * Return all path excludes from this [OrtResult] represented as [RepositoryPathExcludes].
  */
 internal fun OrtResult.getRepositoryPathExcludes(): RepositoryPathExcludes {
-    fun isDefinitionsFile(pathExclude: PathExclude) = PackageManager.ALL.any {
+    fun isDefinitionsFile(pathExclude: PathExclude) = PackageManager.ALL.values.any {
         it.matchersForDefinitionFiles.any { matcher ->
             pathExclude.pattern.endsWith(matcher.toString())
         }

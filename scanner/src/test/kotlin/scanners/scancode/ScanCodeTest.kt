@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,15 +32,15 @@ import io.mockk.spyk
 
 import java.io.File
 
+import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.ScannerDetails
-import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
+import org.ossreviewtoolkit.scanner.ScanContext
 import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.test.createTestTempDir
-import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class ScanCodeTest : WordSpec({
-    val scanner = ScanCode("ScanCode", ScannerConfiguration(), DownloaderConfiguration())
+    val scanner = ScanCode("ScanCode", ScannerConfiguration())
 
     "configuration()" should {
         "return the default values if the scanner configuration is empty" {
@@ -58,8 +57,7 @@ class ScanCodeTest : WordSpec({
                             "commandLineNonConfig" to "--commandLineNonConfig"
                         )
                     )
-                ),
-                DownloaderConfiguration()
+                )
             )
 
             scannerWithConfig.configuration shouldBe "--command --line --json-pp"
@@ -82,16 +80,31 @@ class ScanCodeTest : WordSpec({
                             "commandLineNonConfig" to "--commandLineNonConfig"
                         )
                     )
-                ),
-                DownloaderConfiguration()
+                )
             )
 
             scannerWithConfig.commandLineOptions.joinToString(" ") shouldBe
                     "--command --line --commandLineNonConfig"
         }
+
+        "be handled correctly when containing multiple spaces" {
+            val scannerWithConfig = ScanCode(
+                "ScanCode",
+                ScannerConfiguration(
+                    options = mapOf(
+                        "ScanCode" to mapOf(
+                            "commandLine" to " --command  --line  ",
+                            "commandLineNonConfig" to "  -n -c "
+                        )
+                    )
+                )
+            )
+
+            scannerWithConfig.commandLineOptions shouldBe listOf("--command", "--line", "-n", "-c")
+        }
     }
 
-    "scanPathInternal" should {
+    "scanPath" should {
         "handle a ScanCode result with errors" {
             val path = createTestTempDir("scan-code")
 
@@ -110,12 +123,11 @@ class ScanCodeTest : WordSpec({
                 process
             }
 
-            val result = scannerSpy.scanPath(path)
+            val summary = scannerSpy.scanPath(path, ScanContext(labels = emptyMap(), packageType = PackageType.PACKAGE))
 
-            result.scanner?.results.shouldNotBeNull {
-                val summary = scanResults.iterator().next().value.single().summary
-                summary.licenseFindings shouldNot beEmpty()
-                summary.issues.find { it.message.contains("Unexpected EOF") } shouldNot beNull()
+            with(summary) {
+                licenseFindings shouldNot beEmpty()
+                issues.find { it.message.contains("Unexpected EOF") } shouldNot beNull()
             }
         }
     }
@@ -123,8 +135,7 @@ class ScanCodeTest : WordSpec({
     "transformVersion" should {
         val scanCode = ScanCode(
             "ScanCode",
-            ScannerConfiguration(),
-            DownloaderConfiguration()
+            ScannerConfiguration()
         )
 
         "work with a version output without a colon" {

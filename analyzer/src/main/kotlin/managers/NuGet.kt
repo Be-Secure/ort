@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,9 +31,8 @@ import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.analyzer.managers.utils.NuGetDependency
 import org.ossreviewtoolkit.analyzer.managers.utils.NuGetSupport
-import org.ossreviewtoolkit.analyzer.managers.utils.OPTION_DIRECT_DEPENDENCIES_ONLY
+import org.ossreviewtoolkit.analyzer.managers.utils.NuGetSupport.Companion.OPTION_DIRECT_DEPENDENCIES_ONLY
 import org.ossreviewtoolkit.analyzer.managers.utils.XmlPackageFileReader
-import org.ossreviewtoolkit.analyzer.managers.utils.resolveNuGetDependencies
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
@@ -60,24 +57,19 @@ class NuGet(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = NuGet(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = NuGet(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
-    private val directDependenciesOnly =
-        analyzerConfig.getPackageManagerConfiguration(managerName)?.options?.get(OPTION_DIRECT_DEPENDENCIES_ONLY)
-            .toBoolean()
+    private val directDependenciesOnly = options[OPTION_DIRECT_DEPENDENCIES_ONLY].toBoolean()
 
     private val reader = NuGetPackageFileReader()
 
-    override fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult> =
-        listOf(
-            resolveNuGetDependencies(
-                definitionFile,
-                reader,
-                NuGetSupport.create(definitionFile),
-                directDependenciesOnly
-            )
-        )
+    override fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult> {
+        val support = NuGetSupport(managerName, analysisRoot, reader)
+        val projectAnalyzerResult = support.resolveDependencies(definitionFile, directDependenciesOnly)
+
+        return listOf(projectAnalyzerResult)
+    }
 }
 
 /**
@@ -97,7 +89,7 @@ class NuGetPackageFileReader : XmlPackageFileReader {
         @JacksonXmlProperty(isAttribute = true)
         val id: String,
         @JacksonXmlProperty(isAttribute = true)
-        val version: String,
+        val version: String?,
         @JacksonXmlProperty(isAttribute = true)
         val targetFramework: String?,
         @JacksonXmlProperty(isAttribute = true)
@@ -110,7 +102,8 @@ class NuGetPackageFileReader : XmlPackageFileReader {
         return packagesConfig.packages.mapTo(mutableSetOf()) { pkg ->
             NuGetDependency(
                 name = pkg.id,
-                version = pkg.version,
+                // TODO: Resolve an empty version to the lowest version published.
+                version = pkg.version.orEmpty(),
                 targetFramework = pkg.targetFramework.orEmpty(),
                 developmentDependency = pkg.developmentDependency ?: false
             )

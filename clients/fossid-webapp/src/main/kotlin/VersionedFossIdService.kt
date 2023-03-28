@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,6 @@ open class VersionedFossIdService(
         apiKey: String,
         scanCode: String
     ): EntityResponseBody<out UnversionedScanDescription> = delegate.checkScanStatus(
-        PostRequestBody("check_status", SCAN_GROUP, user, apiKey, "scan_code" to scanCode)
+        PostRequestBody("check_status", SCAN_GROUP, user, apiKey, mapOf("scan_code" to scanCode))
     )
 }

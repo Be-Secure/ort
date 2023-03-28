@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,53 +20,44 @@
 plugins {
     // Apply core plugins.
     `java-library`
-}
-
-repositories {
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.gradle.org/gradle/libs-releases/")
-        }
-
-        filter {
-            includeGroup("org.gradle")
-        }
-    }
-
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.eclipse.org/content/repositories/sw360-releases/")
-        }
-
-        filter {
-            includeGroup("org.eclipse.sw360")
-        }
-    }
+    `java-test-fixtures`
 }
 
 dependencies {
-    api(project(":clients:clearly-defined"))
     api(project(":model"))
 
     implementation(project(":downloader"))
     implementation(project(":utils:ort-utils"))
     implementation(project(":utils:spdx-utils"))
 
-    implementation("org.gradle:gradle-tooling-api:${gradle.gradleVersion}")
-    implementation(libs.bundles.maven)
+    implementation(libs.mavenCore)
+
+    // TODO: Remove this once https://issues.apache.org/jira/browse/MNG-6561 is resolved.
+    implementation(libs.mavenCompat)
 
     // The classes from the maven-resolver dependencies are not used directly but initialized by the Plexus IoC
     // container automatically. They are required on the classpath for Maven dependency resolution to work.
     implementation(libs.bundles.mavenResolver)
 
-    implementation(libs.jacksonModuleJaxbAnnotations)
     implementation(libs.jacksonModuleKotlin)
-    implementation(libs.jruby)
     implementation(libs.kotlinxCoroutines)
     implementation(libs.semver4j)
-    implementation(libs.sw360Client)
+
     implementation(libs.toml4j)
+    constraints {
+        implementation("com.google.code.gson:gson:2.10.1") {
+            because("Earlier versions have vulnerabilities.")
+        }
+    }
+
+    // Only the Java plugin's built-in "test" source set automatically depends on the test fixtures.
+    funTestImplementation(testFixtures(project(":analyzer")))
 
     testImplementation(libs.mockk)
     testImplementation(libs.wiremock)
+
+    testFixturesImplementation(project(":utils:test-utils"))
+
+    testFixturesImplementation(libs.kotestAssertionsCore)
+    testFixturesImplementation(libs.kotestRunnerJunit5)
 }

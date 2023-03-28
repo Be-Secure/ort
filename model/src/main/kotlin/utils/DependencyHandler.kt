@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
 package org.ossreviewtoolkit.model.utils
 
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 
@@ -57,12 +57,12 @@ interface DependencyHandler<D> {
      * the provided [issues] list. If the [dependency] does not map to a package, an implementation should return
      * *null*.
      */
-    fun createPackage(dependency: D, issues: MutableList<OrtIssue>): Package?
+    fun createPackage(dependency: D, issues: MutableList<Issue>): Package?
 
     /**
      * Return a collection with known issues for the given [dependency]. Some package manager implementations may
      * already encounter problems when obtaining dependency representations. These can be reported here. This base
      * implementation returns an empty collection.
      */
-    fun issuesForDependency(dependency: D): Collection<OrtIssue> = emptyList()
+    fun issuesForDependency(dependency: D): Collection<Issue> = emptyList()
 }

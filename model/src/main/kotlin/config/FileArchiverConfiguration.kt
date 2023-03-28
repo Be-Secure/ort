@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,6 @@
 
 package org.ossreviewtoolkit.model.config
 
-import com.fasterxml.jackson.annotation.JsonAlias
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-
-import com.sksamuel.hoplite.ConfigAlias
-
 import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.model.utils.DatabaseUtils
@@ -36,7 +31,6 @@ import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
 /**
  * The configuration model for a [FileArchiver].
  */
-@JsonIgnoreProperties(value = ["patterns"])
 data class FileArchiverConfiguration(
     /**
      * Toggle to enable or disable the file archiver functionality altogether.
@@ -46,8 +40,6 @@ data class FileArchiverConfiguration(
     /**
      * Configuration of the [FileStorage] used for archiving the files.
      */
-    @ConfigAlias("storage")
-    @JsonAlias("storage")
     val fileStorage: FileStorageConfiguration? = null,
 
     /**
@@ -88,7 +80,7 @@ fun FileArchiverConfiguration?.createFileArchiver(): FileArchiver? {
         else -> FileArchiverFileStorage(LocalFileStorage(FileArchiver.DEFAULT_ARCHIVE_DIR))
     }
 
-    val patterns = LicenseFilenamePatterns.getInstance().allLicenseFilenames
+    val patterns = LicenseFilePatterns.getInstance().allLicenseFilenames
 
     return FileArchiver(patterns, storage)
 }

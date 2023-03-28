@@ -5,7 +5,7 @@ path_excludes:
   reason: "EXAMPLE_OF"
   comment: "The project is an example."
 - _id: 1
-  pattern: "**.java"
+  pattern: "**/*.java"
   reason: "EXAMPLE_OF"
   comment: "These are example files."
 scope_excludes:
@@ -20,9 +20,9 @@ licenses:
 - _id: 0
   id: "GPL-3.0-only WITH GCC-exception-3.1 AND CC-BY-NC-3.0"
 - _id: 1
-  id: "GPL-3.0-only WITH GCC-exception-3.1"
-- _id: 2
   id: "CC-BY-NC-3.0"
+- _id: 2
+  id: "GPL-3.0-only WITH GCC-exception-3.1"
 - _id: 3
   id: "Apache-2.0"
 - _id: 4
@@ -266,6 +266,7 @@ packages:
     spdx_expression: "Apache-2.0"
     mapped_licenses:
     - 3
+  effective_license: "Apache-2.0"
   description: "Apache Commons Text is a library focused on algorithms working on\
     \ strings."
   homepage_url: "http://commons.apache.org/proper/commons-text/"
@@ -308,7 +309,7 @@ packages:
   declared_licenses:
   - 0
   declared_licenses_processed:
-    spdx_expression: "GPL-3.0-only WITH GCC-exception-3.1 AND CC-BY-NC-3.0"
+    spdx_expression: "CC-BY-NC-3.0 AND GPL-3.0-only WITH GCC-exception-3.1"
     mapped_licenses:
     - 1
     - 2
@@ -403,6 +404,7 @@ packages:
     spdx_expression: "EPL-1.0"
     mapped_licenses:
     - 9
+  effective_license: "EPL-1.0"
   description: "JUnit is a unit testing framework for Java, created by Erich Gamma\
     \ and Kent Beck."
   homepage_url: "http://junit.org"
@@ -442,6 +444,8 @@ packages:
   is_project: false
   definition_file_path: ""
   purl: "pkg:maven/com.foobar/foobar@1.0"
+  authors:
+  - "Jane Doe"
   declared_licenses:
   - 10
   declared_licenses_processed:
@@ -450,6 +454,7 @@ packages:
     - 11
     - 4
   concluded_license: "GPL-2.0-only OR MIT"
+  effective_license: "MIT"
   binary_artifact:
     url: ""
     hash:
@@ -489,6 +494,8 @@ packages:
   is_project: false
   definition_file_path: ""
   purl: "pkg:maven/com.h2database/h2@1.4.200"
+  authors:
+  - "Thomas Mueller"
   declared_licenses:
   - 12
   declared_licenses_processed:
@@ -497,6 +504,7 @@ packages:
     - 13
     - 9
   concluded_license: "MPL-2.0 OR EPL-1.0"
+  effective_license: "MPL-2.0"
   description: "H2 Database Engine"
   homepage_url: "https://h2database.com"
   binary_artifact:
@@ -546,6 +554,7 @@ packages:
     spdx_expression: "Apache-2.0"
     mapped_licenses:
     - 3
+  effective_license: "Apache-2.0"
   description: "Apache Commons Lang, a package of Java utility classes for the\n \
     \ classes that are in java.lang's hierarchy, or are considered to be so\n  standard\
     \ as to justify existence in java.lang."
@@ -593,6 +602,7 @@ packages:
     spdx_expression: "Apache-2.0"
     mapped_licenses:
     - 3
+  effective_license: "Apache-2.0"
   description: "A test component with no specific functionality"
   homepage_url: "http://example.org/test/component/"
   binary_artifact:
@@ -628,6 +638,7 @@ packages:
     spdx_expression: "BSD-3-Clause"
     mapped_licenses:
     - 16
+  effective_license: "BSD-3-Clause"
   description: "This is the core API of hamcrest matcher framework to be used by third-party\
     \ framework providers. This includes the a foundation set of matcher implementations\
     \ for common operations."
@@ -870,10 +881,12 @@ statistics:
     errors: 2
     warnings: 0
     hints: 0
+    severe: 2
   open_rule_violations:
     errors: 1
     warnings: 1
     hints: 0
+    severe: 2
   open_vulnerabilities: 1
   dependency_tree:
     included_projects: 1
@@ -903,6 +916,7 @@ statistics:
       LicenseRef-test-Apache-2.0-multi-line: 1
       LicenseRef-test-Apache-2.0-single-line: 1
       MIT: 2
+  execution_duration_in_seconds: 3125
 repository:
   vcs:
     type: ""
@@ -943,7 +957,7 @@ severe_issue_threshold: "WARNING"
 severe_rule_violation_threshold: "WARNING"
 repository_configuration: "---\nexcludes:\n  paths:\n  - pattern: \"sub/module/project/build.gradle\"\
   \n    reason: \"EXAMPLE_OF\"\n    comment: \"The project is an example.\"\n  - pattern:\
-  \ \"**.java\"\n    reason: \"EXAMPLE_OF\"\n    comment: \"These are example files.\"\
+  \ \"**/*.java\"\n    reason: \"EXAMPLE_OF\"\n    comment: \"These are example files.\"\
   \n  scopes:\n  - pattern: \"testCompile\"\n    reason: \"TEST_DEPENDENCY_OF\"\n\
   \    comment: \"The scope only contains test dependencies.\"\nresolutions:\n  rule_violations:\n\
   \  - message: \"Apache-2.0 hint\"\n    reason: \"CANT_FIX_EXCEPTION\"\n    comment:\
@@ -957,5 +971,5 @@ labels:
   process_parameters.PROCESS_PARAM_1: "label process param 1"
   process_parameters.PROCESS_PARAM_2: "label process param 2"
   OTHER: "label other"
-meta_data:
+metadata:
   analyzer_start_time: "1970-01-01T00:00:00Z"

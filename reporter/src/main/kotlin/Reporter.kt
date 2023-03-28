@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,35 +20,23 @@
 package org.ossreviewtoolkit.reporter
 
 import java.io.File
-import java.util.ServiceLoader
 
-import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.OrtResult
-import org.ossreviewtoolkit.model.ScanRecord
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.ScopeExclude
+import org.ossreviewtoolkit.utils.common.Plugin
 import org.ossreviewtoolkit.utils.common.joinNonBlank
 
 /**
- * A reporter that creates a human-readable report from the [AnalyzerResult] and [ScanRecord] contained in an
- * [OrtResult]. The signatures of public functions in this class define the library API.
+ * A reporter that creates a human-readable report from a given [OrtResult].
  */
-interface Reporter {
+interface Reporter : Plugin {
     companion object {
-        private val LOADER = ServiceLoader.load(Reporter::class.java)!!
-
         /**
-         * The set of all available [reporters][Reporter] in the classpath, sorted by name.
+         * All [reporters][Reporter] available in the classpath, associated by their names.
          */
-        val ALL: Set<Reporter> by lazy {
-            LOADER.iterator().asSequence().toSortedSet(compareBy { it.reporterName })
-        }
+        val ALL by lazy { Plugin.getAll<Reporter>() }
     }
-
-    /**
-     * The name to use to refer to the reporter.
-     */
-    val reporterName: String
 
     /**
      * Generate a report for the provided [input] and write the generated file(s) to the [outputDir]. If and how the

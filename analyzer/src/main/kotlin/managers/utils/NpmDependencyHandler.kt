@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,11 @@ package org.ossreviewtoolkit.analyzer.managers.utils
 
 import java.io.File
 
+import kotlinx.coroutines.runBlocking
+
 import org.ossreviewtoolkit.analyzer.managers.Npm
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.utils.DependencyHandler
@@ -78,6 +80,8 @@ class NpmDependencyHandler(private val npm: Npm) : DependencyHandler<NpmModuleIn
 
     override fun linkageFor(dependency: NpmModuleInfo): PackageLinkage = PackageLinkage.DYNAMIC
 
-    override fun createPackage(dependency: NpmModuleInfo, issues: MutableList<OrtIssue>): Package =
-        npm.parsePackage(dependency.workingDir, dependency.packageFile).second
+    override fun createPackage(dependency: NpmModuleInfo, issues: MutableList<Issue>): Package =
+        runBlocking {
+            npm.parsePackage(dependency.workingDir, dependency.packageFile).second
+        }
 }

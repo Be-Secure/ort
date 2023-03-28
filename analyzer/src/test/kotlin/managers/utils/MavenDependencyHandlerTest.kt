@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ import io.kotest.matchers.string.contain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.unmockkAll
 
 import java.io.IOException
 
@@ -42,7 +43,7 @@ import org.eclipse.aether.graph.DependencyNode
 import org.eclipse.aether.repository.RemoteRepository
 
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.Severity
@@ -50,6 +51,10 @@ import org.ossreviewtoolkit.model.Severity
 class MavenDependencyHandlerTest : WordSpec({
     beforeSpec {
         mockkStatic(Artifact::identifier)
+    }
+
+    afterSpec {
+        unmockkAll()
     }
 
     "identifierFor" should {
@@ -132,7 +137,7 @@ class MavenDependencyHandlerTest : WordSpec({
             val artifact = dependency.artifact
             val repos = listOf(createRepository(), createRepository())
             val pkg = createPackage(IDENTIFIER)
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
 
             val handler = createHandler()
 
@@ -148,7 +153,7 @@ class MavenDependencyHandlerTest : WordSpec({
             val artifact = dependency.artifact
             val repos = listOf(createRepository())
             val pkg = createPackage(IDENTIFIER)
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
 
             val handler = createHandler(sbtMode = true)
 
@@ -161,7 +166,7 @@ class MavenDependencyHandlerTest : WordSpec({
 
         "return null for a project dependency" {
             val projectDependency = createDependency(PROJECT_ID)
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
 
             val handler = createHandler()
 
@@ -207,7 +212,7 @@ class MavenDependencyHandlerTest : WordSpec({
             val dependency = createDependency(IDENTIFIER)
             val artifact = dependency.artifact
             val repos = listOf(createRepository())
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
 
             val handler = createHandler()
 

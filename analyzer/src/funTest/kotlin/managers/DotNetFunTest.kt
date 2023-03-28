@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,27 +27,29 @@ import io.kotest.matchers.shouldBe
 import java.io.File
 
 import org.ossreviewtoolkit.analyzer.managers.utils.NuGetDependency
-import org.ossreviewtoolkit.analyzer.managers.utils.OPTION_DIRECT_DEPENDENCIES_ONLY
+import org.ossreviewtoolkit.analyzer.managers.utils.NuGetSupport.Companion.OPTION_DIRECT_DEPENDENCIES_ONLY
 import org.ossreviewtoolkit.downloader.VersionControlSystem
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
 import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.patchActualResult
 import org.ossreviewtoolkit.utils.test.patchExpectedResult
+import org.ossreviewtoolkit.utils.test.toYaml
 
 class DotNetFunTest : StringSpec() {
-    private val projectDir = File("src/funTest/assets/projects/synthetic/dotnet").absoluteFile
+    private val projectDir = getAssetFile("projects/synthetic/dotnet")
     private val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
     private val vcsUrl = vcsDir.getRemoteUrl()
     private val vcsRevision = vcsDir.getRevision()
-    private val packageFile = projectDir.resolve("subProjectTest/test.csproj")
+    private val definitionFile = projectDir.resolve("subProjectTest/test.csproj")
 
     init {
         "Definition file is correctly read" {
             val reader = DotNetPackageFileReader()
-            val result = reader.getDependencies(packageFile)
+            val result = reader.getDependencies(definitionFile)
 
             result should containExactlyInAnyOrder(
                 NuGetDependency(name = "System.Globalization", version = "4.3.0", targetFramework = "netcoreapp3.1"),
@@ -80,7 +80,7 @@ class DotNetFunTest : StringSpec() {
                 revision = vcsRevision,
                 path = "$vcsPath/subProjectTest"
             )
-            val result = createDotNet().resolveSingleProject(packageFile)
+            val result = createDotNet().resolveSingleProject(definitionFile)
 
             patchActualResult(result.toYaml()) shouldBe expectedResult
         }
@@ -96,7 +96,7 @@ class DotNetFunTest : StringSpec() {
                 revision = vcsRevision,
                 path = "$vcsPath/subProjectTest"
             )
-            val result = createDotNet(directDependenciesOnly = true).resolveSingleProject(packageFile)
+            val result = createDotNet(directDependenciesOnly = true).resolveSingleProject(definitionFile)
 
             patchActualResult(result.toYaml()) shouldBe expectedResult
         }
@@ -123,7 +123,7 @@ class DotNetFunTest : StringSpec() {
         DotNet(
             "DotNet",
             USER_DIR,
-            DEFAULT_ANALYZER_CONFIGURATION.copy(
+            AnalyzerConfiguration().copy(
                 packageManagers = mapOf(
                     "DotNet" to PackageManagerConfiguration(
                         options = mapOf(
@@ -132,6 +132,6 @@ class DotNetFunTest : StringSpec() {
                     )
                 )
             ),
-            DEFAULT_REPOSITORY_CONFIGURATION
+            RepositoryConfiguration()
         )
 }

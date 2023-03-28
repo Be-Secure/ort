@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +40,10 @@ import java.io.IOException
 import java.time.Instant
 
 import org.ossreviewtoolkit.evaluator.Evaluator
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.AnalyzerResult
+import org.ossreviewtoolkit.model.AnalyzerRun
+import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.PackageCuration
 import org.ossreviewtoolkit.model.Severity
@@ -56,9 +58,12 @@ import org.ossreviewtoolkit.notifier.Notifier
 import org.ossreviewtoolkit.reporter.HowToFixTextProvider
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.reporter.reporters.freemarker.asciidoc.PdfTemplateReporter
+import org.ossreviewtoolkit.utils.ort.ORT_PACKAGE_CURATIONS_FILENAME
 import org.ossreviewtoolkit.utils.ort.ORT_REPO_CONFIG_FILENAME
+import org.ossreviewtoolkit.utils.ort.ORT_RESOLUTIONS_FILENAME
 import org.ossreviewtoolkit.utils.spdx.toSpdx
 import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class ExamplesFunTest : StringSpec() {
@@ -70,11 +75,11 @@ class ExamplesFunTest : StringSpec() {
     private fun takeExampleFile(name: String) = exampleFiles.single { it.name == name }.also { exampleFiles.remove(it) }
 
     init {
-        "Listing examples files succeeded" {
+        "Listing example files succeeds" {
             exampleFiles shouldNot beEmpty()
         }
 
-        "ort.yml examples are parsable" {
+        "The ORT repository configuration files are parsable" {
             val excludesExamples = exampleFiles.filter { it.name.endsWith(ORT_REPO_CONFIG_FILENAME) }
             exampleFiles.removeAll(excludesExamples)
 
@@ -87,19 +92,19 @@ class ExamplesFunTest : StringSpec() {
             }
         }
 
-        "copyright-garbage.yml can be deserialized" {
+        "The Copyright garbage file can be deserialized" {
             shouldNotThrow<IOException> {
                 takeExampleFile("copyright-garbage.yml").readValue<CopyrightGarbage>()
             }
         }
 
-        "curations.yml can be deserialized" {
+        "The package curations file can be deserialized" {
             shouldNotThrow<IOException> {
-                takeExampleFile("curations.yml").readValue<List<PackageCuration>>()
+                takeExampleFile(ORT_PACKAGE_CURATIONS_FILENAME).readValue<List<PackageCuration>>()
             }
         }
 
-        "license-classifications.yml can be deserialized" {
+        "The license classifications file can be deserialized" {
             shouldNotThrow<IOException> {
                 val classifications =
                     takeExampleFile("license-classifications.yml").readValue<LicenseClassifications>()
@@ -113,13 +118,13 @@ class ExamplesFunTest : StringSpec() {
             }
         }
 
-        "resolutions.yml can be deserialized" {
+        "The resolutions file can be deserialized" {
             shouldNotThrow<IOException> {
-                takeExampleFile("resolutions.yml").readValue<Resolutions>()
+                takeExampleFile(ORT_RESOLUTIONS_FILENAME).readValue<Resolutions>()
             }
         }
 
-        "asciidoctor-pdf-theme.yml is a valid asciidoctor-pdf theme" {
+        "The Asciidoctor PDF theme file is a valid" {
             val outputDir = createSpecTempDir()
 
             takeExampleFile("asciidoctor-pdf-theme.yml")
@@ -133,8 +138,8 @@ class ExamplesFunTest : StringSpec() {
             report shouldHaveSize 1
         }
 
-        "example.rules.kts can be compiled and executed" {
-            val resultFile = File("src/funTest/assets/semver4j-analyzer-result.yml")
+        "The rules script can be run" {
+            val resultFile = getAssetFile("semver4j-ort-result.yml")
             val licenseFile = File("../examples/license-classifications.yml")
             val ortResult = resultFile.readValue<OrtResult>()
             val evaluator = Evaluator(
@@ -147,20 +152,22 @@ class ExamplesFunTest : StringSpec() {
             val result = evaluator.run(script)
 
             result.violations.map { it.rule } shouldContainExactlyInAnyOrder listOf(
-                "UNHANDLED_LICENSE",
                 "COPYLEFT_LIMITED_IN_SOURCE",
-                "VULNERABILITY_IN_PACKAGE",
+                "DEPRECATED_SCOPE_EXCLUDE_REASON_IN_ORT_YML",
                 "HIGH_SEVERITY_VULNERABILITY_IN_PACKAGE",
-                "DEPRECATED_SCOPE_EXCLUDE_REASON_IN_ORT_YML"
+                "MISSING_CONTRIBUTING_FILE",
+                "MISSING_README_FILE_LICENSE_SECTION",
+                "UNHANDLED_LICENSE",
+                "VULNERABILITY_IN_PACKAGE"
             )
         }
 
-        "example.notifications.kts can be complied and executed" {
+        "The notifications script can be run" {
             val greenMail = GreenMail(ServerSetup.SMTP.dynamicPort())
             greenMail.setUser("no-reply@oss-review-toolkit.org", "no-reply@oss-review-toolkit.org", "pwd")
             greenMail.start()
 
-            val ortResult = File("src/funTest/assets/semver4j-analyzer-result.yml").readValue<OrtResult>()
+            val ortResult = createOrtResultWithIssue()
             val notifier = Notifier(
                 ortResult,
                 NotifierConfiguration(
@@ -180,7 +187,7 @@ class ExamplesFunTest : StringSpec() {
             notifier.run(script)
 
             greenMail.waitForIncomingEmail(1000, 1) shouldBe true
-            val actualBody = GreenMailUtil.getBody(greenMail.receivedMessages[0])
+            val actualBody = GreenMailUtil.getBody(greenMail.receivedMessages.first())
 
             actualBody shouldContain "Content-Type: text/html; charset=UTF-8"
             actualBody shouldContain "Content-Type: text/plain; charset=UTF-8" // Fallback
@@ -189,10 +196,10 @@ class ExamplesFunTest : StringSpec() {
             greenMail.stop()
         }
 
-        "how-to-fix-text-provider.kts provides the expected how-to-fix text" {
+        "The how-to-fix-text script provides the expected texts" {
             val script = takeExampleFile("how-to-fix-text-provider.kts").readText()
             val howToFixTextProvider = HowToFixTextProvider.fromKotlinScript(script, OrtResult.EMPTY)
-            val issue = OrtIssue(
+            val issue = Issue(
                 message = "ERROR: Timeout after 360 seconds while scanning file 'src/res/data.json'.",
                 source = "ScanCode",
                 severity = Severity.ERROR,
@@ -204,8 +211,21 @@ class ExamplesFunTest : StringSpec() {
             howToFixText shouldContain "Manually verify that the file does not contain any license information."
         }
 
-        "All example files should have been tested" {
+        "All example files are tested" {
             exampleFiles should beEmpty()
         }
     }
 }
+
+private fun createOrtResultWithIssue() =
+    OrtResult.EMPTY.copy(
+        analyzer = AnalyzerRun.EMPTY.copy(
+            result = AnalyzerResult.EMPTY.copy(
+                issues = mapOf(
+                    Identifier("Maven:org.oss-review-toolkit:example:1.0") to listOf(
+                        Issue(source = "", message = "issue")
+                    )
+                )
+            )
+        )
+    )

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,14 +24,12 @@ plugins {
 
 dependencies {
     api(project(":utils:common-utils"))
+    api(project(":utils:spdx-utils"))
 
     api(libs.okhttp)
 
-    implementation(project(":utils:spdx-utils"))
-
     implementation(libs.commonsCompress)
     implementation(libs.kotlinxCoroutines)
-    implementation(libs.xz)
 
     testImplementation(libs.mockk)
 }

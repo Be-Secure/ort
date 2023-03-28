@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,8 +41,8 @@ private fun toPlexusLoggerLevel(level: Level) =
     }
 
 /**
- * Implementation of the Plexus [Logger] that forwards all logs to the [org.slf4j.Logger] [log] using the appropriate
- * log levels.
+ * Implementation of the Plexus [Logger] that forwards all logs to [org.apache.logging.log4j.kotlin.Logging] using the
+ * appropriate log levels.
  */
 class MavenLogger(level: Level) : AbstractLogger(toPlexusLoggerLevel(level), "MavenLogger") {
     companion object : Logging

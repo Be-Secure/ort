@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,9 +19,6 @@
 
 package org.ossreviewtoolkit.analyzer.managers
 
-import com.vdurmont.semver4j.Requirement
-import com.vdurmont.semver4j.Semver
-
 import java.io.File
 import java.io.IOException
 import java.nio.file.StandardCopyOption
@@ -37,11 +34,15 @@ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.Os
-import org.ossreviewtoolkit.utils.common.getCommonFileParent
+import org.ossreviewtoolkit.utils.common.getCommonParentFile
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.common.searchUpwardsForSubdirectory
 import org.ossreviewtoolkit.utils.common.suppressInput
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
+import org.semver4j.Semver
 
 /**
  * The [SBT](https://www.scala-sbt.org/) package manager for Scala.
@@ -76,7 +77,9 @@ class Sbt(
         // parent process to suspend, for example IntelliJ can be suspended while running the SbtTest.
         private val DISABLE_JLINE = "-Djline.terminal=none".addQuotesOnWindows()
 
-        private val SBT_OPTIONS = arrayOf(BATCH_MODE, CI_MODE, NO_COLOR, DISABLE_JLINE)
+        private val FIXED_USER_HOME = "-Duser.home=${Os.userHomeDirectory}".addQuotesOnWindows()
+
+        private val SBT_OPTIONS = arrayOf(BATCH_MODE, CI_MODE, NO_COLOR, DISABLE_JLINE, FIXED_USER_HOME)
 
         private fun String.addQuotesOnWindows() = if (Os.isWindows) "\"$this\"" else this
     }
@@ -88,7 +91,7 @@ class Sbt(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Sbt(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Sbt(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     override fun command(workingDir: File?) = if (Os.isWindows) "sbt.bat" else "sbt"
@@ -119,11 +122,11 @@ class Sbt(
         return checkForSameSbtVersion(versions)
     }
 
-    override fun getVersionRequirement(): Requirement =
+    override fun getVersionRequirement(): RangesList =
         // We need at least sbt version 0.13.0 to be able to use "makePom" instead of the deprecated hyphenated
         // form "make-pom" and to support declaring Maven-style repositories, see
         // http://www.scala-sbt.org/0.13/docs/Publishing.html#Modifying+the+generated+POM.
-        Requirement.buildIvy("[0.13.0,)")
+        RangesListFactory.create(">=0.13.0")
 
     private fun checkForSameSbtVersion(versions: List<Semver>): String {
         val uniqueVersions = versions.toSortedSet()
@@ -138,7 +141,7 @@ class Sbt(
         // Some SBT projects do not have a build file in their root, but they still require "sbt" to be run from the
         // project's root directory. In order to determine the root directory, use the common prefix of all
         // definition file paths.
-        val workingDir = getCommonFileParent(definitionFiles) ?: analysisRoot
+        val workingDir = getCommonParentFile(definitionFiles)
 
         logger.info { "Determined '$workingDir' as the $managerName project root directory." }
 
@@ -158,13 +161,22 @@ class Sbt(
 
         // Generate the POM files. Note that a single run of makePom might create multiple POM files in case of
         // aggregate projects.
+        val pomFiles = mutableListOf<File>()
+
         val makePomCommand = internalProjectNames.joinToString("") { ";$it/makePom" }
-        val pomFiles = runSbt(makePomCommand).stdout.lines().mapNotNull { line ->
+        runSbt(makePomCommand).stdout.lines().mapNotNullTo(pomFiles) { line ->
             POM_REGEX.matchEntire(line)?.groupValues?.getOrNull(1)?.let { File(it) }
         }
 
         if (pomFiles.isEmpty()) {
-            logger.warn { "No generated POM files found inside the '$workingDir' directory." }
+            val targetDir = workingDir.resolve("target")
+
+            logger.info {
+                "No POM locations found in the output of SBT's 'makePom' command. Falling back to look for POMs in " +
+                        "the '$targetDir' directory."
+            }
+
+            targetDir.walk().maxDepth(1).filterTo(pomFiles) { it.extension == "pom" }
         }
 
         return pomFiles.distinct().map { moveGeneratedPom(it) }
@@ -174,7 +186,7 @@ class Sbt(
         // Some SBT projects do not have a build file in their root, but they still require "sbt" to be run from the
         // project's root directory. In order to determine the root directory, use the common prefix of all
         // definition file paths.
-        val workingDir = getCommonFileParent(definitionFiles) ?: analysisRoot
+        val workingDir = getCommonParentFile(definitionFiles)
 
         logger.info { "Determined '$workingDir' as the $managerName project root directory." }
 
@@ -200,7 +212,7 @@ class Sbt(
             val sbtVersionRequirement = getVersionRequirement()
             val lowestSbtVersion = checkForSameSbtVersion(versions)
 
-            if (!sbtVersionRequirement.isSatisfiedBy(lowestSbtVersion)) {
+            if (!Semver(lowestSbtVersion).satisfies(sbtVersionRequirement)) {
                 throw IOException(
                     "Unsupported $managerName version $lowestSbtVersion does not fulfill " +
                             "$sbtVersionRequirement."

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class GitLabLicenseModelReporter : Reporter {
         const val OPTION_SKIP_EXCLUDED = "skip.excluded"
     }
 
-    override val reporterName = "GitLabLicenseModel"
+    override val type = "GitLabLicenseModel"
 
     private val reportFilename = "gl-license-scanning-report.json"
 

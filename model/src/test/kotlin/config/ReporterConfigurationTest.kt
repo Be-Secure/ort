@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ class ReporterConfigurationTest : WordSpec({
  * Load the ORT reference configuration and extract the reporter configuration.
  */
 private fun loadReporterConfig(): ReporterConfiguration =
-    OrtConfiguration.load(file = File("src/main/resources/reference.conf")).reporter
+    OrtConfiguration.load(file = File("src/main/resources/$REFERENCE_CONFIG_FILENAME")).reporter
 
 /**
  * Perform a serialization round-trip of the given reporter [config] and return the result. This is used to check

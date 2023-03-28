@@ -12,8 +12,8 @@ project:
     mapped:
       Apache License, Version 2.0: "Apache-2.0"
   vcs:
-    type: ""
-    url: ""
+    type: "Git"
+    url: "https://example.com/git/repository.git"
     revision: ""
     path: ""
   vcs_processed:
@@ -69,7 +69,7 @@ packages:
     url: "https://gitbox.apache.org/repos/asf/beam.git"
     revision: "v2.3.0-RC3"
     path: ""
-  is_meta_data_only: true
+  is_metadata_only: true
 - id: "Maven:org.apache.commons:commons-lang3:3.5"
   purl: "pkg:maven/org.apache.commons/commons-lang3@3.5"
   authors:
@@ -169,12 +169,12 @@ packages:
   description: ""
   homepage_url: "http://jenkins-ci.org/version-number/"
   binary_artifact:
-    url: "http://repo.jenkins-ci.org/public/org/jenkins-ci/version-number/1.4/version-number-1.4.jar"
+    url: "https://repo.jenkins-ci.org/releases/org/jenkins-ci/version-number/1.4/version-number-1.4.jar"
     hash:
       value: "5d0f2ea16514c0ec8de86c102ce61a7837e45eb8"
       algorithm: "SHA-1"
   source_artifact:
-    url: "http://repo.jenkins-ci.org/public/org/jenkins-ci/version-number/1.4/version-number-1.4-sources.jar"
+    url: "https://repo.jenkins-ci.org/releases/org/jenkins-ci/version-number/1.4/version-number-1.4-sources.jar"
     hash:
       value: "ab4e04d731d43157f66d80e4a5daef33ce24f0c2"
       algorithm: "SHA-1"

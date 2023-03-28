@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,9 +55,9 @@ internal class FossIdNamingProvider(
         replaceNamingConventionVariables(namingProjectPattern, builtins, namingConventionVariables)
     } ?: projectName
 
-    fun createScanCode(projectName: String, deltaTag: FossId.DeltaTag? = null): String {
+    fun createScanCode(projectName: String, deltaTag: FossId.DeltaTag? = null, branch: String = ""): String {
         var defaultPattern = "#projectName_#currentTimestamp"
-        val builtins = mutableMapOf("#projectName" to projectName)
+        val builtins = mutableMapOf("#projectName" to projectName, "#branch" to branch)
 
         deltaTag?.let {
             defaultPattern += "_#deltaTag"

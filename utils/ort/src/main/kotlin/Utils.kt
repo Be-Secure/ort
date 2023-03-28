@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,19 +86,19 @@ fun filterVersionNames(version: String, names: List<String>, project: String? = 
     val fullMatches = names.filter { it.equals(version, ignoreCase = true) }
     if (fullMatches.isNotEmpty()) return fullMatches
 
-    // The list of supported version separators.
-    val versionHasSeparator = versionSeparators.any { it in version }
-
     // Create variants of the version string to recognize.
     data class VersionVariant(val name: String, val separators: List<Char>)
 
     val versionLower = version.lowercase()
     val versionVariants = mutableListOf(VersionVariant(versionLower, versionSeparators))
 
-    val separatorRegex = Regex(versionSeparators.joinToString("", "[", "]"))
+    val separatorRegex = Regex(versionSeparatorsPattern)
     versionSeparators.mapTo(versionVariants) {
         VersionVariant(versionLower.replace(separatorRegex, it.toString()), listOf(it))
     }
+
+    // The list of supported version separators.
+    val versionHasSeparator = versionSeparators.any { it in version }
 
     val filteredNames = names.filter {
         val name = it.lowercase().replace(ignorablePrefixSuffixRegex, "")
@@ -175,6 +175,11 @@ fun normalizeVcsUrl(vcsUrl: String): String {
     if (url.startsWith(":pserver:") || url.startsWith(":ext:")) {
         // Do not touch CVS URLs for now.
         return url
+    }
+
+    // Avoid using the unauthenticated Git protocol, which is blocked by many VCS hosts.
+    if (url.startsWith("git://")) {
+        url = "https://${url.removePrefix("git://")}"
     }
 
     // URLs to Git repos may omit the scheme and use an SCP-like URL that uses ":" to separate the host from the path,

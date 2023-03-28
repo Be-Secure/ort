@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,7 +55,7 @@ fun calculateHash(inputStream: InputStream, digest: MessageDigest = MessageDiges
     // 4MB has been chosen rather arbitrarily, hoping that it provides good performance while not consuming a
     // lot of memory at the same time, also considering that this function could potentially be run on multiple
     // threads in parallel.
-    val buffer = ByteArray(4 * 1024 * 1024)
+    val buffer = ByteArray(4.mebibytes.toInt())
 
     var length: Int
     while (inputStream.read(buffer).also { length = it } > 0) {
@@ -88,24 +88,17 @@ fun getAllAncestorDirectories(file: String): List<String> {
 }
 
 /**
- * Return the longest parent directory that is common to all [files], or null if they have no directory in common.
+ * Return the longest parent file that all [files] have in common, or a [File] with an empty path if they have no common
+ * parent file.
  */
-fun getCommonFileParent(files: Collection<File>): File? =
+fun getCommonParentFile(files: Collection<File>): File =
     files.map {
-        it.normalize().absolutePath
+        it.normalize().parent
     }.reduceOrNull { prefix, path ->
-        prefix.commonPrefixWith(path)
-    }?.let {
-        val commonPrefix = File(it)
-        if (commonPrefix.isDirectory) commonPrefix else commonPrefix.parentFile
+        prefix?.commonPrefixWith(path.orEmpty())
+    }.orEmpty().let {
+        File(it)
     }
-
-private val mavenCentralUrlPattern = Regex("^https?://repo1?\\.maven(\\.apache)?\\.org(/.*)?$")
-
-/**
- * Return whether the given [url] points to Maven Central or not.
- */
-fun isMavenCentralUrl(url: String) = url.matches(mavenCentralUrlPattern)
 
 /**
  * Return the concatenated [strings] separated by [separator] whereas blank strings are omitted.

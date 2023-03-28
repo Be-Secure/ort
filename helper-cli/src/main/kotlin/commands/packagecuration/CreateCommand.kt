@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ internal class CreateCommand : CliktCommand(
         val curations = readPackageCurations(outputFile).toMutableSet()
 
         if (curations.any { it.id == packageId }) {
-            println("Curation for ${packageId.toCoordinates()} already exists in '${outputFile.absolutePath}'.")
+            println("Curation for '${packageId.toCoordinates()}' already exists in '${outputFile.absolutePath}'.")
 
             return
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,11 @@ package org.ossreviewtoolkit.utils.ort.storage
 
 import java.io.IOException
 import java.io.InputStream
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 import okhttp3.CacheControl
+import okhttp3.ConnectionPool
 import okhttp3.Headers.Companion.toHeaders
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -31,6 +33,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
+import org.ossreviewtoolkit.utils.ort.execute
+
+private const val HTTP_CLIENT_CONNECT_TIMEOUT_IN_SECONDS = 30L
+private const val HTTP_CLIENT_KEEP_ALIVE_DURATION_IN_SECONDS = 1 * 60L
+private const val HTTP_CLIENT_MAX_IDLE_CONNECTIONS = 5
 
 /**
  * A [FileStorage] that stores files on an HTTP server.
@@ -62,6 +69,19 @@ class HttpFileStorage(
 ) : FileStorage {
     companion object : Logging
 
+    private val httpClient by lazy {
+        OkHttpClientHelper.buildClient {
+            val connectionPool = ConnectionPool(
+                HTTP_CLIENT_MAX_IDLE_CONNECTIONS,
+                HTTP_CLIENT_KEEP_ALIVE_DURATION_IN_SECONDS,
+                TimeUnit.SECONDS
+            )
+
+            connectionPool(connectionPool)
+            connectTimeout(Duration.ofSeconds(HTTP_CLIENT_CONNECT_TIMEOUT_IN_SECONDS))
+        }
+    }
+
     override fun exists(path: String): Boolean {
         val request = Request.Builder()
             .headers(headers.toHeaders())
@@ -70,7 +90,7 @@ class HttpFileStorage(
             .url(urlForPath(path))
             .build()
 
-        return OkHttpClientHelper.execute(request).isSuccessful
+        return httpClient.execute(request).isSuccessful
     }
 
     override fun read(path: String): InputStream {
@@ -83,7 +103,7 @@ class HttpFileStorage(
 
         logger.debug { "Reading file from storage: ${request.url}" }
 
-        val response = OkHttpClientHelper.execute(request)
+        val response = httpClient.execute(request)
         if (response.isSuccessful) {
             response.body?.let { body ->
                 return body.byteStream()
@@ -107,7 +127,7 @@ class HttpFileStorage(
 
             logger.debug { "Writing file to storage: ${request.url}" }
 
-            return OkHttpClientHelper.execute(request).use { response ->
+            return httpClient.execute(request).use { response ->
                 if (!response.isSuccessful) {
                     throw IOException(
                         "Could not store file at '${request.url}': ${response.code} - ${response.message}"

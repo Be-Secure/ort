@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.cli.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.flag
@@ -37,10 +36,11 @@ import org.jetbrains.exposed.sql.SchemaUtils.withDataBaseLock
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
 
-import org.ossreviewtoolkit.cli.GlobalOptions
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.inputGroup
 import org.ossreviewtoolkit.cli.utils.readOrtResult
 import org.ossreviewtoolkit.model.OrtResult
+import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.config.PostgresStorageConfiguration
 import org.ossreviewtoolkit.model.utils.DatabaseUtils
 import org.ossreviewtoolkit.model.utils.DatabaseUtils.checkDatabaseEncoding
@@ -50,11 +50,9 @@ import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
-class UploadResultToPostgresCommand : CliktCommand(
+class UploadResultToPostgresCommand : OrtCommand(
     name = "upload-result-to-postgres",
-    help = "Upload an ORT result to a PostgreSQL database.",
-    epilog = "EXPERIMENTAL: The command is still in development and usage will likely change in the near future. The " +
-            "command expects that a PostgresStorage for the scanner is configured."
+    help = "Upload an ORT result to a PostgreSQL database."
 ) {
     private val ortFile by option(
         "--ort-file", "-i",
@@ -80,12 +78,12 @@ class UploadResultToPostgresCommand : CliktCommand(
         help = "Create the table if it does not exist."
     ).flag()
 
-    private val globalOptionsForSubcommands by requireObject<GlobalOptions>()
+    private val ortConfig by requireObject<OrtConfiguration>()
 
     override fun run() {
         val ortResult = readOrtResult(ortFile)
 
-        val postgresConfig = globalOptionsForSubcommands.config.scanner.storages?.values
+        val postgresConfig = ortConfig.scanner.storages?.values
             ?.filterIsInstance<PostgresStorageConfiguration>()?.let { configs ->
                 if (configs.size > 1) {
                     val config = configs.first()

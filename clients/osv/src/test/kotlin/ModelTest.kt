@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 EPAM Systems, Inc.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,14 +27,13 @@ import java.io.File
 
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class ModelTest : StringSpec({
     "Deserializing and serializing any vulnerability is idempotent for all official examples" {
         getVulnerabilityExamplesJson().forAll { vulnerabilityJson ->
-            val vulnerability = Json.Default.decodeFromString<Vulnerability>(vulnerabilityJson)
+            val vulnerability = OsvApiClient.JSON.decodeFromString<Vulnerability>(vulnerabilityJson)
 
-            val serializedVulnerabilityJson = Json.Default.encodeToString(vulnerability)
+            val serializedVulnerabilityJson = OsvApiClient.JSON.encodeToString(vulnerability)
 
             serializedVulnerabilityJson shouldEqualJson vulnerabilityJson
         }

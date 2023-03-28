@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -70,8 +70,12 @@ private fun createDependencyGraph(qualified: Boolean = false): DependencyGraph {
         "test" to listOf(RootDependencyIndex(4), RootDependencyIndex(3)),
         "partial" to listOf(RootDependencyIndex(1))
     )
-    val scopeMapping = if (qualified) plainScopeMapping.mapKeys { DependencyGraph.qualifyScope(projectId, it.key) }
-    else plainScopeMapping
+
+    val scopeMapping = if (qualified) {
+        plainScopeMapping.mapKeys { DependencyGraph.qualifyScope(projectId, it.key) }
+    } else {
+        plainScopeMapping
+    }
 
     return DependencyGraph(dependencies, sortedSetOf(exampleRef, csvRef), scopeMapping)
 }
@@ -99,7 +103,7 @@ class ProjectTest : WordSpec({
             val project = Project(
                 id = projectId,
                 definitionFilePath = "/some/path",
-                declaredLicenses = sortedSetOf(),
+                declaredLicenses = emptySet(),
                 vcs = VcsInfo.EMPTY,
                 homepageUrl = "https//www.test-project.org",
             )

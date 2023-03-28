@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,12 @@ import com.fasterxml.jackson.module.kotlin.readValue
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.inspectors.forAll
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.maps.containExactly
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
@@ -37,7 +39,7 @@ import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.DependencyReference
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.PackageReference
@@ -45,15 +47,18 @@ import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
 import org.ossreviewtoolkit.model.RootDependencyIndex
 import org.ossreviewtoolkit.model.Scope
+import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.ScopeExclude
+import org.ossreviewtoolkit.model.config.ScopeExcludeReason
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class AnalyzerResultBuilderTest : WordSpec() {
-    private val issue1 = OrtIssue(source = "source-1", message = "message-1")
-    private val issue2 = OrtIssue(source = "source-2", message = "message-2")
-    private val issue3 = OrtIssue(source = "source-3", message = "message-3")
-    private val issue4 = OrtIssue(source = "source-4", message = "message-4")
-    private val issue5 = OrtIssue(source = "source-5", message = "message-5")
+    private val issue1 = Issue(source = "source-1", message = "message-1")
+    private val issue2 = Issue(source = "source-2", message = "message-2")
+    private val issue3 = Issue(source = "source-3", message = "message-3")
+    private val issue4 = Issue(source = "source-4", message = "message-4")
+    private val issue5 = Issue(source = "source-5", message = "message-5")
 
     private val package1 = Package.EMPTY.copy(id = Identifier("type-1", "namespace-1", "package-1", "version-1"))
     private val package2 = Package.EMPTY.copy(id = Identifier("type-2", "namespace-2", "package-2", "version-2"))
@@ -111,10 +116,10 @@ class AnalyzerResultBuilderTest : WordSpec() {
         )
 
     private val analyzerResult1 = ProjectAnalyzerResult(
-        project1, sortedSetOf(package1), listOf(issue3, issue4)
+        project1, setOf(package1), listOf(issue3, issue4)
     )
     private val analyzerResult2 = ProjectAnalyzerResult(
-        project2, sortedSetOf(package1, package2, package3), listOf(issue4)
+        project2, setOf(package1, package2, package3), listOf(issue4)
     )
 
     init {
@@ -135,9 +140,9 @@ class AnalyzerResultBuilderTest : WordSpec() {
                 val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope1"))
                 val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope3"))
                 val result = AnalyzerResult(
-                    projects = sortedSetOf(p1, p2, project3),
-                    packages = sortedSetOf(),
-                    dependencyGraphs = sortedMapOf(
+                    projects = setOf(p1, p2, project3),
+                    packages = emptySet(),
+                    dependencyGraphs = mapOf(
                         project1.id.type to graph1,
                         project2.id.type to graph2
                     )
@@ -153,9 +158,9 @@ class AnalyzerResultBuilderTest : WordSpec() {
                 val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope1"))
                 val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope3"))
                 val result = AnalyzerResult(
-                    projects = sortedSetOf(p1, p2, project3),
-                    packages = sortedSetOf(),
-                    dependencyGraphs = sortedMapOf(
+                    projects = setOf(p1, p2, project3),
+                    packages = emptySet(),
+                    dependencyGraphs = mapOf(
                         project1.id.type to graph1,
                         project2.id.type to graph2
                     )
@@ -189,9 +194,9 @@ class AnalyzerResultBuilderTest : WordSpec() {
                 val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope1"))
                 val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope3"))
                 val result = AnalyzerResult(
-                    projects = sortedSetOf(p1, p2, project3),
-                    packages = sortedSetOf(),
-                    dependencyGraphs = sortedMapOf(
+                    projects = setOf(p1, p2, project3),
+                    packages = emptySet(),
+                    dependencyGraphs = mapOf(
                         project1.id.type to graph1,
                         project2.id.type to emptyGraph
                     )
@@ -236,10 +241,10 @@ class AnalyzerResultBuilderTest : WordSpec() {
                 val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope-1"))
                 val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope-3"))
                 val analyzerResult = AnalyzerResultBuilder()
-                    .addResult(ProjectAnalyzerResult(p1, sortedSetOf()))
+                    .addResult(ProjectAnalyzerResult(p1, emptySet()))
                     .addDependencyGraph(p1.id.type, graph1)
-                    .addResult(ProjectAnalyzerResult(project3, sortedSetOf()))
-                    .addResult(ProjectAnalyzerResult(p2, sortedSetOf()))
+                    .addResult(ProjectAnalyzerResult(project3, emptySet()))
+                    .addResult(ProjectAnalyzerResult(p2, emptySet()))
                     .addDependencyGraph(p2.id.type, graph2)
                     .build()
 
@@ -277,13 +282,21 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     .addResult(analyzerResult2)
                     .build()
 
-                mergedResults.projects shouldBe sortedSetOf(project1, project2)
-                mergedResults.packages shouldBe sortedSetOf(
-                    package1.toCuratedPackage(), package2.toCuratedPackage(),
-                    package3.toCuratedPackage()
+                mergedResults.projects.map {
+                    it.withResolvedScopes(mergedResults.dependencyGraphs[it.id.type])
+                } shouldBe setOf(
+                    project1,
+                    project2
                 )
-                mergedResults.issues shouldBe
-                        sortedMapOf(project1.id to analyzerResult1.issues, project2.id to analyzerResult2.issues)
+                mergedResults.packages shouldBe setOf(
+                    package1,
+                    package2,
+                    package3
+                )
+                mergedResults.issues shouldBe mapOf(
+                    project1.id to analyzerResult1.issues,
+                    project2.id to analyzerResult2.issues
+                )
             }
 
             "convert to the dependency graph representation when building" {
@@ -293,6 +306,20 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     .build()
 
                 mergedResults.dependencyGraphs.keys should containExactlyInAnyOrder("type-1", "type-2")
+            }
+
+            "apply scope excludes" {
+                val scopeExclude = ScopeExclude("scope-2", ScopeExcludeReason.BUILD_DEPENDENCY_OF)
+                val excludes = Excludes(scopes = listOf(scopeExclude))
+
+                val mergedResults = AnalyzerResultBuilder()
+                    .addResult(analyzerResult1)
+                    .addResult(analyzerResult2)
+                    .build(excludes)
+
+                mergedResults.projects.forAll { project ->
+                    project.scopeNames.orEmpty() shouldNotContain "scope-2"
+                }
             }
 
             "throw if a result contains a project and a package with the same ID" {
@@ -333,7 +360,7 @@ class AnalyzerResultBuilderTest : WordSpec() {
 
                 val projectAnalyzerResult = ProjectAnalyzerResult(
                     project = project,
-                    packages = sortedSetOf(package1)
+                    packages = setOf(package1)
                 )
 
                 val analyzerResult = AnalyzerResultBuilder().run {

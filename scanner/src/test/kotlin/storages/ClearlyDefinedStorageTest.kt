@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
- * Copyright (C) 2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,8 +29,6 @@ import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
-import com.vdurmont.semver4j.Semver
-
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -45,6 +42,7 @@ import io.kotest.matchers.string.shouldContain
 
 import java.io.File
 import java.net.ServerSocket
+import java.time.Duration
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -62,7 +60,11 @@ import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
+import org.ossreviewtoolkit.scanner.ScanStorageException
 import org.ossreviewtoolkit.scanner.ScannerCriteria
+import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
+
+import org.semver4j.Semver
 
 private const val PACKAGE_TYPE = "Maven"
 private const val NAMESPACE = "someNamespace"
@@ -95,7 +97,7 @@ private val TEST_IDENTIFIER =
 private val TEST_PACKAGE =
     Package(
         id = TEST_IDENTIFIER,
-        declaredLicenses = sortedSetOf(),
+        declaredLicenses = emptySet(),
         description = "test package description",
         homepageUrl = "https://www.test-package.com",
         vcs = VcsInfo.EMPTY,
@@ -223,6 +225,20 @@ class ClearlyDefinedStorageTest : WordSpec({
     }
 
     "ClearlyDefinedStorage" should {
+        "handle a SocketTimeoutException" {
+            server.stubFor(
+                get(anyUrl())
+                    .willReturn(aResponse().withFixedDelay(100))
+            )
+            val client = OkHttpClientHelper.buildClient {
+                readTimeout(Duration.ofMillis(1))
+            }
+
+            val storage = ClearlyDefinedStorage("http://localhost:${server.port()}", client)
+
+            storage.read(TEST_PACKAGE, SCANNER_CRITERIA).shouldBeFailure<ScanStorageException>()
+        }
+
         "load existing scan results for a package from ClearlyDefined" {
             stubHarvestTools(
                 server, COORDINATES,
@@ -328,24 +344,11 @@ class ClearlyDefinedStorageTest : WordSpec({
                 "https://github.com/$NAMESPACE/$NAME.git",
                 COMMIT
             )
-            val pkg = TEST_PACKAGE.copy(vcs = vcsGit)
+            val pkg = TEST_PACKAGE.copy(vcs = vcsGit, vcsProcessed = vcsGit)
             val tools = listOf(toolUrl(gitUrl, "scancode", SCANCODE_VERSION))
             stubHarvestTools(server, gitUrl, tools)
             stubHarvestToolResponse(server, gitUrl)
             stubDefinitions(server, gitUrl)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(pkg, SCANNER_CRITERIA).shouldBeValid()
-        }
-
-        "only use VCS info pointing to GitHub" {
-            val vcs = VcsInfo(VcsType.GIT, "https://gitlab.com/foo/bar.git", COMMIT)
-            val pkg = TEST_PACKAGE.copy(vcs = vcs)
-            val tools = listOf(toolUrl(COORDINATES, "scancode", SCANCODE_VERSION))
-            stubHarvestTools(server, COORDINATES, tools)
-            stubHarvestToolResponse(server, COORDINATES)
-            stubDefinitions(server)
 
             val storage = ClearlyDefinedStorage(storageConfiguration(server))
 
@@ -366,17 +369,16 @@ class ClearlyDefinedStorageTest : WordSpec({
             storage.read(pkg, SCANNER_CRITERIA).shouldBeValid()
         }
 
-        "return an empty result if the coordinates are not supported by ClearlyDefined" {
+        "return a failure if the coordinates are not supported by ClearlyDefined" {
             val id = TEST_IDENTIFIER.copy(type = "unknown")
-
             val storage = ClearlyDefinedStorage(storageConfiguration(server))
 
-            storage.read(id).shouldBeSuccess {
-                it should beEmpty()
-            }
+            val result = storage.read(id)
+
+            result.shouldBeFailure<ScanStorageException>()
         }
 
-        "return an empty result if a harvest tool request returns an unexpected result" {
+        "return a failure if a harvest tool request returns an unexpected result" {
             server.stubFor(
                 get(anyUrl())
                     .willReturn(
@@ -388,9 +390,7 @@ class ClearlyDefinedStorageTest : WordSpec({
 
             val result = storage.read(TEST_IDENTIFIER)
 
-            result.shouldBeSuccess {
-                it should beEmpty()
-            }
+            result.shouldBeFailure<ScanStorageException>()
         }
 
         "return an empty result if a harvest tool file request returns an unexpected result" {

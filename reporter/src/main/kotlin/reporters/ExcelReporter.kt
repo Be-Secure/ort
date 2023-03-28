@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ private const val OPTION_EXTRA_COLUMNS = "extraColumns"
  * - *extraColumns*: A comma separated list of columns that are added to each sheet.
  */
 class ExcelReporter : Reporter {
-    override val reporterName = "Excel"
+    override val type = "Excel"
 
     private val reportFilename = "scan-report.xlsx"
 
@@ -209,6 +209,7 @@ class ExcelReporter : Reporter {
 
         var currentRow = 0
 
+        @Suppress("UnnecessaryApply")
         sheet.createRow(currentRow).apply {
             CellUtil.createCell(this, 0, "Labels", headerStyle)
         }
@@ -309,7 +310,7 @@ class ExcelReporter : Reporter {
             sheet.createRow(currentRow++).apply {
                 createCell(this, 0, row.id.toCoordinates(), font, cellStyle)
                 createCell(this, 1, scopesText, cellStyle)
-                createCell(this, 2, row.declaredLicenses.joinToString(" \n"), font, cellStyle)
+                createCell(this, 2, row.declaredLicenses.sorted().joinToString(" \n"), font, cellStyle)
                 createCell(this, 3, row.detectedLicenses.joinToString(" \n"), font, cellStyle)
                 createCell(this, 4, analyzerIssuesText, font, cellStyle)
                 createCell(this, 5, scanIssuesText, font, cellStyle)
@@ -411,6 +412,7 @@ class ExcelReporter : Reporter {
 
         var rows = 2
 
+        @Suppress("UnnecessaryApply")
         sheet.createRow(++rows).apply {
             CellUtil.createCell(this, 0, "VCS", headerStyle)
         }

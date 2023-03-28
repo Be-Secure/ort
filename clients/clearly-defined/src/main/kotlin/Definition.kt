@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ data class FileEntry(
     val path: File,
     val license: String? = null,
     val attributions: List<String>? = null,
-    val facets: Facets? = null,
+    val facets: List<String>? = null,
     val hashes: Hashes? = null,
     val token: String? = null,
     val natures: Set<Nature>? = null
@@ -77,7 +77,7 @@ data class Hashes(
 data class Described(
     val score: DescribedScore? = null,
     val toolScore: DescribedScore? = null,
-    val facets: Facets? = null,
+    val facets: CurationFacets? = null,
     val sourceLocation: SourceLocation? = null,
     val urls: URLs? = null,
     val projectWebsite: URI? = null,

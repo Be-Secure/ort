@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,10 +24,12 @@ plugins {
 
 dependencies {
     api(project(":model"))
-    api(project(":utils:ort-utils"))
 
     api(libs.kotestAssertionsCore)
     api(libs.kotestFrameworkApi)
+
+    implementation(project(":downloader"))
+    implementation(project(":utils:ort-utils"))
 
     implementation(libs.jacksonModuleKotlin)
     implementation(libs.kotestExtensionsJunitXml)

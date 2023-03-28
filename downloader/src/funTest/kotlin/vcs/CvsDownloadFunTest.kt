@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ class CvsDownloadFunTest : StringSpec() {
 
             // Use forward slashes also on Windows as the CVS client comes from MSYS2.
             val buildXmlFile = "xmlenc/build.xml"
-            val buildXmlStatus = cvs.run(outputDir, "status", buildXmlFile)
+            val buildXmlStatus = CvsCommand.run(outputDir, "status", buildXmlFile)
 
             workingTree.isValid() shouldBe true
             actualFiles.joinToString("\n") shouldBe expectedFiles.joinToString("\n")
@@ -97,7 +97,7 @@ class CvsDownloadFunTest : StringSpec() {
 
             // Use forward slashes also on Windows as the CVS client comes from MSYS2.
             val buildXmlFile = "xmlenc/build.xml"
-            val buildXmlStatus = cvs.run(outputDir, "status", buildXmlFile)
+            val buildXmlStatus = CvsCommand.run(outputDir, "status", buildXmlFile)
 
             workingTree.isValid() shouldBe true
 

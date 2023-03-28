@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2021 HERE Europe B.V.
- * Copyright (C) 2021 Dr. Ing. h.c. F. Porsche AG
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +27,8 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.deser.std.StdDeserializer
 import com.fasterxml.jackson.databind.node.ObjectNode
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
+import java.io.IOException
 import java.util.SortedSet
 
 import org.apache.logging.log4j.kotlin.Logging
@@ -40,7 +38,7 @@ import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageReference
 import org.ossreviewtoolkit.model.Project
@@ -54,10 +52,16 @@ import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.model.readValue
+import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.CommandLineTool
+import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.stashDirectories
 import org.ossreviewtoolkit.utils.common.textValueOrEmpty
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
 
 /**
  * The [CocoaPods](https://cocoapods.org/) package manager for Objective-C.
@@ -85,33 +89,22 @@ class CocoaPods(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = CocoaPods(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = CocoaPods(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     private val podspecCache = mutableMapOf<String, Podspec>()
 
-    override fun command(workingDir: File?) = "pod"
+    override fun command(workingDir: File?) = if (Os.isWindows) "pod.bat" else "pod"
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildIvy("[1.11.0,)")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create(">=1.11.0")
 
     override fun getVersionArguments() = "--version --allow-root"
 
     override fun beforeResolution(definitionFiles: List<File>) = checkVersion()
 
     override fun resolveDependencies(definitionFile: File, labels: Map<String, String>): List<ProjectAnalyzerResult> {
-        // CocoaPods originally used and may still use the Specs repository on GitHub [1] as package metadata database.
-        // Using [1] requires an initial clone which is slow to do and consumes already more than 5 GB on disk, see
-        // also [2]. (Final) CDN support has been added in version 1.7.2 [3] to speed things up.
-        //
-        // Temporarily re-configure the repos such that 'https://cdn.cocoapods.org' is the only repository in order to
-        // avoid having to clone and fetch the large Git repository. This ensures that the repositories used are
-        // independent of the hosts current setup.
-        //
-        // [1] https://github.com/CocoaPods/Specs
-        // [2] https://github.com/CocoaPods/CocoaPods/issues/7046.
-        // [3] https://blog.cocoapods.org/CocoaPods-1.7.2/
-
         return stashDirectories(File("~/.cocoapods/repos")).use {
+            // Ensure to use the CDN instead of the monolithic specs repo.
             run("repo", "add-cdn", "trunk", "https://cdn.cocoapods.org", "--allow-root")
 
             try {
@@ -131,8 +124,8 @@ class CocoaPods(
         val lockfile = workingDir.resolve(LOCKFILE_FILENAME)
 
         val scopes = sortedSetOf<Scope>()
-        val packages = sortedSetOf<Package>()
-        val issues = mutableListOf<OrtIssue>()
+        val packages = mutableSetOf<Package>()
+        val issues = mutableListOf<Issue>()
 
         if (lockfile.isFile) {
             val dependencies = getPackageReferences(lockfile)
@@ -144,7 +137,7 @@ class CocoaPods(
                 source = managerName,
                 message = "Missing lockfile '${lockfile.relativeTo(analysisRoot).invariantSeparatorsPath}' for " +
                         "definition file '${definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath}'. The " +
-                        "analysis of a Podfile without a lockfile is not supported at all."
+                        "analysis of a Podfile without a lockfile is not supported."
             )
         }
 
@@ -154,12 +147,12 @@ class CocoaPods(
                 id = Identifier(
                     type = managerName,
                     namespace = "",
-                    name = definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath,
+                    name = getFallbackProjectName(analysisRoot, definitionFile),
                     version = ""
                 ),
                 definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
-                authors = sortedSetOf(),
-                declaredLicenses = sortedSetOf(),
+                authors = emptySet(),
+                declaredLicenses = emptySet(),
                 vcs = VcsInfo.EMPTY,
                 vcsProcessed = processProjectVcs(workingDir),
                 scopeDependencies = scopes,
@@ -172,11 +165,7 @@ class CocoaPods(
     }
 
     private fun getPackage(id: Identifier, workingDir: File): Package {
-        val podspec = getPodspec(id, workingDir) ?: run {
-            logger.warn { "Could not find a '.podspec' file for package '${id.toCoordinates()}'." }
-
-            return Package.EMPTY.copy(id = id)
-        }
+        val podspec = getPodspec(id, workingDir) ?: return Package.EMPTY.copy(id = id, purl = id.toPurl())
 
         val vcs = podspec.source["git"]?.let { url ->
             VcsInfo(
@@ -188,8 +177,8 @@ class CocoaPods(
 
         return Package(
             id = id,
-            authors = sortedSetOf(),
-            declaredLicenses = podspec.license.takeUnless { it.isEmpty() }?.let { sortedSetOf(it) } ?: sortedSetOf(),
+            authors = emptySet(),
+            declaredLicenses = podspec.license.takeUnless { it.isEmpty() }?.let { setOf(it) } ?: emptySet(),
             description = podspec.summary,
             homepageUrl = podspec.homepage,
             binaryArtifact = RemoteArtifact.EMPTY,
@@ -204,9 +193,30 @@ class CocoaPods(
 
         val podspecName = id.name.substringBefore("/")
 
-        val podspecCommand = run(
-            "spec", "which", podspecName, "--version=${id.version}", "--allow-root", "--regex", workingDir = workingDir
-        ).takeIf { it.isSuccess } ?: return null
+        val podspecCommand = runCatching {
+            run(
+                "spec", "which", podspecName,
+                "--version=${id.version}",
+                "--allow-root",
+                "--regex",
+                workingDir = workingDir
+            )
+        }.getOrElse {
+            val messages = it.collectMessages()
+
+            logger.warn {
+                "Failed to get the '.podspec' file for package '${id.toCoordinates()}': $messages"
+            }
+
+            if ("SSL peer certificate or SSH remote key was not OK" in messages) {
+                // When running into this error (see e.g. https://github.com/CocoaPods/CocoaPods/issues/11159) abort
+                // immediately, because connections are retried multiple times for each package's podspec to retrieve
+                // which would otherwise take a very long time.
+                throw IOException(messages)
+            }
+
+            return null
+        }
 
         val podspecFile = File(podspecCommand.stdout.trim())
 

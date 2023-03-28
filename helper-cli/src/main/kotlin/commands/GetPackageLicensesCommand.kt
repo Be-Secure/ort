@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2021 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,11 +33,12 @@ import org.ossreviewtoolkit.helper.utils.PackageConfigurationOption
 import org.ossreviewtoolkit.helper.utils.createProvider
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.utils.FindingCurationMatcher
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
 import org.ossreviewtoolkit.model.yamlMapper
-import org.ossreviewtoolkit.scanner.ScanResultsStorage
+import org.ossreviewtoolkit.scanner.ScanStorages
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
@@ -59,7 +59,7 @@ class GetPackageLicensesCommand : CliktCommand(
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.schema=testSchema"
+                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     private val packageId by option(
@@ -85,7 +85,7 @@ class GetPackageLicensesCommand : CliktCommand(
     ).single()
 
     override fun run() {
-        val scanResults = getScanResultStorage().read(packageId).getOrDefault(emptyList())
+        val scanResults = getStoredScanResults(packageId)
         val packageConfigurationProvider = packageConfigurationOption.createProvider()
 
         val result = scanResults.firstOrNull()?.let { scanResult ->
@@ -116,10 +116,10 @@ class GetPackageLicensesCommand : CliktCommand(
         println(result.toYaml())
     }
 
-    private fun getScanResultStorage(): ScanResultsStorage {
+    private fun getStoredScanResults(id: Identifier): List<ScanResult> {
         val ortConfiguration = OrtConfiguration.load(configArguments, configFile)
-        ScanResultsStorage.configure(ortConfiguration.scanner)
-        return ScanResultsStorage.storage
+        val scanStorages = ScanStorages.createFromConfig(ortConfiguration.scanner)
+        return runCatching { scanStorages.read(id) }.getOrDefault(emptyList())
     }
 }
 
@@ -127,7 +127,7 @@ private fun Collection<LicenseFinding>.toSpdxExpression(): String =
     if (isEmpty()) {
         SpdxConstants.NONE
     } else {
-        asSequence().map { it.license }.distinct().reduce(SpdxExpression::and).sort().toString()
+        asSequence().map { it.license }.distinct().reduce(SpdxExpression::and).sorted().toString()
     }
 
 private data class Result(

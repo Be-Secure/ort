@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,7 +127,7 @@ private class DependencyRefCursor(
     val graph: DependencyGraph,
 
     /** The [DependencyGraphNode]s to traverse. */
-    val nodes: Collection<DependencyGraphNode> = emptyList(),
+    nodes: Collection<DependencyGraphNode> = emptyList(),
 
     /**
      * An optional initial value for the current node. This is mainly used it this instance acts as an adapter
@@ -147,7 +147,7 @@ private class DependencyRefCursor(
     override val linkage: PackageLinkage
         get() = current.linkage
 
-    override val issues: List<OrtIssue>
+    override val issues: List<Issue>
         get() = current.issues
 
     override fun <T> visitDependencies(block: (Sequence<DependencyNode>) -> T): T =

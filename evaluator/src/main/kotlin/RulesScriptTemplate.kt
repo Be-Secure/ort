@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,20 +32,6 @@ import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 import org.ossreviewtoolkit.model.utils.ResolutionProvider
 import org.ossreviewtoolkit.utils.scripting.OrtScriptCompilationConfiguration
 
-class RulesScriptCompilationConfiguration : ScriptCompilationConfiguration(
-    OrtScriptCompilationConfiguration(),
-    body = {
-        defaultImports(
-            "org.ossreviewtoolkit.evaluator.*",
-            "org.ossreviewtoolkit.model.*",
-            "org.ossreviewtoolkit.model.config.*",
-            "org.ossreviewtoolkit.model.licenses.*",
-            "org.ossreviewtoolkit.model.utils.*",
-            "org.ossreviewtoolkit.utils.spdx.*"
-        )
-    }
-)
-
 @KotlinScript(
     displayName = "ORT Evaluator Rules Script",
     fileExtension = "rules.kts",
@@ -60,3 +46,17 @@ open class RulesScriptTemplate(
 ) {
     val ruleViolations = mutableListOf<RuleViolation>()
 }
+
+class RulesScriptCompilationConfiguration : ScriptCompilationConfiguration(
+    OrtScriptCompilationConfiguration(),
+    body = {
+        defaultImports(
+            "org.ossreviewtoolkit.evaluator.*",
+            "org.ossreviewtoolkit.model.*",
+            "org.ossreviewtoolkit.model.config.*",
+            "org.ossreviewtoolkit.model.licenses.*",
+            "org.ossreviewtoolkit.model.utils.*",
+            "org.ossreviewtoolkit.utils.spdx.*"
+        )
+    }
+)

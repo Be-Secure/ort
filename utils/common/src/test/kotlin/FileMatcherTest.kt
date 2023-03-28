@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,6 +78,15 @@ class FileMatcherTest : StringSpec({
         FileMatcher("LICENSE", ignoreCase = true).apply {
             matches("LICENSE") shouldBe true
             matches("license") shouldBe true
+        }
+    }
+
+    "Groups of subpatterns can be matched" {
+        FileMatcher("*.{:java|class}", ignoreCase = false).apply {
+            matches("x.java") shouldBe true
+            matches("x.class") shouldBe true
+            matches("x.cpp") shouldBe false
+            matches("dir/x.java") shouldBe false
         }
     }
 })

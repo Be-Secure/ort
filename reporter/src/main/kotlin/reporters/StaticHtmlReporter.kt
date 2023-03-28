@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +35,7 @@ import org.ossreviewtoolkit.downloader.VcsHost
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.HashAlgorithm
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.PackageProvider
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.RemoteArtifact
@@ -55,7 +55,6 @@ import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.reporter.SCOPE_EXCLUDE_LIST_COMPARATOR
 import org.ossreviewtoolkit.reporter.containsUnresolved
 import org.ossreviewtoolkit.reporter.description
-import org.ossreviewtoolkit.utils.common.isMavenCentralUrl
 import org.ossreviewtoolkit.utils.common.isValidUri
 import org.ossreviewtoolkit.utils.common.normalizeLineBreaks
 import org.ossreviewtoolkit.utils.ort.Environment
@@ -68,7 +67,7 @@ import org.ossreviewtoolkit.utils.spdx.SpdxLicenseWithExceptionExpression
 
 @Suppress("LargeClass", "TooManyFunctions")
 class StaticHtmlReporter : Reporter {
-    override val reporterName = "StaticHtml"
+    override val type = "StaticHtml"
 
     private val reportFilename = "scan-report.html"
     private val css = javaClass.getResource("/static-html-reporter.css").readText()
@@ -715,7 +714,7 @@ private fun ResolvedLicenseLocation.permalink(id: Identifier): String? {
 
     (provenance as? ArtifactProvenance)?.let {
         if (it.sourceArtifact != RemoteArtifact.EMPTY) {
-            if (isMavenCentralUrl(it.sourceArtifact.url)) {
+            if (PackageProvider.get(it.sourceArtifact.url) == PackageProvider.MAVEN_CENTRAL) {
                 // At least for source artifacts on Maven Central, use the "proxy" from Sonatype which has the
                 // Archive Browser plugin installed to link to the files with findings.
                 return with(id) {

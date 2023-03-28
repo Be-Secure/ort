@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 
 import java.util.SortedSet
+
+import org.ossreviewtoolkit.model.utils.PackageLinkageValueFilter
 
 /**
  * Type alias for a [Map] that associates a [DependencyGraphNode] with the nodes representing its dependencies.
@@ -222,12 +224,12 @@ data class DependencyGraph(
         }
 
     /**
-     * Return a map of all de-duplicated [OrtIssue]s associated by [Identifier].
+     * Return a map of all de-duplicated [Issue]s associated by [Identifier].
      */
-    fun collectIssues(): Map<Identifier, Set<OrtIssue>> {
-        val collectedIssues = mutableMapOf<Identifier, MutableSet<OrtIssue>>()
+    fun collectIssues(): Map<Identifier, Set<Issue>> {
+        val collectedIssues = mutableMapOf<Identifier, MutableSet<Issue>>()
 
-        fun addIssues(pkg: Int, issues: Collection<OrtIssue>) {
+        fun addIssues(pkg: Int, issues: Collection<Issue>) {
             if (issues.isNotEmpty()) {
                 collectedIssues.getOrPut(packages[pkg]) { mutableSetOf() } += issues
             }
@@ -324,9 +326,9 @@ class DependencyReference(
     val linkage: PackageLinkage = PackageLinkage.DYNAMIC,
 
     /**
-     * A list of [OrtIssue]s that occurred handling this dependency.
+     * A list of [Issue]s that occurred handling this dependency.
      */
-    val issues: List<OrtIssue> = emptyList()
+    val issues: List<Issue> = emptyList()
 ) : Comparable<DependencyReference> {
     /**
      * Define an order on [DependencyReference] instances. Instances are ordered by their indices and fragment indices.
@@ -369,9 +371,9 @@ data class DependencyGraphNode(
     val linkage: PackageLinkage = PackageLinkage.DYNAMIC,
 
     /**
-     * A list of [OrtIssue]s that occurred handling this dependency.
+     * A list of [Issue]s that occurred handling this dependency.
      */
-    val issues: List<OrtIssue> = emptyList()
+    val issues: List<Issue> = emptyList()
 )
 
 /**

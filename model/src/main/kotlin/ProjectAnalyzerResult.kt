@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,9 @@
 package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
 
-import java.util.SortedSet
+import org.ossreviewtoolkit.model.utils.PackageSortedSetConverter
 
 /**
  * A class that bundles all information generated during an analysis.
@@ -36,7 +37,8 @@ data class ProjectAnalyzerResult(
     /**
      * The set of identified packages used by the project.
      */
-    val packages: SortedSet<Package>,
+    @JsonSerialize(converter = PackageSortedSetConverter::class)
+    val packages: Set<Package>,
 
     /**
      * The list of issues that occurred during dependency resolution. Defaults to an empty list.
@@ -44,5 +46,5 @@ data class ProjectAnalyzerResult(
      * even if this class is not serialized as part of an [OrtResult].
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val issues: List<OrtIssue> = emptyList()
+    val issues: List<Issue> = emptyList()
 )

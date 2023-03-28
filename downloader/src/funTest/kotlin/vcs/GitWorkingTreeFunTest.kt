@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,11 +20,11 @@
 package org.ossreviewtoolkit.downloader.vcs
 
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.containAll
 import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.maps.beEmpty
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 
 import java.io.File
 
@@ -34,30 +34,20 @@ import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.utils.common.unpack
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class GitWorkingTreeFunTest : StringSpec({
     val git = Git()
     val zipContentDir = createSpecTempDir()
 
     beforeSpec {
-        val zipFile = File("src/funTest/assets/pipdeptree-2018-01-03-git.zip")
+        val zipFile = getAssetFile("pipdeptree-2018-01-03-git.zip")
         println("Extracting '$zipFile' to '$zipContentDir'...")
         zipFile.unpack(zipContentDir)
     }
 
-    "Detected Git version is not empty" {
-        val version = git.getVersion()
-        println("Git version $version detected.")
-        version shouldNotBe ""
-    }
-
     "Git detects non-working-trees" {
         git.getWorkingTree(ortDataDirectory).isValid() shouldBe false
-    }
-
-    "Git correctly detects URLs to remote repositories" {
-        git.isApplicableUrl("https://bitbucket.org/yevster/spdxtraxample.git") shouldBe true
-        git.isApplicableUrl("https://hg.sr.ht/~duangle/paniq_legacy") shouldBe false
     }
 
     "Detected Git working tree information is correct" {
@@ -78,54 +68,60 @@ class GitWorkingTreeFunTest : StringSpec({
     "Git correctly lists remote branches" {
         val workingTree = git.getWorkingTree(zipContentDir)
 
-        workingTree.listRemoteBranches() should containExactlyInAnyOrder(
-            "debug-test-failures",
-            "drop-py2.6",
-            "fixing-test-setups",
-            "idiot-z-add_extra_require",
-            "master",
-            "release-0.10.1",
-            "reverse-mode",
-            "v2beta"
+        // Ignore auto-created branches by Dependabot to avoid regular updates to this list.
+        workingTree.listRemoteBranches().filterNot { it.startsWith("dependabot/") } should containExactlyInAnyOrder(
+            "all-repos_autofix_bump",
+            "all-repos_autofix_bump-2023-02-05",
+            "main",
+            "pre-commit-ci-update-config"
         )
     }
 
     "Git correctly lists remote tags" {
         val workingTree = git.getWorkingTree(zipContentDir)
 
-        workingTree.listRemoteTags() should containExactlyInAnyOrder(
-            "0.10.0",
-            "0.10.1",
-            "0.11.0",
-            "0.12.0",
-            "0.12.1",
-            "0.13.0",
-            "0.13.1",
-            "0.13.2",
-            "0.5.0",
-            "0.6.0",
-            "0.7.0",
-            "0.8.0",
-            "0.9.0",
-            "1.0.0",
-            "2.0.0",
-            "2.0.0b1",
-            "2.1.0",
-            "2.2.0",
-            "2.2.1"
-        )
+        workingTree.listRemoteTags() should containAll(expectedRemoteTags)
     }
 
     "Git correctly lists submodules" {
         val expectedSubmodules = listOf(
-            "analyzer/src/funTest/assets/projects/external/dart-http",
-            "analyzer/src/funTest/assets/projects/external/example-python-flask",
             "analyzer/src/funTest/assets/projects/external/quickcheck-state-machine",
             "analyzer/src/funTest/assets/projects/external/sbt-multi-project-example",
-            "analyzer/src/funTest/assets/projects/external/spdx-tools-python"
+            "plugins/package-managers/pub/src/funTest/assets/projects/external/dart-http",
+            "plugins/package-managers/python/src/funTest/assets/projects/external/example-python-flask",
+            "plugins/package-managers/python/src/funTest/assets/projects/external/spdx-tools-python"
         ).associateWith { VersionControlSystem.getPathInfo(File("../$it")) }
 
         val workingTree = git.getWorkingTree(File(".."))
         workingTree.getNested() shouldBe expectedSubmodules
     }
 })
+
+private val expectedRemoteTags = listOf(
+    "0.10.0",
+    "0.10.1",
+    "0.11.0",
+    "0.12.0",
+    "0.12.1",
+    "0.13.0",
+    "0.13.1",
+    "0.13.2",
+    "0.5.0",
+    "0.6.0",
+    "0.7.0",
+    "0.8.0",
+    "0.9.0",
+    "1.0.0",
+    "2.0.0",
+    "2.0.0b1",
+    "2.1.0",
+    "2.2.0",
+    "2.2.1",
+    "2.3.0",
+    "2.3.1",
+    "2.3.2",
+    "2.3.3",
+    "2.4.0",
+    "2.5.0",
+    "2.5.1"
+)

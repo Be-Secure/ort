@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ package org.ossreviewtoolkit.analyzer.managers
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
-import java.io.File
-
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.common.Os
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
 import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.utils.test.getAssetFile
+import org.ossreviewtoolkit.utils.test.toYaml
 
 class StackFunTest : StringSpec({
     "Dependencies should be resolved correctly for quickcheck-state-machine" {
@@ -46,7 +46,7 @@ class StackFunTest : StringSpec({
     }
 })
 
-private val projectsDir = File("src/funTest/assets/projects").absoluteFile
+private val projectsDir = getAssetFile("projects")
 
 private fun createStack() =
-    Stack("Stack", USER_DIR, DEFAULT_ANALYZER_CONFIGURATION, DEFAULT_REPOSITORY_CONFIGURATION)
+    Stack("Stack", USER_DIR, AnalyzerConfiguration(), RepositoryConfiguration())

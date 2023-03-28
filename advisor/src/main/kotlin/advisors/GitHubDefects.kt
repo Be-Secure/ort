@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ import org.ossreviewtoolkit.clients.github.DateTime
 import org.ossreviewtoolkit.clients.github.GitHubService
 import org.ossreviewtoolkit.clients.github.Paging
 import org.ossreviewtoolkit.clients.github.QueryResult
-import org.ossreviewtoolkit.clients.github.issuesquery.Issue
+import org.ossreviewtoolkit.clients.github.issuesquery.Issue as GitHubIssue
 import org.ossreviewtoolkit.clients.github.labels
 import org.ossreviewtoolkit.clients.github.releasesquery.Release
 import org.ossreviewtoolkit.model.AdvisorCapability
@@ -47,7 +47,7 @@ import org.ossreviewtoolkit.model.AdvisorDetails
 import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.AdvisorSummary
 import org.ossreviewtoolkit.model.Defect
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.config.AdvisorConfiguration
@@ -80,7 +80,7 @@ import org.ossreviewtoolkit.utils.ort.showStackTrace
  * For these reasons, this advisor is more a reference implementation for ORT's defects model and not necessarily
  * suitable for production usage.
  */
-class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguration) : AdviceProvider(name) {
+class GitHubDefects(name: String, config: GitHubDefectsConfiguration) : AdviceProvider(name) {
     companion object : Logging {
         /**
          * The default number of parallel requests executed by this advisor implementation. This value is used if the
@@ -90,8 +90,7 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
     }
 
     class Factory : AbstractAdviceProviderFactory<GitHubDefects>("GitHubDefects") {
-        override fun create(config: AdvisorConfiguration) =
-            GitHubDefects(providerName, config.forProvider { gitHubDefects })
+        override fun create(config: AdvisorConfiguration) = GitHubDefects(type, config.forProvider { gitHubDefects })
     }
 
     /**
@@ -101,24 +100,24 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
     override val details = AdvisorDetails(providerName, enumSetOf(AdvisorCapability.DEFECTS))
 
     /** The filters to be applied to issue labels. */
-    private val labelFilters = gitHubConfiguration.labelFilter.toLabelFilters()
+    private val labelFilters = config.labelFilter.toLabelFilters()
 
     /** The maximum number of defects to retrieve. */
-    private val maxDefects = gitHubConfiguration.maxNumberOfIssuesPerRepository ?: Int.MAX_VALUE
+    private val maxDefects = config.maxNumberOfIssuesPerRepository ?: Int.MAX_VALUE
 
     /** The number of requests to be processed in parallel. */
-    private val parallelRequests = gitHubConfiguration.parallelRequests ?: DEFAULT_PARALLEL_REQUESTS
+    private val parallelRequests = config.parallelRequests ?: DEFAULT_PARALLEL_REQUESTS
 
     /** The service for accessing the GitHub GraphQL API. */
     private val service by lazy {
         GitHubService.create(
-            token = gitHubConfiguration.token.orEmpty(),
-            url = gitHubConfiguration.endpointUrl?.let { URI(it) } ?: GitHubService.ENDPOINT,
+            token = config.token.orEmpty(),
+            url = config.endpointUrl ?: GitHubService.ENDPOINT,
             client = HttpClient(OkHttp)
         )
     }
 
-    override suspend fun retrievePackageFindings(packages: List<Package>): Map<Package, List<AdvisorResult>> =
+    override suspend fun retrievePackageFindings(packages: Set<Package>): Map<Package, List<AdvisorResult>> =
         Executors.newFixedThreadPool(parallelRequests).asCoroutineDispatcher().use { context ->
             withContext(context) {
                 packages.associateWith { async { findDefectsForPackage(it) } }
@@ -154,10 +153,10 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
      * GitHub repository  for the necessary information.
      */
     private suspend fun findDefectsForGitHubPackage(pkg: GitHubPackage): List<AdvisorResult> {
-        logger.info { "Finding defects for package '${pkg.pkg.id.toCoordinates()}'." }
+        logger.info { "Finding defects for package '${pkg.original.id.toCoordinates()}'." }
 
         val startTime = Instant.now()
-        val ortIssues = mutableListOf<OrtIssue>()
+        val ortIssues = mutableListOf<Issue>()
 
         fun <T> handleError(result: Result<List<T>>, itemType: String): List<T> =
             result.onFailure { exception ->
@@ -165,7 +164,7 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
 
                 ortIssues += createAndLogIssue(
                     providerName,
-                    "Failed to load information about $itemType for package '${pkg.pkg.id.toCoordinates()}': " +
+                    "Failed to load information about $itemType for package '${pkg.original.id.toCoordinates()}': " +
                             exception.collectMessages(),
                     Severity.ERROR
                 )
@@ -176,18 +175,18 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
             "releases"
         )
 
-        logger.debug { "Found ${releases.size} releases for package '${pkg.pkg.id.toCoordinates()}'." }
+        logger.debug { "Found ${releases.size} releases for package '${pkg.original.id.toCoordinates()}'." }
 
-        val issues = handleError(
+        val gitHubIssues = handleError(
             fetchAll(maxDefects) { service.repositoryIssues(pkg.repoOwner, pkg.repoName, it) },
             "issues"
         )
 
-        logger.debug { "Found ${issues.size} issues for package '${pkg.pkg.id.toCoordinates()}'." }
+        logger.debug { "Found ${gitHubIssues.size} issues for package '${pkg.original.id.toCoordinates()}'." }
 
         val defects = if (ortIssues.isEmpty()) {
-            issuesForRelease(pkg, issues.applyLabelFilters(), releases, ortIssues).also {
-                logger.debug { "Found ${it.size} defects for package '${pkg.pkg.id.toCoordinates()}'." }
+            createIssuesForReleases(pkg, gitHubIssues.applyLabelFilters(), releases, ortIssues).also {
+                logger.debug { "Found ${it.size} defects for package '${pkg.original.id.toCoordinates()}'." }
             }
         } else {
             emptyList()
@@ -205,32 +204,32 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
     }
 
     /**
-     * Filter the list of [issues] for defects affecting the version of the given [package][pkg]. Use [releases] for
-     * the version match. Add an entry to [ortIssues] if the release for the package cannot be determined.
+     * Filter the list of [gitHubIssues] for defects affecting the version of the given [package][pkg]. Use [releases]
+     * for the version match. Add an entry to [issues] if the release for the package cannot be determined.
      */
-    private fun issuesForRelease(
+    private fun createIssuesForReleases(
         pkg: GitHubPackage,
-        issues: List<Issue>,
+        gitHubIssues: List<GitHubIssue>,
         releases: List<Release>,
-        ortIssues: MutableList<OrtIssue>
+        issues: MutableList<Issue>
     ): List<Defect> {
-        val releaseDate = findReleaseFor(pkg.pkg, releases)?.publishedAt?.let(Instant::parse)
+        val releaseDate = findReleaseFor(pkg.original, releases)?.publishedAt?.let(Instant::parse)
             ?: Instant.now().also {
-                ortIssues += createAndLogIssue(
+                issues += createAndLogIssue(
                     providerName,
-                    "Could not determine release date for package '${pkg.pkg.id.toCoordinates()}'.",
+                    "Could not determine release date for package '${pkg.original.id.toCoordinates()}'.",
                     Severity.HINT
                 )
             }
 
-        logger.debug { "Assuming release date $releaseDate for package '${pkg.pkg.id.toCoordinates()}'." }
-        return issues.filter { it.closedAfter(releaseDate) }.map { it.toDefect(releases) }
+        logger.debug { "Assuming release date $releaseDate for package '${pkg.original.id.toCoordinates()}'." }
+        return gitHubIssues.filter { it.closedAfter(releaseDate) }.map { it.toDefect(releases) }
     }
 
     /**
      * Return a filtered list of [Issue]s according to the label filters defined in the configuration.
      */
-    private fun List<Issue>.applyLabelFilters(): List<Issue> = filter { issue ->
+    private fun List<GitHubIssue>.applyLabelFilters(): List<GitHubIssue> = filter { issue ->
         val labels = issue.labels()
         labelFilters.find { it.matches(labels) }?.including ?: false
     }
@@ -241,7 +240,7 @@ class GitHubDefects(name: String, gitHubConfiguration: GitHubDefectsConfiguratio
  */
 private data class GitHubPackage(
     /** The original package. */
-    val pkg: Package,
+    val original: Package,
 
     /** The owner of the repository. */
     val repoOwner: String,
@@ -302,7 +301,7 @@ private val REGEX_FILTER_WILDCARDS = "(?<=[*])|(?=[*])".toRegex()
 /**
  * Convert this [Issue] to a [Defect], using [releases] to determine the fix release.
  */
-private fun Issue.toDefect(releases: List<Release>): Defect =
+private fun GitHubIssue.toDefect(releases: List<Release>): Defect =
     Defect(
         id = url.substringAfterLast('/'),
         url = URI(url),
@@ -320,7 +319,7 @@ private fun Issue.toDefect(releases: List<Release>): Defect =
  * Return a flag whether this issue was closed after the given [time]. This is used to compare the time when an issue
  * was closed with a release date to find the issues affecting a release.
  */
-private fun Issue.closedAfter(time: Instant): Boolean =
+private fun GitHubIssue.closedAfter(time: Instant): Boolean =
     !closed || closedAt == null || Instant.parse(closedAt).isAfter(time)
 
 /**

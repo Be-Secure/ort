@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +21,9 @@ package org.ossreviewtoolkit.clients.clearlydefined
 
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.comparables.shouldBeGreaterThan
+import io.kotest.matchers.maps.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
@@ -30,20 +31,19 @@ import io.kotest.matchers.shouldNot
 import io.kotest.matchers.string.include
 import io.kotest.matchers.string.shouldStartWith
 
-import java.io.File
-
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.decodeFromStream
 
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.ContributionInfo
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.ContributionPatch
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.Server
+import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class ClearlyDefinedServiceFunTest : WordSpec({
     "A contribution patch" should {
         "be correctly deserialized when using empty facet arrays" {
             // See https://github.com/clearlydefined/curated-data/blob/0b2db78/curations/maven/mavencentral/com.google.code.gson/gson.yaml#L10-L11.
-            val curation = File("src/funTest/assets/gson.json").inputStream().use {
+            val curation = getAssetFile("gson.json").inputStream().use {
                 ClearlyDefinedService.JSON.decodeFromStream<Curation>(it)
             }
 
@@ -54,20 +54,20 @@ class ClearlyDefinedServiceFunTest : WordSpec({
 
     "Downloading a contribution patch" should {
         val coordinates = Coordinates(
-            ComponentType.MAVEN,
-            Provider.MAVEN_CENTRAL,
-            "javax.servlet",
-            "javax.servlet-api",
-            "3.1.0"
+            type = ComponentType.MAVEN,
+            provider = Provider.MAVEN_CENTRAL,
+            namespace = "javax.servlet",
+            name = "javax.servlet-api",
+            revision = "3.1.0"
         )
 
         "return single curation data" {
-            val service = ClearlyDefinedService.create(Server.PRODUCTION)
+            val service = ClearlyDefinedService.create()
 
             val curation = service.getCuration(
                 coordinates.type,
                 coordinates.provider,
-                coordinates.namespace.orEmpty(),
+                coordinates.namespace ?: "-",
                 coordinates.name,
                 coordinates.revision.orEmpty()
             )
@@ -76,7 +76,7 @@ class ClearlyDefinedServiceFunTest : WordSpec({
         }
 
         "return bulk curation data" {
-            val service = ClearlyDefinedService.create(Server.PRODUCTION)
+            val service = ClearlyDefinedService.create()
 
             val curations = service.getCurations(listOf(coordinates))
             val curation = curations[coordinates]?.curations?.get(coordinates)
@@ -127,6 +127,26 @@ class ClearlyDefinedServiceFunTest : WordSpec({
             summary.shouldNotBeNull().run {
                 prNumber shouldBeGreaterThan 0
                 url shouldStartWith "https://github.com/clearlydefined/curated-data-dev/pull/"
+            }
+        }
+    }
+
+    "Definitions" should {
+        "contain facets for file entries" {
+            val service = ClearlyDefinedService.create()
+            val coordinates = Coordinates(
+                type = ComponentType.NPM,
+                provider = Provider.NPM_JS,
+                namespace = null,
+                name = "eslint-plugin-tsdoc",
+                revision = "0.2.2"
+            )
+
+            val curations = service.getDefinitions(listOf(coordinates))
+
+            curations shouldHaveSize 1
+            curations[coordinates]?.files?.get(11)?.facets.shouldNotBeNull().run {
+                this shouldContain "tests"
             }
         }
     }

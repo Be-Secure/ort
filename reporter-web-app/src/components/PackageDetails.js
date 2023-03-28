@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *         http://www.apache.org/licenses/LICENSE-2.0
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,6 +32,7 @@ const PackageDetails = (props) => {
         isProject,
         definitionFilePath,
         purl,
+        authors,
         description,
         homepageUrl,
         binaryArtifact,
@@ -86,6 +87,17 @@ const PackageDetails = (props) => {
                         key="ort-package-definition-file-path"
                     >
                         {definitionFilePath}
+                    </Item>
+                )
+            }
+            {
+                webAppPackage.hasAuthors()
+                && (
+                    <Item
+                        label="Authors"
+                        key="ort-package-authors"
+                    >
+                        {Array.from(authors).join(', ')}
                     </Item>
                 )
             }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.cli.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
@@ -28,13 +27,9 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
-import java.io.IOException
 import java.net.URI
 
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.json.Json
-
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.inputGroup
 import org.ossreviewtoolkit.cli.utils.logger
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService
@@ -45,9 +40,12 @@ import org.ossreviewtoolkit.clients.clearlydefined.ContributionType
 import org.ossreviewtoolkit.clients.clearlydefined.Curation
 import org.ossreviewtoolkit.clients.clearlydefined.CurationDescribed
 import org.ossreviewtoolkit.clients.clearlydefined.CurationLicensed
-import org.ossreviewtoolkit.clients.clearlydefined.ErrorResponse
 import org.ossreviewtoolkit.clients.clearlydefined.HarvestStatus
 import org.ossreviewtoolkit.clients.clearlydefined.Patch
+import org.ossreviewtoolkit.clients.clearlydefined.callBlocking
+import org.ossreviewtoolkit.clients.clearlydefined.getDefinitionsChunked
+import org.ossreviewtoolkit.clients.clearlydefined.toCoordinates
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageCuration
 import org.ossreviewtoolkit.model.PackageCurationData
 import org.ossreviewtoolkit.model.readValueOrDefault
@@ -56,9 +54,7 @@ import org.ossreviewtoolkit.model.utils.toClearlyDefinedSourceLocation
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 
-import retrofit2.HttpException
-
-class UploadCurationsCommand : CliktCommand(
+class UploadCurationsCommand : OrtCommand(
     name = "upload-curations",
     help = "Upload ORT package curations to ClearlyDefined."
 ) {
@@ -78,22 +74,6 @@ class UploadCurationsCommand : CliktCommand(
 
     private val service by lazy { ClearlyDefinedService.create(server, OkHttpClientHelper.buildClient()) }
 
-    private fun <S, T> S.call(block: suspend S.() -> T): T =
-        try {
-            runBlocking { block() }
-        } catch (e: HttpException) {
-            val errorMessage = e.response()?.errorBody()?.let {
-                val errorResponse = Json.Default.decodeFromString<ErrorResponse>(it.string())
-                val innerError = errorResponse.error.innererror
-
-                logger.debug { innerError.stack }
-
-                "The HTTP service call failed with: ${innerError.message}"
-            } ?: "The HTTP service call failed with code ${e.code()}: ${e.message()}"
-
-            throw IOException(errorMessage, e)
-        }
-
     override fun run() {
         val allCurations = inputFile.readValueOrDefault(emptyList<PackageCuration>())
 
@@ -106,12 +86,11 @@ class UploadCurationsCommand : CliktCommand(
         }.values
 
         val curationsToCoordinates = curations.mapNotNull { curation ->
-            curation.id.toClearlyDefinedCoordinates()?.let { coordinates ->
-                curation to coordinates
-            }
+            val pkg = Package.EMPTY.copy(id = curation.id)
+            pkg.toClearlyDefinedCoordinates()?.let { curation to it }
         }.toMap()
 
-        val definitions = service.call { getDefinitions(curationsToCoordinates.values) }
+        val definitions = service.getDefinitionsChunked(curationsToCoordinates.values)
 
         val curationsByHarvestStatus = curations.groupBy { curation ->
             definitions[curationsToCoordinates[curation]]?.getHarvestStatus() ?: logger.warn {
@@ -123,8 +102,7 @@ class UploadCurationsCommand : CliktCommand(
         val unharvestedCurations = curationsByHarvestStatus[HarvestStatus.NOT_HARVESTED].orEmpty()
 
         unharvestedCurations.forEach { curation ->
-            val webServerUrl = server.url.replaceFirst("dev-api.", "dev.").replaceFirst("api.", "")
-            val definitionUrl = "$webServerUrl/definitions/${curationsToCoordinates[curation]}"
+            val definitionUrl = "${server.webUrl}/definitions/${curationsToCoordinates[curation]}"
 
             println(
                 "Package '${curation.id.toCoordinates()}' was not harvested until now, but harvesting was requested. " +
@@ -137,14 +115,24 @@ class UploadCurationsCommand : CliktCommand(
                 curationsByHarvestStatus[HarvestStatus.PARTIALLY_HARVESTED].orEmpty()
 
         uploadableCurations.forEachIndexed { index, curation ->
-            print("Curation ${index + 1} of ${uploadableCurations.size} for package '${curation.id.toCoordinates()}' ")
+            val patch = curation.toContributionPatch()
 
-            when (val summary = curation.toContributionPatch()?.let { service.call { putCuration(it) } }) {
-                null -> println("failed to be uploaded.")
-                else -> {
-                    println("was uploaded successfully:\n${summary.url}")
+            if (patch == null) {
+                println(
+                    "Unable to convert $curation (${index + 1} of ${uploadableCurations.size}) to a contribution patch."
+                )
+            } else {
+                print(
+                    "Curation ${index + 1} of ${uploadableCurations.size} for package '${curation.id.toCoordinates()}' "
+                )
 
+                runCatching {
+                    service.callBlocking { putCuration(patch) }
+                }.onSuccess {
+                    println("was uploaded successfully:\n${it.url}")
                     ++uploadedCurationsCount
+                }.onFailure {
+                    println("failed to be uploaded.")
                 }
             }
         }
@@ -159,7 +147,13 @@ class UploadCurationsCommand : CliktCommand(
 }
 
 private fun PackageCuration.toContributionPatch(): ContributionPatch? {
-    val coordinates = id.toClearlyDefinedCoordinates() ?: return null
+    // In ORT's own PackageCuration format, the Package that the PackageCurationData should apply to is solely
+    // identified by the Identifier. That is, there is no PackageProvider information available in PackageCuration for
+    // ClearlyDefined to use. So simply construct an empty Package and rely on the default Provider per ComponentType.
+    val pkg = Package.EMPTY.copy(id = id)
+
+    val sourceLocation = pkg.toClearlyDefinedSourceLocation() ?: return null
+    val coordinates = sourceLocation.toCoordinates()
 
     val info = ContributionInfo(
         // The exact values to use here are unclear; use what is mostly used at
@@ -178,7 +172,7 @@ private fun PackageCuration.toContributionPatch(): ContributionPatch? {
 
     val described = CurationDescribed(
         projectWebsite = data.homepageUrl?.let { URI(it) },
-        sourceLocation = id.toClearlyDefinedSourceLocation(data.vcs, data.sourceArtifact)
+        sourceLocation = sourceLocation
     )
 
     val curation = Curation(

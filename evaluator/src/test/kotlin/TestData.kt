@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ package org.ossreviewtoolkit.evaluator
 import java.net.URI
 import java.time.Instant
 
-import org.ossreviewtoolkit.model.AccessStatistics
 import org.ossreviewtoolkit.model.AdvisorDetails
 import org.ossreviewtoolkit.model.AdvisorRecord
 import org.ossreviewtoolkit.model.AdvisorResult
@@ -30,7 +29,6 @@ import org.ossreviewtoolkit.model.AdvisorRun
 import org.ossreviewtoolkit.model.AdvisorSummary
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
-import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.OrtResult
@@ -38,7 +36,6 @@ import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.Repository
-import org.ossreviewtoolkit.model.ScanRecord
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
@@ -57,7 +54,6 @@ import org.ossreviewtoolkit.model.config.PackageLicenseChoice
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.PathExcludeReason
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
@@ -65,7 +61,7 @@ import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
 import org.ossreviewtoolkit.utils.spdx.toSpdx
 
 val concludedLicense = "LicenseRef-a OR LicenseRef-b OR LicenseRef-c or LicenseRef-d".toSpdx()
-val declaredLicenses = sortedSetOf("Apache-2.0", "MIT")
+val declaredLicenses = setOf("Apache-2.0", "MIT")
 val declaredLicensesProcessed = DeclaredLicenseProcessor.process(declaredLicenses)
 
 val packageExcluded = Package.EMPTY.copy(
@@ -116,9 +112,9 @@ val packageWithVulnerabilities = Package.EMPTY.copy(
     id = Identifier("Maven:org.ossreviewtoolkit:package-with-vulnerabilities:1.0")
 )
 
-val packageMetaDataOnly = Package.EMPTY.copy(
+val packageMetadataOnly = Package.EMPTY.copy(
     id = Identifier("Maven:org.ossreviewtoolkit:package-metadata-only:1.0"),
-    isMetaDataOnly = true
+    isMetadataOnly = true
 )
 
 val packageDependency = Package.EMPTY.copy(
@@ -126,7 +122,7 @@ val packageDependency = Package.EMPTY.copy(
     declaredLicenses = declaredLicenses
 )
 
-val allPackages = listOf(
+val allPackages = setOf(
     packageExcluded,
     packageDynamicallyLinked,
     packageStaticallyLinked,
@@ -135,7 +131,7 @@ val allPackages = listOf(
     packageWithOnlyConcludedLicense,
     packageWithOnlyDeclaredLicense,
     packageWithConcludedAndDeclaredLicense,
-    packageMetaDataOnly,
+    packageMetadataOnly,
     packageDependency
 )
 
@@ -165,7 +161,7 @@ val scopeIncluded = Scope(
         packageWithConcludedAndDeclaredLicense.toReference(),
         packageRefDynamicallyLinked,
         packageRefStaticallyLinked,
-        packageMetaDataOnly.toReference()
+        packageMetadataOnly.toReference()
     )
 )
 
@@ -175,7 +171,7 @@ val projectIncluded = Project.EMPTY.copy(
     scopeDependencies = sortedSetOf(scopeIncluded)
 )
 
-val allProjects = listOf(
+val allProjects = setOf(
     projectExcluded,
     projectIncluded
 )
@@ -211,15 +207,11 @@ val ortResult = OrtResult(
             )
         )
     ),
-    analyzer = AnalyzerRun(
-        environment = Environment(),
+    analyzer = AnalyzerRun.EMPTY.copy(
         config = AnalyzerConfiguration(allowDynamicVersions = true),
         result = AnalyzerResult(
-            projects = sortedSetOf(
-                projectExcluded,
-                projectIncluded
-            ),
-            packages = allPackages.mapTo(sortedSetOf()) { CuratedPackage(it) }
+            projects = allProjects,
+            packages = allPackages
         )
     ),
     advisor = AdvisorRun(
@@ -260,29 +252,20 @@ val ortResult = OrtResult(
             )
         )
     ),
-    scanner = ScannerRun(
-        environment = Environment(),
-        config = ScannerConfiguration(),
-        results = ScanRecord(
-            scanResults = sortedMapOf(
-                Identifier("Maven:org.ossreviewtoolkit:package-with-only-detected-license:1.0") to listOf(
-                    ScanResult(
-                        provenance = UnknownProvenance,
-                        scanner = ScannerDetails.EMPTY,
-                        summary = ScanSummary(
-                            startTime = Instant.EPOCH,
-                            endTime = Instant.EPOCH,
-                            packageVerificationCode = "",
-                            licenseFindings = sortedSetOf(
-                                LicenseFinding("LicenseRef-a", TextLocation("LICENSE", 1)),
-                                LicenseFinding("LicenseRef-b", TextLocation("LICENSE", 2))
-                            ),
-                            copyrightFindings = sortedSetOf()
+    scanner = ScannerRun.EMPTY.copy(
+        scanResults = sortedMapOf(
+            Identifier("Maven:org.ossreviewtoolkit:package-with-only-detected-license:1.0") to listOf(
+                ScanResult(
+                    provenance = UnknownProvenance,
+                    scanner = ScannerDetails.EMPTY,
+                    summary = ScanSummary.EMPTY.copy(
+                        licenseFindings = sortedSetOf(
+                            LicenseFinding("LicenseRef-a", TextLocation("LICENSE", 1)),
+                            LicenseFinding("LicenseRef-b", TextLocation("LICENSE", 2))
                         )
                     )
                 )
-            ),
-            storageStats = AccessStatistics()
+            )
         )
     ),
     labels = mapOf(

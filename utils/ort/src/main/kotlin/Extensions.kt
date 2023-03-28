@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import java.io.File
  * Create a temporary directory with a name specific to ORT, and optional [infixes].
  */
 fun createOrtTempDir(vararg infixes: String): File {
-    val prefix = listOfNotNull(ORT_NAME, *infixes).joinToString("-")
+    val prefix = listOf(ORT_NAME, *infixes).joinToString("-")
     return kotlin.io.path.createTempDirectory(prefix).toFile()
 }
 

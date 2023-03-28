@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,23 @@
 
 package org.ossreviewtoolkit.reporter
 
-import org.ossreviewtoolkit.model.OrtIssue
+import kotlin.script.experimental.api.ResultValue
+import kotlin.script.experimental.api.ScriptEvaluationConfiguration
+import kotlin.script.experimental.api.constructorArgs
+import kotlin.script.experimental.api.scriptsInstancesSharing
+import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
+
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
-import org.ossreviewtoolkit.utils.common.ScriptRunner
+import org.ossreviewtoolkit.utils.scripting.ScriptRunner
 
 /**
- * Provides how-to-fix texts in Markdown format for any given [OrtIssue].
+ * Provides how-to-fix texts in Markdown format for any given [Issue].
  */
 fun interface HowToFixTextProvider {
     companion object {
         /**
-         * A [HowToFixTextProvider] which returns null for any given [OrtIssue].
+         * A [HowToFixTextProvider] which returns null for any given [Issue].
          */
         val NONE = HowToFixTextProvider { null }
 
@@ -44,27 +50,19 @@ fun interface HowToFixTextProvider {
      * Return a Markdown text describing how to fix the given [issue]. Non-null return values override the default
      * how-to-fix texts, while a null value keeps the default.
      */
-    fun getHowToFixText(issue: OrtIssue): String?
+    fun getHowToFixText(issue: Issue): String?
 }
 
 private class HowToFixScriptRunner(ortResult: OrtResult) : ScriptRunner() {
-    override val preface = """
-            import org.ossreviewtoolkit.model.*
-            import org.ossreviewtoolkit.model.config.*
-            import org.ossreviewtoolkit.model.licenses.*
-            import org.ossreviewtoolkit.model.utils.*
-            import org.ossreviewtoolkit.reporter.HowToFixTextProvider
-            import org.ossreviewtoolkit.utils.common.*
-            import org.ossreviewtoolkit.utils.ort.*
+    override val compConfig = createJvmCompilationConfigurationFromTemplate<HowToFixTextProviderScriptTemplate>()
 
-        """.trimIndent()
-
-    override val postface = """
-        """.trimIndent()
-
-    init {
-        engine.put("ortResult", ortResult)
+    override val evalConfig = ScriptEvaluationConfiguration {
+        constructorArgs(ortResult)
+        scriptsInstancesSharing(true)
     }
 
-    override fun run(script: String): HowToFixTextProvider = super.run(script) as HowToFixTextProvider
+    fun run(script: String): HowToFixTextProvider {
+        val scriptValue = runScript(script) as ResultValue.Value
+        return scriptValue.value as HowToFixTextProvider
+    }
 }

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -69,65 +68,7 @@ class Subversion : VersionControlSystem() {
 
     override fun getDefaultBranchName(url: String) = "trunk"
 
-    override fun getWorkingTree(vcsDirectory: File) =
-        object : WorkingTree(vcsDirectory, type) {
-            private val directoryNamespaces = listOf("branches", "tags", "trunk", "wiki")
-
-            override fun isValid(): Boolean {
-                if (!workingDir.isDirectory) {
-                    return false
-                }
-
-                return doSvnInfo() != null
-            }
-
-            override fun isShallow() = false
-
-            override fun getRemoteUrl() = doSvnInfo()?.url?.toString().orEmpty()
-
-            override fun getRevision() = doSvnInfo()?.committedRevision?.number?.toString().orEmpty()
-
-            override fun getRootPath() = doSvnInfo()?.workingCopyRoot ?: workingDir
-
-            private fun listRemoteRefs(namespace: String): List<String> {
-                val refs = mutableListOf<String>()
-                val remoteUrl = getRemoteUrl()
-
-                val projectRoot = if (directoryNamespaces.any { "/$it/" in remoteUrl }) {
-                    doSvnInfo()?.repositoryRootURL?.toString().orEmpty()
-                } else {
-                    remoteUrl
-                }
-
-                // We assume a single project directory layout.
-                val svnUrl = SVNURL.parseURIEncoded("$projectRoot/$namespace")
-
-                try {
-                    clientManager.logClient.doList(
-                        svnUrl,
-                        SVNRevision.HEAD,
-                        SVNRevision.HEAD,
-                        /*fetchLocks =*/ false,
-                        /*recursive =*/ false
-                    ) { dirEntry ->
-                        if (dirEntry.name.isNotEmpty()) refs += "$namespace/${dirEntry.relativePath}"
-                    }
-                } catch (e: SVNException) {
-                    e.showStackTrace()
-
-                    logger.info { "Unable to list remote refs for $type repository at $remoteUrl." }
-                }
-
-                return refs
-            }
-
-            override fun listRemoteBranches() = listRemoteRefs("branches")
-
-            override fun listRemoteTags() = listRemoteRefs("tags")
-
-            private fun doSvnInfo() =
-                runCatching { clientManager.wcClient.doInfo(workingDir, SVNRevision.WORKING) }.getOrNull()
-        }
+    override fun getWorkingTree(vcsDirectory: File) = SubversionWorkingTree(vcsDirectory, type, clientManager)
 
     override fun isApplicableUrlInternal(vcsUrl: String) =
         try {

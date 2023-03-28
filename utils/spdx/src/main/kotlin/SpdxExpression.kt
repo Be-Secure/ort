@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,9 +134,9 @@ sealed class SpdxExpression {
     abstract fun normalize(mapDeprecated: Boolean = true): SpdxExpression
 
     /**
-     * Sort this expression lexicographically.
+     * Return this expression sorted lexicographically.
      */
-    open fun sort(): SpdxExpression = this
+    open fun sorted(): SpdxExpression = this
 
     /**
      * Validate this expression. [strictness] defines whether only the syntax is checked
@@ -276,7 +275,7 @@ class SpdxCompoundExpression(
     override fun normalize(mapDeprecated: Boolean) =
         SpdxCompoundExpression(left.normalize(mapDeprecated), operator, right.normalize(mapDeprecated))
 
-    override fun sort(): SpdxExpression {
+    override fun sorted(): SpdxExpression {
         /**
          * Get all transitive children of this expression that are concatenated with the same operator as this compound
          * expression. These can be re-ordered because the AND and OR operators are both commutative.
@@ -288,7 +287,7 @@ class SpdxCompoundExpression(
                 if (child is SpdxCompoundExpression && child.operator == operator) {
                     children += getSortedChildrenWithSameOperator(child)
                 } else {
-                    children += child.sort()
+                    children += child.sorted()
                 }
             }
 
@@ -361,11 +360,11 @@ class SpdxCompoundExpression(
             val dismissedLicense = subExpression.validChoices().first { it != choice }
             val unchosenLicenses = validChoices().filter { it != dismissedLicense }
 
-            if (unchosenLicenses.isEmpty()) {
-                throw IllegalArgumentException("No licenses left after applying choice $choice to $subExpression")
-            } else {
-                unchosenLicenses.reduce(SpdxExpression::or)
+            require(unchosenLicenses.isNotEmpty()) {
+                "No licenses left after applying choice $choice to $subExpression."
             }
+
+            unchosenLicenses.reduce(SpdxExpression::or)
         }
     }
 
@@ -436,7 +435,7 @@ sealed class SpdxSingleLicenseExpression : SpdxExpression() {
     abstract fun exception(): String?
 
     /**
-     * Return the URL for the licence if this is [SpdxLicenseIdExpression] or [SpdxLicenseWithExceptionExpression].
+     * Return the URL for the licence if this is an [SpdxLicenseIdExpression] or [SpdxLicenseWithExceptionExpression].
      * Otherwise, return null.
      */
     abstract fun getLicenseUrl(): String?

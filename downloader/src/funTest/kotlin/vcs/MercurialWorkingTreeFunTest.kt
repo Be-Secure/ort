@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,25 +20,25 @@
 package org.ossreviewtoolkit.downloader.vcs
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.maps.beEmpty
+import io.kotest.matchers.maps.beEmpty as beEmptyMap
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
-
-import java.io.File
+import io.kotest.matchers.shouldNot
+import io.kotest.matchers.string.beEmpty
 
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.utils.common.unpack
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class MercurialWorkingTreeFunTest : StringSpec({
     val hg = Mercurial()
     val zipContentDir = createSpecTempDir()
 
     beforeSpec {
-        val zipFile = File("src/funTest/assets/lz4revlog-2018-01-03-hg.zip")
+        val zipFile = getAssetFile("lz4revlog-2018-01-03-hg.zip")
         println("Extracting '$zipFile' to '$zipContentDir'...")
         zipFile.unpack(zipContentDir)
     }
@@ -46,7 +46,7 @@ class MercurialWorkingTreeFunTest : StringSpec({
     "Detected Mercurial version is not empty" {
         val version = hg.getVersion()
         println("Mercurial version $version detected.")
-        version shouldNotBe ""
+        version shouldNot beEmpty()
     }
 
     "Mercurial detects non-working-trees" {
@@ -68,7 +68,7 @@ class MercurialWorkingTreeFunTest : StringSpec({
             revision = "422ca71c35132f1f55d20a13355708aec7669b50",
             path = ""
         )
-        workingTree.getNested() should beEmpty()
+        workingTree.getNested() should beEmptyMap()
         workingTree.getRootPath() shouldBe zipContentDir
         workingTree.getPathToRoot(zipContentDir.resolve("tests")) shouldBe "tests"
     }

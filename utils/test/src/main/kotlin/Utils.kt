@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,14 +28,11 @@ import io.kotest.matchers.neverNullMatcher
 import java.io.File
 import java.time.Instant
 
+import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.OrtResult
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.mapper
 import org.ossreviewtoolkit.model.yamlMapper
-
-val DEFAULT_ANALYZER_CONFIGURATION = AnalyzerConfiguration(allowDynamicVersions = false)
-val DEFAULT_REPOSITORY_CONFIGURATION = RepositoryConfiguration()
+import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
 
 val USER_DIR = File(System.getProperty("user.dir"))
 
@@ -47,14 +44,21 @@ private val START_AND_END_TIME_REGEX = Regex("((start|end)_time): \".*\"")
 private val TIMESTAMP_REGEX = Regex("(timestamp): \".*\"")
 
 /**
- * Return the asset file located under [path] relative to the 'assets' directory as text.
+ * Return the content of the fun test asset file located under [path] relative to the 'assets' directory as text.
  */
-fun getAssetAsString(path: String): String = File("src/funTest/assets").resolve(path).readText()
+fun getAssetAsString(path: String): String = getAssetFile(path).readText()
 
+/**
+ * Return the absolute file for the functional test assets at the given [path].
+ */
+fun getAssetFile(path: String): File = File("src/funTest/assets", path).absoluteFile
+
+ @Suppress("LongParameterList")
 fun patchExpectedResult(
     result: File,
     custom: Map<String, String> = emptyMap(),
     definitionFilePath: String? = null,
+    absoluteDefinitionFilePath: String? = null,
     url: String? = null,
     revision: String? = null,
     path: String? = null,
@@ -69,20 +73,39 @@ fun patchExpectedResult(
         .replaceIfNotNull("\"<REPLACE_PROCESSORS>\"", Runtime.getRuntime().availableProcessors().toString())
         .replaceIfNotNull("\"<REPLACE_MAX_MEMORY>\"", Runtime.getRuntime().maxMemory().toString())
         .replaceIfNotNull("<REPLACE_DEFINITION_FILE_PATH>", definitionFilePath)
+        .replaceIfNotNull("<REPLACE_ABSOLUTE_DEFINITION_FILE_PATH>", absoluteDefinitionFilePath)
         .replaceIfNotNull("<REPLACE_URL>", url)
         .replaceIfNotNull("<REPLACE_REVISION>", revision)
         .replaceIfNotNull("<REPLACE_PATH>", path)
         .replaceIfNotNull("<REPLACE_URL_PROCESSED>", urlProcessed)
 }
 
+fun patchExpectedResult2(expectedResultFile: File, definitionFile: File): String {
+    val projectDir = definitionFile.parentFile
+    val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
+    val vcsUrl = vcsDir.getRemoteUrl()
+    val vcsRevision = vcsDir.getRevision()
+    val vcsPath = vcsDir.getPathToRoot(projectDir)
+
+    return patchExpectedResult(
+        expectedResultFile,
+        definitionFilePath = "$vcsPath/${definitionFile.name}",
+        absoluteDefinitionFilePath = definitionFile.absolutePath,
+        path = vcsPath,
+        revision = vcsRevision,
+        url = normalizeVcsUrl(vcsUrl)
+    )
+}
+
 fun patchActualResult(
     result: String,
+    custom: Map<String, String> = emptyMap(),
     patchStartAndEndTime: Boolean = false
 ): String {
     fun String.replaceIf(condition: Boolean, regex: Regex, transform: (MatchResult) -> CharSequence) =
         if (condition) replace(regex, transform) else this
 
-    return result
+    return custom.entries.fold(result) { text, entry -> text.replace(entry.key, entry.value) }
         .replace(ORT_VERSION_REGEX) { "${it.groupValues[1]}: \"HEAD\"" }
         .replace(JAVA_VERSION_REGEX) { "${it.groupValues[1]}: \"${System.getProperty("java.version")}\"" }
         .replace(ENV_VAR_REGEX) { "${it.groupValues[1]} {}" }
@@ -95,10 +118,7 @@ fun patchActualResult(
     result: OrtResult,
     patchStartAndEndTime: Boolean = false
 ): String =
-    patchActualResult(yamlMapper.writeValueAsString(result), patchStartAndEndTime)
-
-fun patchActualResultObject(result: OrtResult, patchStartAndEndTime: Boolean = false): OrtResult =
-    yamlMapper.readValue(patchActualResult(result, patchStartAndEndTime))
+    patchActualResult(yamlMapper.writeValueAsString(result), patchStartAndEndTime = patchStartAndEndTime)
 
 fun readOrtResult(file: String) = readOrtResult(File(file))
 

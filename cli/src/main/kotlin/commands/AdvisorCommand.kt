@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@
 package org.ossreviewtoolkit.cli.commands
 
 import com.github.ajalt.clikt.core.BadParameterValue
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.requireObject
@@ -34,14 +33,21 @@ import com.github.ajalt.clikt.parameters.options.split
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
+import java.time.Duration
+
+import kotlin.time.toKotlinDuration
+
+import kotlinx.coroutines.runBlocking
+
 import org.ossreviewtoolkit.advisor.Advisor
-import org.ossreviewtoolkit.cli.GlobalOptions
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.SeverityStats
 import org.ossreviewtoolkit.cli.utils.configurationGroup
 import org.ossreviewtoolkit.cli.utils.outputGroup
 import org.ossreviewtoolkit.cli.utils.readOrtResult
 import org.ossreviewtoolkit.cli.utils.writeOrtResult
 import org.ossreviewtoolkit.model.FileFormat
+import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.utils.DefaultResolutionProvider
 import org.ossreviewtoolkit.model.utils.mergeLabels
 import org.ossreviewtoolkit.utils.common.expandTilde
@@ -49,10 +55,10 @@ import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.ort.ORT_RESOLUTIONS_FILENAME
 import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
 
-class AdvisorCommand : CliktCommand(name = "advise", help = "Check dependencies for security vulnerabilities.") {
-    private val allVulnerabilityProvidersByName = Advisor.ALL.associateBy { it.providerName }
-        .toSortedMap(String.CASE_INSENSITIVE_ORDER)
-
+class AdvisorCommand : OrtCommand(
+    name = "advise",
+    help = "Check dependencies for security vulnerabilities."
+) {
     private val ortFile by option(
         "--ort-file", "-i",
         help = "An ORT result file with an analyzer result to use."
@@ -92,12 +98,9 @@ class AdvisorCommand : CliktCommand(name = "advise", help = "Check dependencies 
 
     private val providerFactories by option(
         "--advisors", "-a",
-        help = "The comma-separated advisors to use, any of ${allVulnerabilityProvidersByName.keys}."
+        help = "The comma-separated advisors to use, any of ${Advisor.ALL.keys}."
     ).convert { name ->
-        allVulnerabilityProvidersByName[name]
-            ?: throw BadParameterValue(
-                "Advisor '$name' is not one of ${allVulnerabilityProvidersByName.keys}."
-            )
+        Advisor.ALL[name] ?: throw BadParameterValue("Advisor '$name' is not one of ${Advisor.ALL.keys}.")
     }.split(",").required()
 
     private val skipExcluded by option(
@@ -105,14 +108,14 @@ class AdvisorCommand : CliktCommand(name = "advise", help = "Check dependencies 
         help = "Do not check excluded projects or packages."
     ).flag()
 
-    private val globalOptionsForSubcommands by requireObject<GlobalOptions>()
+    private val ortConfig by requireObject<OrtConfiguration>()
 
     override fun run() {
         val outputFiles = outputFormats.mapTo(mutableSetOf()) { format ->
             outputDir.resolve("advisor-result.${format.fileExtension}")
         }
 
-        if (!globalOptionsForSubcommands.forceOverwrite) {
+        if (!ortConfig.forceOverwrite) {
             val existingOutputFiles = outputFiles.filter { it.exists() }
             if (existingOutputFiles.isNotEmpty()) {
                 throw UsageError("None of the output files $existingOutputFiles must exist yet.", statusCode = 2)
@@ -121,29 +124,42 @@ class AdvisorCommand : CliktCommand(name = "advise", help = "Check dependencies 
 
         val distinctProviders = providerFactories.distinct()
         println("The following advisors are activated:")
-        println("\t" + distinctProviders.joinToString())
+        println("\t" + distinctProviders.joinToString().ifEmpty { "<None>" })
 
-        val config = globalOptionsForSubcommands.config
-        val advisor = Advisor(distinctProviders, config.advisor)
+        val advisor = Advisor(distinctProviders, ortConfig.advisor)
 
         val ortResultInput = readOrtResult(ortFile)
-        val ortResultOutput = advisor.retrieveFindings(ortResultInput, skipExcluded).mergeLabels(labels)
+        val ortResultOutput = runBlocking {
+            advisor.advise(ortResultInput, skipExcluded).mergeLabels(labels)
+        }
 
         outputDir.safeMkdirs()
         writeOrtResult(ortResultOutput, outputFiles, "advisor")
 
-        val advisorResults = ortResultOutput.advisor?.results
-
-        if (advisorResults == null) {
-            println("There was an error creating the advisor results.")
+        val advisorRun = ortResultOutput.advisor
+        if (advisorRun == null) {
+            println("No advisor run was created.")
             throw ProgramResult(1)
         }
 
+        val duration = with(advisorRun) { Duration.between(startTime, endTime).toKotlinDuration() }
+        println("The advice took $duration.")
+
+        with(advisorRun.results.getVulnerabilities()) {
+            val totalPackageCount = ortResultOutput.getPackages(omitExcluded = true).size
+            val vulnerabilityCount = values.sumOf { it.size }
+
+            println(
+                "$size of $totalPackageCount package(s) (not counting excluded ones) are vulnerable, with " +
+                        "$vulnerabilityCount vulnerabilities in total."
+            )
+        }
+
         val resolutionProvider = DefaultResolutionProvider.create(ortResultOutput, resolutionsFile)
-        val (resolvedIssues, unresolvedIssues) =
-            advisorResults.collectIssues().flatMap { it.value }.partition { resolutionProvider.isResolved(it) }
+        val (resolvedIssues, unresolvedIssues) = advisorRun.results.collectIssues().flatMap { it.value }
+            .partition { resolutionProvider.isResolved(it) }
         val severityStats = SeverityStats.createFromIssues(resolvedIssues, unresolvedIssues)
 
-        severityStats.print().conclude(config.severeIssueThreshold, 2)
+        severityStats.print().conclude(ortConfig.severeIssueThreshold, 2)
     }
 }

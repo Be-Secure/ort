@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
@@ -27,7 +26,6 @@ import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
 /**
  * The result of a single scan of a single package.
  */
-@JsonIgnoreProperties("raw_result")
 data class ScanResult(
     /**
      * Provenance information about the scanned source code.
@@ -56,21 +54,18 @@ data class ScanResult(
      * for [provenance]. Findings which [RootLicenseMatcher] assigns as root license files for [path] are also kept.
      */
     fun filterByPath(path: String): ScanResult =
-        takeIf { path.isBlank() } ?: ScanResult(
-            provenance = if (provenance is RepositoryProvenance) {
-                provenance.copy(vcsInfo = provenance.vcsInfo.copy(path = path))
-            } else {
-                provenance
-            },
-            scanner = scanner,
-            summary = summary.filterByPath(path),
-        )
+        when {
+            path.isBlank() -> this
 
-    /**
-     * Return a [ScanResult] whose [summary] contains only findings from the [provenance]'s [VcsInfo.path].
-     */
-    fun filterByVcsPath(): ScanResult =
-        if (provenance is RepositoryProvenance) filterByPath(provenance.vcsInfo.path) else this
+            provenance is RepositoryProvenance -> {
+                copy(
+                    provenance = provenance.copy(vcsInfo = provenance.vcsInfo.copy(path = path)),
+                    summary = summary.filterByPath(path)
+                )
+            }
+
+            else -> copy(summary = summary.filterByPath(path))
+        }
 
     /**
      * Return a [ScanResult] whose [summary] contains only findings whose location / path is not matched by any glob

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.maps.beEmpty as beEmptyMap
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
@@ -31,17 +32,21 @@ import io.kotest.matchers.types.shouldBeTypeOf
 import org.ossreviewtoolkit.clients.fossid.FossIdRestService
 import org.ossreviewtoolkit.clients.fossid.checkResponse
 import org.ossreviewtoolkit.clients.fossid.deleteScan
+import org.ossreviewtoolkit.clients.fossid.getScan
 import org.ossreviewtoolkit.clients.fossid.listIdentifiedFiles
 import org.ossreviewtoolkit.clients.fossid.listIgnoredFiles
 import org.ossreviewtoolkit.clients.fossid.listMarkedAsIdentifiedFiles
+import org.ossreviewtoolkit.clients.fossid.listMatchedLines
 import org.ossreviewtoolkit.clients.fossid.listPendingFiles
 import org.ossreviewtoolkit.clients.fossid.listScanResults
 import org.ossreviewtoolkit.clients.fossid.listScansForProject
+import org.ossreviewtoolkit.clients.fossid.listSnippets
 import org.ossreviewtoolkit.clients.fossid.model.Scan
 import org.ossreviewtoolkit.clients.fossid.model.identification.identifiedFiles.IdentifiedFile
 import org.ossreviewtoolkit.clients.fossid.model.identification.ignored.IgnoredFile
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.MarkedAsIdentifiedFile
 import org.ossreviewtoolkit.clients.fossid.model.result.FossIdScanResult
+import org.ossreviewtoolkit.clients.fossid.model.result.Snippet
 
 private const val PROJECT_CODE_1 = "semver4j"
 private const val PROJECT_CODE_2 = "semver4j_2"
@@ -65,7 +70,7 @@ class FossIdClientReturnTypeTest : StringSpec({
 
     beforeSpec {
         server.start()
-        service = FossIdRestService.createService("http://localhost:${server.port()}")
+        service = FossIdRestService.create("http://localhost:${server.port()}")
     }
 
     afterSpec {
@@ -74,6 +79,13 @@ class FossIdClientReturnTypeTest : StringSpec({
 
     beforeTest {
         server.resetAll()
+    }
+
+    "Single scan can be queried" {
+        service.getScan("", "", SCAN_CODE_2).shouldNotBeNull().run {
+            checkResponse("get scan")
+            data.shouldBeTypeOf<Scan>()
+        }
     }
 
     "Scans for project can be listed when there is none" {
@@ -118,6 +130,39 @@ class FossIdClientReturnTypeTest : StringSpec({
                 forEach {
                     it.shouldBeTypeOf<FossIdScanResult>()
                 }
+            }
+        }
+    }
+
+    "Snippets can be listed when there is some" {
+        service.listSnippets(
+            "",
+            "",
+            SCAN_CODE_2,
+            "src/main/java/com/vdurmont/semver4j/Requirement.java"
+        ).shouldNotBeNull().run {
+            checkResponse("list snippets")
+            data.shouldNotBeNull().run {
+                this shouldNot beEmpty()
+                forEach {
+                    it.shouldBeTypeOf<Snippet>()
+                }
+            }
+        }
+    }
+
+    "Matched lines can be listed" {
+        service.listMatchedLines(
+            "",
+            "",
+            SCAN_CODE_2,
+            "src/main/java/com/vdurmont/semver4j/Requirement.java",
+            119
+        ).shouldNotBeNull().run {
+            checkResponse("list matched lines")
+            data.shouldNotBeNull().run {
+                localFile shouldNot beEmptyMap()
+                mirrorFile shouldNot beEmptyMap()
             }
         }
     }

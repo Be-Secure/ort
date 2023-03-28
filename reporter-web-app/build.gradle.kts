@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +25,7 @@ import org.jetbrains.kotlin.gradle.targets.js.yarn.YarnSetupTask
 
 // The Yarn plugin is only applied programmatically for Kotlin projects that target JavaScript. As we do not target
 // JavaScript from Kotlin (yet), manually apply the plugin to make its setup tasks available.
-YarnPlugin.apply(rootProject).version = "1.22.10"
+YarnPlugin.apply(rootProject).version = "1.22.17"
 
 // The Yarn plugin registers tasks always on the root project, see
 // https://github.com/JetBrains/kotlin/blob/1.4.0/libraries/tools/kotlin-gradle-plugin/src/main/kotlin/org/jetbrains/kotlin/gradle/targets/js/yarn/YarnPlugin.kt#L53-L57
@@ -49,8 +48,16 @@ tasks.addRule("Pattern: yarn<Command>") {
             // Execute the Yarn version downloaded by Gradle using the NodeJs version downloaded by Gradle.
             commandLine = listOf(nodeExecutable.path, yarnJs.path, command)
 
-            // Prepend the directory of the bootstrapped Node.js to the PATH environment.
-            environment = environment + mapOf("PATH" to "$nodeBinDir${File.pathSeparator}${environment["PATH"]}")
+            val oldPath = System.getenv("PATH")
+            val newPath = listOf(
+                // Prepend the directory of the bootstrapped Node.js to the PATH environment.
+                nodeBinDir.path,
+                // Prepend the directory of additional tools like "rescripts" to the PATH environment.
+                projectDir.resolve("node_modules/.bin").path,
+                oldPath
+            ).joinToString(File.pathSeparator)
+
+            environment = environment + mapOf("PATH" to newPath)
         }
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -68,9 +68,9 @@ class OrtAuthenticator(private val original: Authenticator? = null) : Authentica
         }
     }
 
-    // First look for (potentially machine-specific) credentials in a netrc-style file, then look for generic
-    // credentials passed as environment variables.
-    private val delegateAuthenticators = listOf(NetRcAuthenticator(), EnvVarAuthenticator())
+    // First look if the credentials are already present in the URL, then search for (potentially machine-specific)
+    // credentials in a netrc-style file, and finally look for generic credentials passed as environment variables.
+    private val delegateAuthenticators = listOf(UserInfoAuthenticator(), NetRcAuthenticator(), EnvVarAuthenticator())
 
     private val serverAuthentication: ConcurrentHashMap<String, PasswordAuthentication> = ConcurrentHashMap()
 

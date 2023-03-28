@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.inspectors.forAll
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.file.aDirectory
 import io.kotest.matchers.file.aFile
 import io.kotest.matchers.file.exist
@@ -50,6 +51,39 @@ class ExtensionsTest : WordSpec({
     "ByteArray.toHexString" should {
         "correctly convert a byte array to a string of hexadecimal digits" {
             byteArrayOf(0xde.toByte(), 0xad.toByte(), 0xbe.toByte(), 0xef.toByte()).encodeHex() shouldBe "deadbeef"
+        }
+    }
+
+    "Collection.getDuplicates" should {
+        "return no duplicates if there are none" {
+            emptyList<String>().getDuplicates() should beEmpty()
+            listOf("no", "dupes", "in", "here").getDuplicates() should beEmpty()
+        }
+
+        "return all duplicates" {
+            val strings = listOf("foo", "bar", "baz", "foo", "bar", "bar")
+
+            strings.getDuplicates().shouldContainExactlyInAnyOrder("foo", "bar")
+        }
+
+        "return duplicates according to a selector" {
+            val pairs = listOf(
+                "a" to "b",
+                "b" to "b",
+                "c" to "d",
+                "a" to "z",
+                "b" to "c",
+                "o" to "z"
+            )
+
+            pairs.getDuplicates { it.first } shouldBe mapOf(
+                "a" to listOf("a" to "b", "a" to "z"),
+                "b" to listOf("b" to "b", "b" to "c")
+            )
+            pairs.getDuplicates { it.second } shouldBe mapOf(
+                "b" to listOf("a" to "b", "b" to "b"),
+                "z" to listOf("a" to "z", "o" to "z")
+            )
         }
     }
 
@@ -80,7 +114,7 @@ class ExtensionsTest : WordSpec({
     "File.isSymbolicLink" should {
         val tempDir = createSpecTempDir()
         val file = tempDir.resolve("file").apply { createNewFile() }
-        val directory = tempDir.resolve("directory").apply { safeMkdirs() }
+        val directory = tempDir.resolve("directory").safeMkdirs()
 
         "return 'false' for non-existent files" {
             tempDir.resolve("non-existent").let { nonExistent ->
@@ -326,13 +360,20 @@ class ExtensionsTest : WordSpec({
         }
     }
 
-    "String.isSemanticVersion" should {
-        "return true for a semantic version" {
-            "1.0.0".isSemanticVersion() shouldBe true
+    "String.collapseWhitespace()" should {
+        "remove additional white spaces" {
+            "String with additional   white spaces. ".collapseWhitespace() shouldBe
+                    "String with additional white spaces."
         }
 
-        "return false for a URL" {
-            "https://registry.npmjs.org/form-data/-/form-data-0.2.0.tgz".isSemanticVersion() shouldBe false
+        "remove newlines" {
+            "String\nwith\n\nnewlines.".collapseWhitespace() shouldBe "String with newlines."
+        }
+
+        "remove indentations" {
+            """
+                String with indentation.
+            """.collapseWhitespace() shouldBe "String with indentation."
         }
     }
 

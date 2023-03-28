@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,11 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
-
 import java.util.SortedSet
 
 /**
  * The scope class puts package dependencies into context.
  */
-@JsonIgnoreProperties("delivered", "distributed")
 data class Scope(
     /**
      * The respective package manager's native name for the scope, e.g. "compile", "provided" etc. for Maven, or

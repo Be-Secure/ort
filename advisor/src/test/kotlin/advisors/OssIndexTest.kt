@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,6 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.containExactly
-import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.collections.haveSize
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.maps.beEmpty as beEmptyMap
@@ -47,6 +46,7 @@ import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.Vulnerability
 import org.ossreviewtoolkit.model.VulnerabilityReference
+import org.ossreviewtoolkit.model.config.OssIndexConfiguration
 import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.utils.common.enumSetOf
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
@@ -73,18 +73,20 @@ class OssIndexTest : WordSpec({
     "OssIndex" should {
         "return vulnerability information" {
             server.stubComponentsRequest("response_components.json")
-            val ossIndex = OssIndex(ADVISOR_NAME, "http://localhost:${server.port()}")
-            val packages = COMPONENTS_REQUEST_IDS.map { Package.EMPTY.copy(id = it, purl = it.toPurl()) }
+            val ossIndex = OssIndex(ADVISOR_NAME, OssIndexConfiguration("http://localhost:${server.port()}"))
+            val packages = COMPONENTS_REQUEST_IDS.mapTo(mutableSetOf()) {
+                Package.EMPTY.copy(id = it, purl = it.toPurl())
+            }
 
             val result = ossIndex.retrievePackageFindings(packages).mapKeys { it.key.id }
 
             result shouldNot beEmptyMap()
-            result.keys should containExactlyInAnyOrder(ID_JUNIT)
+            result.keys should containExactly(ID_JUNIT)
             result[ID_JUNIT] shouldNotBeNull {
                 this should haveSize(1)
                 with(single()) {
                     advisor shouldBe ossIndex.details
-                    vulnerabilities should containExactlyInAnyOrder(
+                    vulnerabilities should containExactly(
                         Vulnerability(
                             id = "CVE-2020-15250",
                             summary = "[CVE-2020-15250] In JUnit4 from version 4.7 and before 4.13.1,...",
@@ -119,8 +121,10 @@ class OssIndexTest : WordSpec({
                         aResponse().withStatus(500)
                     )
             )
-            val ossIndex = OssIndex(ADVISOR_NAME, "http://localhost:${server.port()}")
-            val packages = COMPONENTS_REQUEST_IDS.map { Package.EMPTY.copy(id = it, purl = it.toPurl()) }
+            val ossIndex = OssIndex(ADVISOR_NAME, OssIndexConfiguration("http://localhost:${server.port()}"))
+            val packages = COMPONENTS_REQUEST_IDS.mapTo(mutableSetOf()) {
+                Package.EMPTY.copy(id = it, purl = it.toPurl())
+            }
 
             val result = ossIndex.retrievePackageFindings(packages).mapKeys { it.key.id }
 
@@ -130,18 +134,18 @@ class OssIndexTest : WordSpec({
                 COMPONENTS_REQUEST_IDS.forEach { pkg ->
                     val pkgResults = getValue(pkg)
                     pkgResults shouldHaveSize 1
-                    val pkgResult = pkgResults[0]
+                    val pkgResult = pkgResults.first()
                     pkgResult.advisor shouldBe ossIndex.details
                     pkgResult.vulnerabilities should beEmpty()
                     pkgResult.summary.issues shouldHaveSize 1
-                    val issue = pkgResult.summary.issues[0]
+                    val issue = pkgResult.summary.issues.first()
                     issue.severity shouldBe Severity.ERROR
                 }
             }
         }
 
         "provide correct details" {
-            val ossIndex = OssIndex(ADVISOR_NAME, "http://localhost:${server.port()}")
+            val ossIndex = OssIndex(ADVISOR_NAME, OssIndexConfiguration("http://localhost:${server.port()}"))
 
             ossIndex.details shouldBe AdvisorDetails(ADVISOR_NAME, enumSetOf(AdvisorCapability.VULNERABILITIES))
         }

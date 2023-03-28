@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,11 +49,16 @@ class Evaluator(
         scriptsInstancesSharing(true)
     }
 
-    fun run(script: String): EvaluatorRun {
+    fun run(vararg scripts: String): EvaluatorRun {
         val startTime = Instant.now()
-        val scriptInstance = runScript(script).scriptInstance as RulesScriptTemplate
+
+        val violations = scripts.flatMapTo(mutableListOf()) {
+            val scriptInstance = runScript(it).scriptInstance as RulesScriptTemplate
+            scriptInstance.ruleViolations
+        }
+
         val endTime = Instant.now()
 
-        return EvaluatorRun(startTime, endTime, scriptInstance.ruleViolations)
+        return EvaluatorRun(startTime, endTime, violations)
     }
 }

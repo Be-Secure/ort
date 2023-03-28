@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,10 +29,9 @@ import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.ScanResult
-import org.ossreviewtoolkit.model.ScanResultContainer
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
-import org.ossreviewtoolkit.scanner.experimental.ScanStorageException
+import org.ossreviewtoolkit.scanner.ScanStorageException
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 import org.ossreviewtoolkit.utils.ort.storage.FileStorage
@@ -110,3 +108,18 @@ class FileBasedStorage(
 
     private fun storagePath(id: Identifier) = "${id.toPath()}/$SCAN_RESULTS_FILE_NAME"
 }
+
+/**
+ * A container for [ScanResult]s for the package identified by [id].
+ */
+private data class ScanResultContainer(
+    /**
+     * The [Identifier] of the package these [results] belong to.
+     */
+    val id: Identifier,
+
+    /**
+     * The list of [ScanResult]s from potentially multiple scanners and / or with different package provenance.
+     */
+    val results: List<ScanResult>
+)

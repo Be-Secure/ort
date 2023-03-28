@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Sonatype, Inc.
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Vulnerability
 import org.ossreviewtoolkit.model.VulnerabilityReference
 import org.ossreviewtoolkit.model.config.AdvisorConfiguration
+import org.ossreviewtoolkit.model.config.OssIndexConfiguration
 import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.utils.common.enumSetOf
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
@@ -50,32 +51,38 @@ private const val BULK_REQUEST_SIZE = 128
 /**
  * A wrapper for Sonatype's [OSS Index](https://ossindex.sonatype.org/) security vulnerability data.
  */
-class OssIndex(name: String, serverUrl: String = OssIndexService.DEFAULT_BASE_URL) : AdviceProvider(name) {
+class OssIndex(name: String, config: OssIndexConfiguration) : AdviceProvider(name) {
     companion object : Logging
 
     class Factory : AbstractAdviceProviderFactory<OssIndex>("OssIndex") {
-        override fun create(config: AdvisorConfiguration) = OssIndex(providerName)
+        override fun create(config: AdvisorConfiguration) =
+            OssIndex(type, config.forProvider { ossIndex ?: OssIndexConfiguration() })
     }
 
     override val details = AdvisorDetails(providerName, enumSetOf(AdvisorCapability.VULNERABILITIES))
 
     private val service by lazy {
         OssIndexService.create(
-            url = serverUrl,
+            url = config.serverUrl,
             client = OkHttpClientHelper.buildClient()
         )
     }
 
-    override suspend fun retrievePackageFindings(packages: List<Package>): Map<Package, List<AdvisorResult>> {
+    override suspend fun retrievePackageFindings(packages: Set<Package>): Map<Package, List<AdvisorResult>> {
         val startTime = Instant.now()
 
-        val components = packages.map { it.purl }
+        val purls = packages.mapNotNull { pkg -> pkg.purl.takeUnless { it.isEmpty() } }
 
         return try {
             val componentReports = mutableMapOf<String, OssIndexService.ComponentReport>()
 
-            components.chunked(BULK_REQUEST_SIZE).forEach { chunk ->
-                val requestResults = getComponentReport(service, chunk).associateBy {
+            val chunks = purls.chunked(BULK_REQUEST_SIZE)
+            chunks.forEachIndexed { index, chunkOfPurls ->
+                logger.debug {
+                    "Getting report for ${chunkOfPurls.size} components (chunk ${index + 1} of ${chunks.size})."
+                }
+
+                val requestResults = getComponentReport(service, chunkOfPurls).associateBy {
                     it.coordinates
                 }
 
@@ -122,16 +129,15 @@ class OssIndex(name: String, serverUrl: String = OssIndexService.DEFAULT_BASE_UR
     }
 
     /**
-     * Invoke the [OSS Index service][service] to request detail information for the given [coordinates]. Catch HTTP
+     * Invoke the [OSS Index service][service] to request detail information for the given [purls]. Catch HTTP
      * exceptions thrown by the service and re-throw them as [IOException].
      */
     private suspend fun getComponentReport(
         service: OssIndexService,
-        coordinates: List<String>
+        purls: List<String>
     ): List<OssIndexService.ComponentReport> =
         try {
-            logger.debug { "Querying component report from ${OssIndexService.DEFAULT_BASE_URL}." }
-            service.getComponentReport(OssIndexService.ComponentReportRequest(coordinates))
+            service.getComponentReport(OssIndexService.ComponentReportRequest(purls))
         } catch (e: HttpException) {
             throw IOException(e)
         }

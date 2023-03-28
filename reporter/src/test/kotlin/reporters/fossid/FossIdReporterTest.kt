@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,18 +35,15 @@ import io.mockk.mockkStatic
 import io.mockk.spyk
 
 import java.io.File
-import java.time.Instant
 
 import org.ossreviewtoolkit.clients.fossid.FossIdRestService
 import org.ossreviewtoolkit.clients.fossid.FossIdServiceWithVersion
 import org.ossreviewtoolkit.clients.fossid.generateReport
 import org.ossreviewtoolkit.clients.fossid.model.report.ReportType
 import org.ossreviewtoolkit.clients.fossid.model.report.SelectionType
-import org.ossreviewtoolkit.model.AccessStatistics
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Repository
-import org.ossreviewtoolkit.model.ScanRecord
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
@@ -56,11 +53,9 @@ import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.config.ScopeExclude
 import org.ossreviewtoolkit.model.config.ScopeExcludeReason
 import org.ossreviewtoolkit.reporter.ReporterInput
-import org.ossreviewtoolkit.utils.ort.Environment
 
 private const val SERVER_URL_SAMPLE = "https://fossid.example.com/instance/"
 private const val API_KEY_SAMPLE = "XYZ"
@@ -138,7 +133,7 @@ class FossIdReporterTest : WordSpec({
 
         "use HTML_DYNAMIC as default report type" {
             val (serviceMock, reporterMock) = createReporterMock()
-            val input = createReporterInput(listOf(SCANCODE_1))
+            val input = createReporterInput(SCANCODE_1)
 
             reporterMock.generateReport(input, DIRECTORY_SAMPLE, DEFAULT_OPTIONS)
 
@@ -156,7 +151,7 @@ class FossIdReporterTest : WordSpec({
 
         "allow to specify a report type" {
             val (serviceMock, reporterMock) = createReporterMock()
-            val input = createReporterInput(listOf(SCANCODE_1))
+            val input = createReporterInput(SCANCODE_1)
 
             reporterMock.generateReport(
                 input, DIRECTORY_SAMPLE,
@@ -177,7 +172,7 @@ class FossIdReporterTest : WordSpec({
 
         "use INCLUDE_ALL_LICENSES as default selection type" {
             val (serviceMock, reporterMock) = createReporterMock()
-            val input = createReporterInput(listOf(SCANCODE_1))
+            val input = createReporterInput(SCANCODE_1)
 
             reporterMock.generateReport(input, DIRECTORY_SAMPLE, DEFAULT_OPTIONS)
 
@@ -195,7 +190,7 @@ class FossIdReporterTest : WordSpec({
 
         "allow to specify a selection type" {
             val (serviceMock, reporterMock) = createReporterMock()
-            val input = createReporterInput(listOf(SCANCODE_1))
+            val input = createReporterInput(SCANCODE_1)
 
             reporterMock.generateReport(
                 input, DIRECTORY_SAMPLE,
@@ -216,7 +211,7 @@ class FossIdReporterTest : WordSpec({
 
         "generate a report for each given scancode" {
             val (serviceMock, reporterMock) = createReporterMock()
-            val input = createReporterInput(listOf(SCANCODE_1, SCANCODE_2))
+            val input = createReporterInput(SCANCODE_1, SCANCODE_2)
 
             reporterMock.generateReport(input, DIRECTORY_SAMPLE, DEFAULT_OPTIONS)
 
@@ -228,7 +223,7 @@ class FossIdReporterTest : WordSpec({
 
         "return the generated file(s)" {
             val (_, reporterMock) = createReporterMock()
-            val input = createReporterInput(listOf(SCANCODE_1))
+            val input = createReporterInput(SCANCODE_1)
 
             val result = reporterMock.generateReport(input, DIRECTORY_SAMPLE, DEFAULT_OPTIONS)
 
@@ -242,7 +237,7 @@ private fun createReporterMock(): Pair<FossIdRestService, FossIdReporter> {
 
     val serviceMock = mockk<FossIdServiceWithVersion>()
     val reporterMock = spyk<FossIdReporter>()
-    every { FossIdRestService.createService(any()) } returns serviceMock
+    every { FossIdRestService.create(any()) } returns serviceMock
 
     coEvery {
         serviceMock.generateReport(any(), any(), any(), any(), any(), any())
@@ -250,7 +245,7 @@ private fun createReporterMock(): Pair<FossIdRestService, FossIdReporter> {
     return serviceMock to reporterMock
 }
 
-private fun createReporterInput(scanCodes: List<String> = emptyList()): ReporterInput {
+private fun createReporterInput(vararg scanCodes: String): ReporterInput {
     val analyzedVcs = VcsInfo(
         type = VcsType.GIT,
         revision = "master",
@@ -258,7 +253,11 @@ private fun createReporterInput(scanCodes: List<String> = emptyList()): Reporter
         path = "sub/path"
     )
 
-    val results = scanCodes.groupBy({ Identifier.EMPTY.copy(name = it) }) { createScanResult(it) }.toSortedMap()
+    val results = scanCodes.associateByTo(
+        destination = sortedMapOf(),
+        keySelector = { Identifier.EMPTY.copy(name = it) },
+        valueTransform = { listOf(createScanResult(it)) }
+    )
 
     return ReporterInput(
         OrtResult(
@@ -277,18 +276,15 @@ private fun createReporterInput(scanCodes: List<String> = emptyList()): Reporter
                 vcs = analyzedVcs,
                 vcsProcessed = analyzedVcs
             ),
-            scanner = ScannerRun(
-                results = ScanRecord(results, AccessStatistics()),
-                environment = Environment(),
-                config = ScannerConfiguration()
-            )
+            scanner = ScannerRun.EMPTY.copy(scanResults = results)
         )
     )
 }
 
-private fun createScanResult(scanCode: String): ScanResult {
-    val summary = ScanSummary(
-        Instant.now(), Instant.now(), "", sortedSetOf(), sortedSetOf()
+private fun createScanResult(scanCode: String): ScanResult =
+    ScanResult(
+        provenance = UnknownProvenance,
+        scanner = ScannerDetails.EMPTY,
+        summary = ScanSummary.EMPTY,
+        additionalData = mapOf(FossIdReporter.SCAN_CODE_KEY to scanCode)
     )
-    return ScanResult(UnknownProvenance, ScannerDetails.EMPTY, summary, mapOf(FossIdReporter.SCAN_CODE_KEY to scanCode))
-}

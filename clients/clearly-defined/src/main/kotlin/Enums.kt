@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,33 +28,20 @@ import kotlinx.serialization.json.jsonPrimitive
  * See https://github.com/clearlydefined/service/blob/48f2c97/schemas/definition-1.0.json#L32-L48.
  */
 @Serializable
-enum class ComponentType {
-    @SerialName("npm")
-    NPM,
-    @SerialName("crate")
-    CRATE,
-    @SerialName("git")
-    GIT,
-    @SerialName("maven")
-    MAVEN,
-    @SerialName("composer")
-    COMPOSER,
-    @SerialName("nuget")
-    NUGET,
-    @SerialName("gem")
-    GEM,
-    @SerialName("go")
-    GO,
-    @SerialName("pod")
-    POD,
-    @SerialName("pypi")
-    PYPI,
-    @SerialName("sourcearchive")
-    SOURCE_ARCHIVE,
-    @SerialName("deb")
-    DEBIAN,
-    @SerialName("debsrc")
-    DEBIAN_SOURCES;
+enum class ComponentType(val defaultProvider: Provider? = null) {
+    @SerialName("npm") NPM(Provider.NPM_JS),
+    @SerialName("crate") CRATE(Provider.CRATES_IO),
+    @SerialName("git") GIT(Provider.GITHUB),
+    @SerialName("maven") MAVEN(Provider.MAVEN_CENTRAL),
+    @SerialName("composer") COMPOSER(Provider.PACKAGIST),
+    @SerialName("nuget") NUGET(Provider.NUGET),
+    @SerialName("gem") GEM(Provider.RUBYGEMS),
+    @SerialName("go") GO(Provider.GOLANG),
+    @SerialName("pod") POD(Provider.COCOAPODS),
+    @SerialName("pypi") PYPI(Provider.PYPI),
+    @SerialName("sourcearchive") SOURCE_ARCHIVE,
+    @SerialName("deb") DEBIAN(Provider.DEBIAN),
+    @SerialName("debsrc") DEBIAN_SOURCES(Provider.DEBIAN);
 
     companion object {
         @JvmStatic
@@ -67,36 +54,24 @@ enum class ComponentType {
 }
 
 /**
- * See https://github.com/clearlydefined/service/blob/48f2c97/schemas/definition-1.0.json#L49-L65.
+ * See https://github.com/clearlydefined/service/blob/98f3f47/schemas/definition-1.0.json#L49-L66.
  */
 @Serializable
 enum class Provider {
-    @SerialName("npmjs")
-    NPM_JS,
-    @SerialName("cocoapods")
-    COCOAPODS,
-    @SerialName("cratesio")
-    CRATES_IO,
-    @SerialName("github")
-    GITHUB,
-    @SerialName("gitlab")
-    GITLAB,
-    @SerialName("packagist")
-    PACKAGIST,
-    @SerialName("golang")
-    GOLANG,
-    @SerialName("mavencentral")
-    MAVEN_CENTRAL,
-    @SerialName("mavengoogle")
-    MAVEN_GOOGLE,
-    @SerialName("nuget")
-    NUGET,
-    @SerialName("rubygems")
-    RUBYGEMS,
-    @SerialName("pypi")
-    PYPI,
-    @SerialName("debian")
-    DEBIAN;
+    @SerialName("npmjs") NPM_JS,
+    @SerialName("cocoapods") COCOAPODS,
+    @SerialName("cratesio") CRATES_IO,
+    @SerialName("github") GITHUB,
+    @SerialName("gitlab") GITLAB,
+    @SerialName("packagist") PACKAGIST,
+    @SerialName("golang") GOLANG,
+    @SerialName("mavencentral") MAVEN_CENTRAL,
+    @SerialName("mavengoogle") MAVEN_GOOGLE,
+    @SerialName("gradleplugin") GRADLE_PLUGIN,
+    @SerialName("nuget") NUGET,
+    @SerialName("rubygems") RUBYGEMS,
+    @SerialName("pypi") PYPI,
+    @SerialName("debian") DEBIAN;
 
     companion object {
         @JvmStatic
@@ -113,10 +88,8 @@ enum class Provider {
  */
 @Serializable
 enum class Nature {
-    @SerialName("license")
-    LICENSE,
-    @SerialName("notice")
-    NOTICE
+    @SerialName("license") LICENSE,
+    @SerialName("notice") NOTICE
 }
 
 /**
@@ -124,16 +97,11 @@ enum class Nature {
  */
 @Serializable
 enum class ContributionType {
-    @SerialName("Missing")
-    MISSING,
-    @SerialName("Incorrect")
-    INCORRECT,
-    @SerialName("Incomplete")
-    INCOMPLETE,
-    @SerialName("Ambiguous")
-    AMBIGUOUS,
-    @SerialName("Other")
-    OTHER
+    @SerialName("Missing") MISSING,
+    @SerialName("Incorrect") INCORRECT,
+    @SerialName("Incomplete") INCOMPLETE,
+    @SerialName("Ambiguous") AMBIGUOUS,
+    @SerialName("Other") OTHER
 }
 
 /**

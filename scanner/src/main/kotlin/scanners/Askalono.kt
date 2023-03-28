@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021-2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,48 +24,34 @@ import java.time.Instant
 
 import org.apache.logging.log4j.kotlin.Logging
 
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseFinding
-import org.ossreviewtoolkit.model.OrtIssue
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.jsonMapper
-import org.ossreviewtoolkit.scanner.AbstractScannerFactory
-import org.ossreviewtoolkit.scanner.BuildConfig
-import org.ossreviewtoolkit.scanner.CommandLineScanner
+import org.ossreviewtoolkit.scanner.AbstractScannerWrapperFactory
+import org.ossreviewtoolkit.scanner.CommandLinePathScannerWrapper
+import org.ossreviewtoolkit.scanner.ScanContext
 import org.ossreviewtoolkit.scanner.ScanException
-import org.ossreviewtoolkit.scanner.experimental.AbstractScannerWrapperFactory
-import org.ossreviewtoolkit.scanner.experimental.PathScannerWrapper
-import org.ossreviewtoolkit.scanner.experimental.ScanContext
+import org.ossreviewtoolkit.scanner.ScannerCriteria
 import org.ossreviewtoolkit.utils.common.Os
-import org.ossreviewtoolkit.utils.common.ProcessCapture
-import org.ossreviewtoolkit.utils.common.unpackZip
-import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
-import org.ossreviewtoolkit.utils.ort.ortToolsDirectory
 import org.ossreviewtoolkit.utils.spdx.calculatePackageVerificationCode
 
 class Askalono internal constructor(
-    name: String,
-    scannerConfig: ScannerConfiguration,
-    downloaderConfig: DownloaderConfiguration
-) : CommandLineScanner(name, scannerConfig, downloaderConfig), PathScannerWrapper {
+    private val name: String,
+    private val scannerConfig: ScannerConfiguration
+) : CommandLinePathScannerWrapper(name) {
     companion object : Logging
 
-    class AskalonoFactory : AbstractScannerWrapperFactory<Askalono>("Askalono") {
+    class Factory : AbstractScannerWrapperFactory<Askalono>("Askalono") {
         override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            Askalono(scannerName, scannerConfig, downloaderConfig)
+            Askalono(type, scannerConfig)
     }
 
-    class Factory : AbstractScannerFactory<Askalono>("Askalono") {
-        override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            Askalono(scannerName, scannerConfig, downloaderConfig)
-    }
-
-    override val name = "Askalono"
-    override val criteria by lazy { getScannerCriteria() }
-    override val expectedVersion = BuildConfig.ASKALONO_VERSION
+    override val criteria by lazy { ScannerCriteria.fromConfig(details, scannerConfig) }
     override val configuration = ""
 
     override fun command(workingDir: File?) =
@@ -77,38 +62,10 @@ class Askalono internal constructor(
         // askalono 0.2.0-beta.1
         output.removePrefix("askalono ")
 
-    override fun bootstrap(): File {
-        val unpackDir = ortToolsDirectory.resolve(name).resolve(expectedVersion)
-
-        if (unpackDir.resolve(command()).isFile) {
-            logger.info { "Skipping to bootstrap $name as it was found in $unpackDir." }
-            return unpackDir
-        }
-
-        val platform = when {
-            Os.isLinux -> "Linux"
-            Os.isMac -> "macOS"
-            Os.isWindows -> "Windows"
-            else -> throw IllegalArgumentException("Unsupported operating system.")
-        }
-
-        val archive = "askalono-$platform.zip"
-        val url = "https://github.com/amzn/askalono/releases/download/$expectedVersion/$archive"
-
-        logger.info { "Downloading $scannerName from $url... " }
-        val (_, body) = OkHttpClientHelper.download(url).getOrThrow()
-
-        logger.info { "Unpacking '$archive' to '$unpackDir'... " }
-        body.bytes().unpackZip(unpackDir)
-
-        return unpackDir
-    }
-
-    override fun scanPathInternal(path: File): ScanSummary {
+    override fun scanPath(path: File, context: ScanContext): ScanSummary {
         val startTime = Instant.now()
 
-        val process = ProcessCapture(
-            scannerPath.absolutePath,
+        val process = run(
             "--format", "json",
             "crawl", path.absolutePath
         )
@@ -151,14 +108,12 @@ class Askalono internal constructor(
             licenseFindings = licenseFindings,
             copyrightFindings = sortedSetOf(),
             issues = listOf(
-                OrtIssue(
-                    source = scannerName,
+                Issue(
+                    source = name,
                     message = "This scanner is not capable of detecting copyright statements.",
                     severity = Severity.HINT
                 )
             )
         )
     }
-
-    override fun scanPath(path: File, context: ScanContext) = scanPathInternal(path)
 }

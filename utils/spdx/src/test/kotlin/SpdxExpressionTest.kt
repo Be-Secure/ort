@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +27,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.Matcher
 import io.kotest.matchers.be
+import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.neverNullMatcher
 import io.kotest.matchers.should
@@ -185,9 +185,21 @@ class SpdxExpressionTest : WordSpec() {
 
             "be valid in lenient mode" {
                 assertSoftly {
-                    licenseRefWithLicenseRefException.toSpdx(Strictness.ALLOW_ANY)
-                    licenseRefWithLicenseRefException2.toSpdx(Strictness.ALLOW_ANY)
-                    licenseRefWithLicenseRef.toSpdx(Strictness.ALLOW_ANY)
+                    licenseRefWithLicenseRefException.toSpdx(Strictness.ALLOW_ANY) shouldBe
+                            SpdxLicenseWithExceptionExpression(
+                                SpdxLicenseReferenceExpression("LicenseRef-ort-license"),
+                                "LicenseRef-ort-exception"
+                            )
+                    licenseRefWithLicenseRefException2.toSpdx(Strictness.ALLOW_ANY) shouldBe
+                            SpdxLicenseWithExceptionExpression(
+                                SpdxLicenseReferenceExpression("LicenseRef-ort-license"),
+                                "LicenseRef-ort-exception-2.0"
+                            )
+                    licenseRefWithLicenseRef.toSpdx(Strictness.ALLOW_ANY) shouldBe
+                            SpdxLicenseWithExceptionExpression(
+                                SpdxLicenseReferenceExpression("LicenseRef-ort-license"),
+                                "LicenseRef-ort-license"
+                            )
                 }
             }
 
@@ -225,8 +237,16 @@ class SpdxExpressionTest : WordSpec() {
 
             "be valid when allowing LicenseRef exceptions" {
                 assertSoftly {
-                    licenseRefWithLicenseRefException.toSpdx(Strictness.ALLOW_LICENSEREF_EXCEPTIONS)
-                    licenseRefWithLicenseRefException2.toSpdx(Strictness.ALLOW_LICENSEREF_EXCEPTIONS)
+                    licenseRefWithLicenseRefException.toSpdx(Strictness.ALLOW_LICENSEREF_EXCEPTIONS) shouldBe
+                            SpdxLicenseWithExceptionExpression(
+                                SpdxLicenseReferenceExpression("LicenseRef-ort-license"),
+                                "LicenseRef-ort-exception"
+                            )
+                    licenseRefWithLicenseRefException2.toSpdx(Strictness.ALLOW_LICENSEREF_EXCEPTIONS) shouldBe
+                            SpdxLicenseWithExceptionExpression(
+                                SpdxLicenseReferenceExpression("LicenseRef-ort-license"),
+                                "LicenseRef-ort-exception-2.0"
+                            )
 
                     shouldThrow<SpdxException> {
                         licenseRefWithLicenseRef.toSpdx(Strictness.ALLOW_LICENSEREF_EXCEPTIONS)
@@ -318,7 +338,7 @@ class SpdxExpressionTest : WordSpec() {
             fun String.decompose() = toSpdx().decompose().map { it.toString() }
 
             "not split-up compound expressions with a WITH operator" {
-                "GPL-2.0-or-later WITH Classpath-exception-2.0".decompose() should containExactlyInAnyOrder(
+                "GPL-2.0-or-later WITH Classpath-exception-2.0".decompose() should containExactly(
                     "GPL-2.0-or-later WITH Classpath-exception-2.0"
                 )
             }
@@ -333,9 +353,9 @@ class SpdxExpressionTest : WordSpec() {
             "work with LicenseRef-* identifiers" {
                 "LicenseRef-gpl-2.0-custom WITH Classpath-exception-2.0 AND LicenseRef-scancode-commercial-license"
                     .decompose() should containExactlyInAnyOrder(
-                    "LicenseRef-gpl-2.0-custom WITH Classpath-exception-2.0",
-                    "LicenseRef-scancode-commercial-license"
-                )
+                        "LicenseRef-gpl-2.0-custom WITH Classpath-exception-2.0",
+                        "LicenseRef-scancode-commercial-license"
+                    )
             }
 
             "return distinct strings" {
@@ -346,9 +366,9 @@ class SpdxExpressionTest : WordSpec() {
             "not merge license-exception pairs with single matching licenses" {
                 "GPL-2.0-or-later WITH Classpath-exception-2.0 AND GPL-2.0-or-later"
                     .decompose() should containExactlyInAnyOrder(
-                    "GPL-2.0-or-later WITH Classpath-exception-2.0",
-                    "GPL-2.0-or-later"
-                )
+                        "GPL-2.0-or-later WITH Classpath-exception-2.0",
+                        "GPL-2.0-or-later"
+                    )
             }
         }
 
@@ -378,18 +398,18 @@ class SpdxExpressionTest : WordSpec() {
 
         "sort()" should {
             "not change already sorted expressions" {
-                "a AND b".toSpdx().sort() should beString("a AND b")
-                "(a OR b) AND (c OR d)".toSpdx().sort() should beString("(a OR b) AND (c OR d)")
+                "a AND b".toSpdx().sorted() should beString("a AND b")
+                "(a OR b) AND (c OR d)".toSpdx().sorted() should beString("(a OR b) AND (c OR d)")
             }
 
             "correctly sort simple expressions" {
-                "b AND a".toSpdx().sort() should beString("a AND b")
-                "b OR a".toSpdx().sort() should beString("a OR b")
-                "c AND b AND a".toSpdx().sort() should beString("a AND b AND c")
+                "b AND a".toSpdx().sorted() should beString("a AND b")
+                "b OR a".toSpdx().sorted() should beString("a OR b")
+                "c AND b AND a".toSpdx().sorted() should beString("a AND b AND c")
             }
 
             "correctly sort a complex expression" {
-                "(h OR g) AND (f OR e) OR (c OR d) AND (a OR b)".toSpdx().sort() should
+                "(h OR g) AND (f OR e) OR (c OR d) AND (a OR b)".toSpdx().sorted() should
                         beString("((a OR b) AND (c OR d)) OR ((e OR f) AND (g OR h))")
             }
         }
@@ -405,7 +425,7 @@ class SpdxExpressionTest : WordSpec() {
             }
 
             "not contain a duplicate valid choice for a simple expression" {
-                "a AND a".toSpdx().validChoices() should containExactlyInAnyOrder("a".toSpdx())
+                "a AND a".toSpdx().validChoices() should containExactly("a".toSpdx())
             }
 
             "not contain duplicate valid choice for a complex expression" {
@@ -417,9 +437,7 @@ class SpdxExpressionTest : WordSpec() {
             }
 
             "not contain duplicate valid choice different left and right expressions" {
-                "a AND a AND b".toSpdx().validChoices() should containExactlyInAnyOrder(
-                    "a AND b".toSpdx()
-                )
+                "a AND a AND b".toSpdx().validChoices() should containExactly("a AND b".toSpdx())
             }
         }
 

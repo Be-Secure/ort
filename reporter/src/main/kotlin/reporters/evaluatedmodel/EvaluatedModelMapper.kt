@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
- * Copyright (C) 2021-2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +23,7 @@ import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.DependencyNode
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.Provenance
@@ -41,11 +40,13 @@ import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.RuleViolationResolution
 import org.ossreviewtoolkit.model.config.ScopeExclude
 import org.ossreviewtoolkit.model.config.VulnerabilityResolution
+import org.ossreviewtoolkit.model.licenses.LicenseView
 import org.ossreviewtoolkit.model.utils.FindingCurationMatcher
 import org.ossreviewtoolkit.model.utils.FindingsMatcher
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.reporter.ReporterInput
+import org.ossreviewtoolkit.reporter.StatisticsCalculator.getStatistics
 import org.ossreviewtoolkit.utils.ort.ProcessedDeclaredLicense
 
 /**
@@ -60,7 +61,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
     private val copyrights = mutableListOf<CopyrightStatement>()
     private val licenses = mutableListOf<LicenseId>()
     private val scopes = mutableMapOf<String, EvaluatedScope>()
-    private val issues = mutableListOf<EvaluatedOrtIssue>()
+    private val issues = mutableListOf<EvaluatedIssue>()
     private val issueResolutions = mutableListOf<IssueResolution>()
     private val pathExcludes = mutableListOf<PathExclude>()
     private val scopeExcludes = mutableListOf<ScopeExclude>()
@@ -89,11 +90,14 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
         createExcludeInfo()
         createScopes()
 
-        input.ortResult.analyzer?.result?.projects?.forEach { project ->
+        val resultProjects = input.ortResult.getProjects().sortedBy { it.id }
+        val resultPackages = input.ortResult.getPackages().sortedBy { it.metadata.id }
+
+        resultProjects.forEach { project ->
             addProject(project)
         }
 
-        input.ortResult.analyzer?.result?.packages?.forEach { curatedPkg ->
+        resultPackages.forEach { curatedPkg ->
             addPackage(curatedPkg)
         }
 
@@ -109,12 +113,12 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             }
         }
 
-        input.ortResult.analyzer?.result?.projects?.forEach { project ->
+        resultProjects.forEach { project ->
             val pkg = packages.getValue(project.id)
             addDependencyTree(project, pkg, deduplicateDependencyTree)
         }
 
-        input.ortResult.analyzer?.result?.projects?.forEach { project ->
+        resultProjects.forEach { project ->
             addShortestPaths(project)
         }
 
@@ -134,30 +138,26 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             ruleViolations = ruleViolations,
             vulnerabilitiesResolutions = vulnerabilitiesResolutions,
             vulnerabilities = vulnerabilities,
-            statistics = StatisticsCalculator().getStatistics(
-                input.ortResult,
-                input.resolutionProvider,
-                input.licenseInfoResolver
-            ),
+            statistics = with(input) { getStatistics(ortResult, resolutionProvider, licenseInfoResolver, ortConfig) },
             repository = input.ortResult.repository,
             severeIssueThreshold = input.ortConfig.severeIssueThreshold,
             severeRuleViolationThreshold = input.ortConfig.severeRuleViolationThreshold,
             repositoryConfiguration = yamlMapper.writeValueAsString(input.ortResult.repository.config),
             labels = input.ortResult.labels,
-            metaData = MetaDataCalculator().getMetaData(input.ortResult)
+            metadata = MetadataCalculator().getMetadata(input.ortResult)
         )
     }
 
     private fun createExcludeInfo() {
-        input.ortResult.analyzer?.result?.projects?.forEach { project ->
+        input.ortResult.getProjects().forEach { project ->
             packageExcludeInfo[project.id] = PackageExcludeInfo(project.id, true)
         }
 
-        input.ortResult.analyzer?.result?.packages?.forEach { pkg ->
-            packageExcludeInfo[pkg.pkg.id] = PackageExcludeInfo(pkg.pkg.id, true)
+        input.ortResult.getPackages().forEach { pkg ->
+            packageExcludeInfo[pkg.metadata.id] = PackageExcludeInfo(pkg.metadata.id, true)
         }
 
-        input.ortResult.analyzer?.result?.projects?.forEach { project ->
+        input.ortResult.getProjects().forEach { project ->
             val pathExcludes = input.ortResult.getExcludes().findPathExcludes(project, input.ortResult)
             val dependencies = input.ortResult.dependencyNavigator.projectDependencies(project)
             if (pathExcludes.isEmpty()) {
@@ -233,7 +233,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
         val detectedLicenses = mutableSetOf<LicenseId>()
         val detectedExcludedLicenses = mutableSetOf<LicenseId>()
         val findings = mutableListOf<EvaluatedFinding>()
-        val issues = mutableListOf<EvaluatedOrtIssue>()
+        val issues = mutableListOf<EvaluatedIssue>()
 
         val applicablePathExcludes = input.ortResult.getExcludes().findPathExcludes(project, input.ortResult)
         val evaluatedPathExcludes = pathExcludes.addIfRequired(applicablePathExcludes)
@@ -242,6 +242,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             id = project.id,
             isProject = true,
             definitionFilePath = project.definitionFilePath,
+            authors = project.authors,
             declaredLicenses = project.declaredLicenses.map { licenses.addIfRequired(LicenseId(it)) },
             declaredLicensesProcessed = project.declaredLicensesProcessed.evaluate(),
             detectedLicenses = detectedLicenses,
@@ -283,13 +284,13 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
     }
 
     private fun addPackage(curatedPkg: CuratedPackage) {
-        val pkg = curatedPkg.pkg
+        val pkg = curatedPkg.metadata
 
         val scanResults = mutableListOf<EvaluatedScanResult>()
         val detectedLicenses = mutableSetOf<LicenseId>()
         val detectedExcludedLicenses = mutableSetOf<LicenseId>()
         val findings = mutableListOf<EvaluatedFinding>()
-        val issues = mutableListOf<EvaluatedOrtIssue>()
+        val issues = mutableListOf<EvaluatedIssue>()
 
         val excludeInfo = packageExcludeInfo.getValue(pkg.id)
 
@@ -301,11 +302,17 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             isProject = false,
             definitionFilePath = "",
             purl = pkg.purl,
+            authors = pkg.authors,
             declaredLicenses = pkg.declaredLicenses.map { licenses.addIfRequired(LicenseId(it)) },
             declaredLicensesProcessed = pkg.declaredLicensesProcessed.evaluate(),
             detectedLicenses = detectedLicenses,
             detectedExcludedLicenses = detectedExcludedLicenses,
             concludedLicense = pkg.concludedLicense,
+            effectiveLicense = input.licenseInfoResolver.resolveLicenseInfo(pkg.id).filterExcluded().effectiveLicense(
+                LicenseView.CONCLUDED_OR_DECLARED_AND_DETECTED,
+                input.ortResult.getPackageLicenseChoices(pkg.id),
+                input.ortResult.getRepositoryLicenseChoices()
+            )?.sorted(),
             description = pkg.description,
             homepageUrl = pkg.homepageUrl,
             binaryArtifact = pkg.binaryArtifact,
@@ -341,11 +348,11 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
         detectedExcludedLicenses += detectedLicenses - includedDetectedLicenses
     }
 
-    private fun addAnalyzerIssues(id: Identifier, pkg: EvaluatedPackage): List<EvaluatedOrtIssue> {
-        val result = mutableListOf<EvaluatedOrtIssue>()
+    private fun addAnalyzerIssues(id: Identifier, pkg: EvaluatedPackage): List<EvaluatedIssue> {
+        val result = mutableListOf<EvaluatedIssue>()
 
         input.ortResult.analyzer?.result?.issues?.get(id)?.let { analyzerIssues ->
-            result += addIssues(analyzerIssues, EvaluatedOrtIssueType.ANALYZER, pkg, null, null)
+            result += addIssues(analyzerIssues, EvaluatedIssueType.ANALYZER, pkg, null, null)
         }
 
         return result
@@ -380,7 +387,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             addVulnerability(pkg, vulnerability)
         }
 
-        addIssues(result.summary.issues, EvaluatedOrtIssueType.ADVISOR, pkg, null, null)
+        addIssues(result.summary.issues, EvaluatedIssueType.ADVISOR, pkg, null, null)
     }
 
     private fun addVulnerability(pkg: EvaluatedPackage, vulnerability: Vulnerability) {
@@ -410,7 +417,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
         findings: MutableList<EvaluatedFinding>,
         pkg: EvaluatedPackage
     ): EvaluatedScanResult {
-        val issues = mutableListOf<EvaluatedOrtIssue>()
+        val issues = mutableListOf<EvaluatedIssue>()
 
         val evaluatedScanResult = EvaluatedScanResult(
             provenance = result.provenance,
@@ -425,7 +432,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
 
         issues += addIssues(
             result.summary.issues,
-            EvaluatedOrtIssueType.SCANNER,
+            EvaluatedIssueType.SCANNER,
             pkg,
             actualScanResult,
             null
@@ -446,7 +453,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
         fun createDependencyNode(
             dependency: EvaluatedPackage,
             linkage: PackageLinkage,
-            issues: List<EvaluatedOrtIssue>,
+            issues: List<EvaluatedIssue>,
             children: List<DependencyTreeNode> = emptyList()
         ) =
             DependencyTreeNode(
@@ -464,7 +471,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             path: List<EvaluatedPackage>
         ): DependencyTreeNode {
             val dependency = packages.getOrPut(id) { createEmptyPackage(id) }
-            val issues = mutableListOf<EvaluatedOrtIssue>()
+            val issues = mutableListOf<EvaluatedIssue>()
             val packagePath = EvaluatedPackagePath(
                 pkg = dependency,
                 project = pkg,
@@ -477,7 +484,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
 
             if (this.issues.isNotEmpty()) {
                 paths += packagePath
-                issues += addIssues(this.issues, EvaluatedOrtIssueType.ANALYZER, dependency, null, packagePath)
+                issues += addIssues(this.issues, EvaluatedIssueType.ANALYZER, dependency, null, packagePath)
             }
 
             visitedNodes += getInternalId() to createDependencyNode(dependency, linkage, issues)
@@ -544,6 +551,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
             isProject = false,
             definitionFilePath = "",
             purl = null,
+            authors = emptySet(),
             declaredLicenses = emptyList(),
             declaredLicensesProcessed = EvaluatedProcessedDeclaredLicense(null, emptyList(), emptyList()),
             detectedLicenses = emptySet(),
@@ -573,16 +581,16 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
     }
 
     private fun addIssues(
-        issues: List<OrtIssue>,
-        type: EvaluatedOrtIssueType,
+        issues: List<Issue>,
+        type: EvaluatedIssueType,
         pkg: EvaluatedPackage,
         scanResult: EvaluatedScanResult?,
         path: EvaluatedPackagePath?
-    ): List<EvaluatedOrtIssue> {
+    ): List<EvaluatedIssue> {
         val evaluatedIssues = issues.map { issue ->
             val resolutions = addResolutions(issue)
 
-            EvaluatedOrtIssue(
+            EvaluatedIssue(
                 timestamp = issue.timestamp,
                 type = type,
                 source = issue.source,
@@ -601,7 +609,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
         return evaluatedIssues
     }
 
-    private fun addResolutions(issue: OrtIssue): List<IssueResolution> {
+    private fun addResolutions(issue: Issue): List<IssueResolution> {
         val matchingResolutions = input.resolutionProvider.getIssueResolutionsFor(issue)
 
         return issueResolutions.addIfRequired(matchingResolutions)
@@ -699,9 +707,7 @@ internal class EvaluatedModelMapper(private val input: ReporterInput) {
     private fun ProcessedDeclaredLicense.evaluate(): EvaluatedProcessedDeclaredLicense =
         EvaluatedProcessedDeclaredLicense(
             spdxExpression = spdxExpression,
-            mappedLicenses = spdxExpression?.decompose().orEmpty().map {
-                licenses.addIfRequired(LicenseId(it.toString()))
-            },
+            mappedLicenses = decompose().map { licenses.addIfRequired(LicenseId(it.toString())) },
             unmappedLicenses = unmapped.map { licenses.addIfRequired(LicenseId(it)) }
         )
 

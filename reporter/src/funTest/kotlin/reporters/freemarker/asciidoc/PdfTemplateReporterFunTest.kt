@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ class PdfTemplateReporterFunTest : StringSpec({
             it.read(header) shouldBe header.size
             String(header) shouldBe "%PDF"
         }
-        report.length() should beInRange(82000L..86000L)
+        report.length() should beInRange(111000L..115000L)
     }
 
     "Report generation is aborted when path to non-existing PDF theme file is given" {

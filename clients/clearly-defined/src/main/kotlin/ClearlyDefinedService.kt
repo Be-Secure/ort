@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,14 +21,22 @@ package org.ossreviewtoolkit.clients.clearlydefined
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
+import java.io.IOException
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.scalars.ScalarsConverterFactory
 import retrofit2.http.Body
@@ -46,6 +53,12 @@ import retrofit2.http.Query
 interface ClearlyDefinedService {
     companion object {
         /**
+         * The maximum number of elements to request at once in a chunked request. This value was chosen more or less
+         * arbitrary to keep the size of responses reasonably small.
+         */
+        const val MAX_REQUEST_CHUNK_SIZE = 100
+
+        /**
          * The JSON (de-)serialization object used by this service.
          */
         val JSON = Json { encodeDefaults = false }
@@ -55,17 +68,17 @@ interface ClearlyDefinedService {
          * pre-built OkHttp [client].
          */
         fun create(server: Server, client: OkHttpClient? = null): ClearlyDefinedService =
-            create(server.url, client)
+            create(server.apiUrl, client)
 
         /**
          * Create a ClearlyDefined service instance for communicating with a server running at the given [url],
          * optionally using a pre-built OkHttp [client].
          */
-        fun create(url: String, client: OkHttpClient? = null): ClearlyDefinedService {
+        fun create(url: String? = null, client: OkHttpClient? = null): ClearlyDefinedService {
             val contentType = "application/json".toMediaType()
             val retrofit = Retrofit.Builder()
                 .apply { if (client != null) client(client) }
-                .baseUrl(url)
+                .baseUrl(url ?: Server.PRODUCTION.apiUrl)
                 .addConverterFactory(ScalarsConverterFactory.create())
                 .addConverterFactory(JSON.asConverterFactory(contentType))
                 .build()
@@ -77,21 +90,27 @@ interface ClearlyDefinedService {
     /**
      * See https://github.com/clearlydefined/service/blob/661934a/schemas/swagger.yaml#L8-L14.
      */
-    enum class Server(val url: String) {
+    enum class Server(val apiUrl: String, val webUrl: String? = null, val contributionUrl: String? = null) {
         /**
-         * The ClearlyDefined production server. When submitting curations, this will create PRs against the repository
-         * at https://github.com/clearlydefined/curated-data.
+         * The production server.
          */
-        PRODUCTION("https://api.clearlydefined.io"),
+        PRODUCTION(
+            "https://api.clearlydefined.io",
+            "https://clearlydefined.io",
+            "https://github.com/clearlydefined/curated-data"
+        ),
 
         /**
-         * The ClearlyDefined development server. When submitting curations, this will create PRs against the repository
-         * at https://github.com/clearlydefined/curated-data-dev.
+         * The development server.
          */
-        DEVELOPMENT("https://dev-api.clearlydefined.io"),
+        DEVELOPMENT(
+            "https://dev-api.clearlydefined.io",
+            "https://dev.clearlydefined.io",
+            "https://github.com/clearlydefined/curated-data-dev"
+        ),
 
         /**
-         * The ClearlyDefined server when running locally.
+         * The server when running locally.
          */
         LOCAL("http://localhost:4000")
     }
@@ -200,7 +219,8 @@ interface ClearlyDefinedService {
     suspend fun searchDefinitions(@Query("pattern") pattern: String): List<String>
 
     /**
-     * Get the curation for the component described by [type], [provider], [namespace], [name] and [revision], see
+     * Get the curation for the component described by [type], [provider], [namespace] (use "-" if not applicable),
+     * [name] and [revision], see
      * https://api.clearlydefined.io/api-docs/#/curations/get_curations__type___provider___namespace___name___revision_.
      */
     @GET("curations/{type}/{provider}/{namespace}/{name}/{revision}")
@@ -234,7 +254,7 @@ interface ClearlyDefinedService {
 
     /**
      * Get information about the harvest tools that have produced data for the component described by [type],
-     * [provider], [namespace], [name], and [revision], see
+     * [provider], [namespace] (use "-" if not applicable), [name], and [revision], see
      * https://api.clearlydefined.io/api-docs/#/harvest/get_harvest__type___provider___namespace___name___revision_.
      * This can be used to quickly find out whether results of a specific tool are already available.
      */
@@ -248,8 +268,8 @@ interface ClearlyDefinedService {
     ): List<String>
 
     /**
-     * Get the harvested data for the component described by [type], [provider], [namespace], [name], and [revision]
-     * that was produced by [tool] with version [toolVersion], see
+     * Get the harvested data for the component described by [type], [provider], [namespace] (use "-" if not
+     * applicable), [name], and [revision] that was produced by [tool] with version [toolVersion], see
      * https://api.clearlydefined.io/api-docs/#/harvest/get_harvest__type___provider___namespace___name___revision___tool___toolVersion_
      */
     @GET("harvest/{type}/{provider}/{namespace}/{name}/{revision}/{tool}/{toolVersion}?form=streamed")
@@ -263,3 +283,48 @@ interface ClearlyDefinedService {
         @Path("toolVersion") toolVersion: String
     ): ResponseBody
 }
+
+suspend fun <T> ClearlyDefinedService.call(block: suspend ClearlyDefinedService.() -> T): T =
+    try {
+        block()
+    } catch (e: HttpException) {
+        val errorMessage = e.response()?.errorBody()?.let {
+            val errorResponse = ClearlyDefinedService.JSON.decodeFromString<ErrorResponse>(it.string())
+            val innerError = errorResponse.error.innererror
+
+            "The ClearlyDefined service call failed with: ${innerError.message}"
+        } ?: "The ClearlyDefined service call failed with code ${e.code()}: ${e.message()}"
+
+        throw IOException(errorMessage, e)
+    }
+
+fun <T> ClearlyDefinedService.callBlocking(block: suspend ClearlyDefinedService.() -> T): T =
+    runBlocking(Dispatchers.IO) { call(block) }
+
+fun ClearlyDefinedService.getDefinitionsChunked(
+    coordinates: Collection<Coordinates>,
+    chunkSize: Int = ClearlyDefinedService.MAX_REQUEST_CHUNK_SIZE
+): Map<Coordinates, ClearlyDefinedService.Defined> =
+    buildMap {
+        runBlocking(Dispatchers.IO) {
+            coordinates.chunked(chunkSize).map { chunk ->
+                async { call { getDefinitions(chunk) } }
+            }.awaitAll()
+        }.forEach {
+            putAll(it)
+        }
+    }
+
+fun ClearlyDefinedService.getCurationsChunked(
+    coordinates: Collection<Coordinates>,
+    chunkSize: Int = ClearlyDefinedService.MAX_REQUEST_CHUNK_SIZE
+): Map<Coordinates, Curation> =
+    buildMap {
+        runBlocking(Dispatchers.IO) {
+            coordinates.chunked(chunkSize).map { chunk ->
+                async { call { getCurations(chunk).values } }
+            }.awaitAll()
+        }.flatten().forEach {
+            putAll(it.curations)
+        }
+    }

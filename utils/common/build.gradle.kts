@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,12 +23,13 @@ plugins {
 }
 
 dependencies {
+    api(libs.commonsCompress)
     api(libs.jacksonDatabind)
     api(libs.log4jApiKotlin)
     api(libs.semver4j)
 
-    implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223")
-    implementation(libs.commonsCompress)
     implementation(libs.diskLruCache)
     implementation(libs.springCore)
+
+    runtimeOnly(libs.xz)
 }

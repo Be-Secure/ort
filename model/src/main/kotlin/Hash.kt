@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,6 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer
-
 import java.io.File
 import java.util.Base64
 
@@ -34,7 +28,6 @@ import org.ossreviewtoolkit.utils.common.encodeHex
 /**
  * A class that bundles a hash algorithm with its hash value.
  */
-@JsonDeserialize(using = HashDeserializer::class)
 data class Hash(
     /**
      * The value calculated using the hash algorithm.
@@ -103,21 +96,4 @@ data class Hash(
      * Verify that the provided [hash] matches this hash.
      */
     fun verify(hash: Hash): Boolean = algorithm == hash.algorithm && value.equals(hash.value, ignoreCase = true)
-}
-
-private class HashDeserializer : StdDeserializer<Hash>(Hash::class.java) {
-    override fun deserialize(p: JsonParser, ctxt: DeserializationContext): Hash {
-        val node = p.codec.readTree<JsonNode>(p)
-        return if (node.isTextual) {
-            val hashValue = node.textValue()
-            if (p.nextFieldName() == "hash_algorithm") {
-                val hashAlgorithm = p.nextTextValue()
-                Hash.create(hashValue, hashAlgorithm)
-            } else {
-                Hash.create(hashValue)
-            }
-        } else {
-            Hash.create(node["value"].textValue(), node["algorithm"].textValue())
-        }
-    }
 }

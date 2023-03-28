@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,12 +38,12 @@ import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.utils.common.expandTilde
 
 internal class GenerateScopeExcludesCommand : CliktCommand(
-    help = "Generate scope excludes based on common default for the package managers. The output is written to the " +
-            "given repository configuration file."
+    help = "Generate scope excludes based on common default for the package managers. The generated scope excludes " +
+            "get written to the given repository configuration file, replacing any existing scope excludes."
 ) {
     private val ortFile by option(
         "--ort-file", "-i",
-        help = "The input ORT file from which the rule violations are read."
+        help = "The ORT file to generate scope excludes for."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = false)
         .convert { it.absoluteFile.normalize() }
@@ -51,7 +51,7 @@ internal class GenerateScopeExcludesCommand : CliktCommand(
 
     private val repositoryConfigurationFile by option(
         "--repository-configuration-file",
-        help = "Override the repository configuration contained in the given input ORT file."
+        help = "The repository configuration file to write the generated scope excludes to."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = false)
         .convert { it.absoluteFile.normalize() }
@@ -111,6 +111,13 @@ private fun getScopeExcludesForPackageManager(packageManagerName: String): List<
         "Composer" -> listOf(
             ScopeExclude(
                 pattern = "require-dev",
+                reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
+                comment = "Packages for development only."
+            )
+        )
+        "Conan" -> listOf(
+            ScopeExclude(
+                pattern = "build_requires",
                 reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
                 comment = "Packages for development only."
             )

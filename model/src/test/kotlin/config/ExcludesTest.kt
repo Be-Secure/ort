@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
-import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
 import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.Identifier
@@ -38,12 +37,11 @@ import org.ossreviewtoolkit.model.PackageReference
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.Repository
 import org.ossreviewtoolkit.model.Scope
-import org.ossreviewtoolkit.utils.ort.Environment
 
 class ExcludesTest : WordSpec() {
     private val id = Identifier("type", "namespace", "name", "version")
 
-    private val pkg = CuratedPackage(pkg = Package.EMPTY.copy(id = id))
+    private val pkg = CuratedPackage(metadata = Package.EMPTY.copy(id = id))
 
     private val projectId1 = id.copy(name = "project1")
     private val projectId2 = id.copy(name = "project2")
@@ -55,7 +53,7 @@ class ExcludesTest : WordSpec() {
 
     private val pathExclude1 = PathExclude("path1", PathExcludeReason.BUILD_TOOL_OF, "")
     private val pathExclude2 = PathExclude("path2", PathExcludeReason.BUILD_TOOL_OF, "")
-    private val pathExclude3 = PathExclude("**.ext", PathExcludeReason.BUILD_TOOL_OF, "")
+    private val pathExclude3 = PathExclude("**/*.ext", PathExcludeReason.BUILD_TOOL_OF, "")
     private val pathExclude4 = PathExclude("**/file.ext", PathExcludeReason.BUILD_TOOL_OF, "")
 
     private val scope1 = Scope("scope1", sortedSetOf(PackageReference(id)))
@@ -71,11 +69,7 @@ class ExcludesTest : WordSpec() {
     override suspend fun beforeEach(testCase: TestCase) {
         ortResult = OrtResult(
             repository = Repository.EMPTY,
-            analyzer = AnalyzerRun(
-                environment = Environment(),
-                config = AnalyzerConfiguration(allowDynamicVersions = false),
-                result = AnalyzerResult.EMPTY
-            )
+            analyzer = AnalyzerRun.EMPTY
         )
     }
 
@@ -89,10 +83,10 @@ class ExcludesTest : WordSpec() {
     }
 
     private fun setProjects(vararg projects: Project) {
-        val packages = sortedSetOf<CuratedPackage>()
-        if (id in projects.flatMap { ortResult.dependencyNavigator.projectDependencies(it) }) packages += pkg
+        val packages = mutableSetOf<Package>()
+        if (id in projects.flatMap { ortResult.dependencyNavigator.projectDependencies(it) }) packages += pkg.metadata
         val analyzerResult = ortResult.analyzer!!.result.copy(
-            projects = projects.toSortedSet(),
+            projects = projects.toSet(),
             packages = packages
         )
         ortResult = ortResult.copy(analyzer = ortResult.analyzer!!.copy(result = analyzerResult))
@@ -495,6 +489,13 @@ class ExcludesTest : WordSpec() {
                 val excludes = Excludes()
 
                 excludes.isScopeExcluded(scope1.name) shouldBe false
+            }
+        }
+
+        "EMPTY" should {
+            "not contain any exclusions" {
+                Excludes.EMPTY.paths should beEmpty()
+                Excludes.EMPTY.scopes should beEmpty()
             }
         }
     }

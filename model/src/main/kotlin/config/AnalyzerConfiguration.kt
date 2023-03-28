@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020-2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +19,8 @@
 
 package org.ossreviewtoolkit.model.config
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 
-@JsonIgnoreProperties(value = ["ignore_tool_versions"]) // Backwards compatibility.
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class AnalyzerConfiguration(
     /**
@@ -54,9 +51,9 @@ data class AnalyzerConfiguration(
     val packageManagers: Map<String, PackageManagerConfiguration>? = null,
 
     /**
-     * Configuration of the SW360 package curation provider.
+     * A flag to control whether excluded scopes and paths should be skipped during the analysis.
      */
-    val sw360Configuration: Sw360StorageConfiguration? = null
+    val skipExcluded: Boolean = false
 ) {
     /**
      * A copy of [packageManagers] with case-insensitive keys.
@@ -82,7 +79,7 @@ data class AnalyzerConfiguration(
     /**
      * Merge this [AnalyzerConfiguration] with [other]. Values of [other] take precedence.
      */
-    fun merge(other: AnalyzerConfiguration): AnalyzerConfiguration {
+    fun merge(other: RepositoryAnalyzerConfiguration): AnalyzerConfiguration {
         val mergedPackageManagers = when {
             packageManagers == null -> other.packageManagers
             other.packageManagers == null -> packageManagers
@@ -110,11 +107,26 @@ data class AnalyzerConfiguration(
         }
 
         return AnalyzerConfiguration(
-            allowDynamicVersions = other.allowDynamicVersions,
+            allowDynamicVersions = other.allowDynamicVersions ?: allowDynamicVersions,
             enabledPackageManagers = other.enabledPackageManagers ?: enabledPackageManagers,
             disabledPackageManagers = other.disabledPackageManagers ?: disabledPackageManagers,
             packageManagers = mergedPackageManagers,
-            sw360Configuration = other.sw360Configuration ?: sw360Configuration
+            skipExcluded = other.skipExcluded ?: skipExcluded
         )
+    }
+
+    /**
+     * Return a copy of this [AnalyzerConfiguration] "patched" with [name]-specific options to contain the given [key]
+     * and [value] pair, overriding any existing entry.
+     */
+    fun withPackageManagerOption(name: String, key: String, value: String): AnalyzerConfiguration {
+        val managers = packageManagers.orEmpty().toMutableMap()
+        val configuration = managers[name] ?: PackageManagerConfiguration()
+        val options = configuration.options.orEmpty().toMutableMap()
+
+        options[key] = value
+        managers[name] = configuration.copy(options = options)
+
+        return copy(packageManagers = managers)
     }
 }

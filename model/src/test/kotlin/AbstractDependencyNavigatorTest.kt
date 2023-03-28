@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -94,7 +94,7 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
                     this should containAll(
                         Identifier("Maven:com.typesafe.akka:akka-actor_2.12:2.5.6"),
                         Identifier("Maven:org.scala-lang:scala-reflect:2.12.2"),
-                        Identifier("Maven:org.scala-lang:scala-library:2.12.3")
+                        Identifier("Maven:org.scala-lang:scala-library:2.12.15")
                     )
                 }
 
@@ -157,7 +157,7 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
                 compileDependencies should containAll(
                     Identifier("Maven:com.typesafe.akka:akka-actor_2.12:2.5.6"),
                     Identifier("Maven:org.scala-lang:scala-reflect:2.12.2"),
-                    Identifier("Maven:org.scala-lang:scala-library:2.12.3")
+                    Identifier("Maven:org.scala-lang:scala-library:2.12.15")
                 )
             }
 
@@ -263,7 +263,7 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
                             Identifier("Maven:com.typesafe.akka:akka-stream_2.12:2.5.6")
                         ),
                         Identifier("Maven:net.logstash.logback:logstash-logback-encoder:4.11") to emptyList(),
-                        Identifier("Maven:org.scala-lang:scala-library:2.12.3") to emptyList(),
+                        Identifier("Maven:org.scala-lang:scala-library:2.12.15") to emptyList(),
                         Identifier("Maven:org.scala-lang:scala-reflect:2.12.2") to listOf(
                             Identifier("Maven:com.typesafe.scala-logging:scala-logging_2.12:3.7.2")
                         ),
@@ -304,7 +304,7 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
                     Identifier("Maven:com.typesafe.akka:akka-stream_2.12:2.5.6"),
                     Identifier("Maven:com.typesafe.scala-logging:scala-logging_2.12:3.7.2"),
                     Identifier("Maven:net.logstash.logback:logstash-logback-encoder:4.11"),
-                    Identifier("Maven:org.scala-lang:scala-library:2.12.3"),
+                    Identifier("Maven:org.scala-lang:scala-library:2.12.15"),
                     Identifier("Maven:org.slf4j:jcl-over-slf4j:1.7.25"),
                     Identifier("Maven:org.scalacheck:scalacheck_2.12:1.13.5"),
                     Identifier("Maven:org.scalatest:scalatest_2.12:3.0.4")
@@ -320,7 +320,7 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
 
         "collectSubProjects" should {
             "find all the sub projects of a project" {
-                val projectId = Identifier("SBT:com.pbassiner:multi1_2.12:0.1-SNAPSHOT")
+                val projectId = Identifier("SBT:com.pbassiner:multi1_2.12:0.1.0-SNAPSHOT")
                 testResult.getProject(projectId) shouldNotBeNull {
                     val subProjectIds = navigator.collectSubProjects(this)
 
@@ -343,27 +343,30 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
         "projectIssues" should {
             "return the issues of a project" {
                 val ortResultWithIssues = File(resultWithIssuesFileName).readValue<OrtResult>()
-                val project = ortResultWithIssues.analyzer?.result?.projects.orEmpty().first()
                 val navigator = ortResultWithIssues.dependencyNavigator
+                val projectIdWithIssues = Identifier("SBT:com.pbassiner:common_2.12:0.1-SNAPSHOT")
+                val project = ortResultWithIssues.getProject(projectIdWithIssues)
 
-                val issues = navigator.projectIssues(project)
+                project shouldNotBeNull {
+                    val issues = navigator.projectIssues(this)
 
-                issues should containExactlyEntries(
-                    Identifier("Maven:org.scala-lang.modules:scala-java8-compat_2.12:0.8.0") to setOf(
-                        OrtIssue(
-                            Instant.EPOCH,
-                            "Gradle",
-                            "Test issue 1"
-                        )
-                    ),
-                    Identifier("Maven:org.scalactic:scalactic_2.12:3.0.4") to setOf(
-                        OrtIssue(
-                            Instant.EPOCH,
-                            "Gradle",
-                            "Test issue 2"
+                    issues should containExactlyEntries(
+                        Identifier("Maven:org.scala-lang.modules:scala-java8-compat_2.12:0.8.0") to setOf(
+                            Issue(
+                                Instant.EPOCH,
+                                "Gradle",
+                                "Test issue 1"
+                            )
+                        ),
+                        Identifier("Maven:org.scalactic:scalactic_2.12:3.0.4") to setOf(
+                            Issue(
+                                Instant.EPOCH,
+                                "Gradle",
+                                "Test issue 2"
+                            )
                         )
                     )
-                )
+                }
             }
         }
 
@@ -402,4 +405,4 @@ abstract class AbstractDependencyNavigatorTest : WordSpec() {
 }
 
 /** Identifier of the project used by the tests. */
-private val PROJECT_ID = Identifier("SBT:com.pbassiner:common_2.12:0.1-SNAPSHOT")
+private val PROJECT_ID = Identifier("SBT:com.pbassiner:common_2.12:0.1.0-SNAPSHOT")

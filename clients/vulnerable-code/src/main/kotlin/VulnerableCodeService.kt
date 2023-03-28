@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,6 +38,8 @@ import retrofit2.http.POST
  */
 interface VulnerableCodeService {
     companion object {
+        const val PUBLIC_SERVER_URL = "https://public.vulnerablecode.io"
+
         /**
          * The JSON (de-)serialization object used by this service.
          */
@@ -46,11 +48,23 @@ interface VulnerableCodeService {
         /**
          * Create a new service instance that connects to the [url] specified and uses the optionally provided [client].
          */
-        fun create(url: String, client: OkHttpClient? = null): VulnerableCodeService {
+        fun create(url: String? = null, apiKey: String? = null, client: OkHttpClient? = null): VulnerableCodeService {
+            val vulnerableCodeClient = (client ?: OkHttpClient()).run {
+                takeIf { apiKey == null } ?: run {
+                    newBuilder().addInterceptor { chain ->
+                        val requestBuilder = chain.request().newBuilder().apply {
+                            header("Authorization", "Token $apiKey")
+                        }
+
+                        chain.proceed(requestBuilder.build())
+                    }.build()
+                }
+            }
+
             val contentType = "application/json".toMediaType()
             val retrofit = Retrofit.Builder()
-                .apply { if (client != null) client(client) }
-                .baseUrl(url)
+                .client(vulnerableCodeClient)
+                .baseUrl(url ?: PUBLIC_SERVER_URL)
                 .addConverterFactory(JSON.asConverterFactory(contentType))
                 .build()
 
@@ -98,12 +112,20 @@ interface VulnerableCodeService {
      */
     @Serializable
     data class Vulnerability(
-        /** A URL with information about the vulnerability. */
+        /** The VulnerableCode-specific identifier for this vulnerability. */
         @SerialName("vulnerability_id")
         val vulnerabilityId: String,
 
         /** A list with [VulnerabilityReference]s pointing to sources of information about this vulnerability. */
-        val references: List<VulnerabilityReference>
+        val references: List<VulnerabilityReference>,
+
+        /**
+         * A list with strings representing alias identifiers for this vulnerability as they are used by other
+         * databases. VulnerableCode here returns plain strings without further context information; therefore, it is
+         * currently only possible to determine the source of a specific identifier from its structure, e.g. if it has
+         * a well-known prefix like CVE or GHSA.
+         */
+        val aliases: List<String> = emptyList()
     )
 
     /**

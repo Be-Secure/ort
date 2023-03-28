@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2020-2021 SCANOSS TECNOLOGIAS SL
- * Copyright (C) 2020-2022 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +20,12 @@
 package org.ossreviewtoolkit.scanner.scanners.scanoss
 
 import com.scanoss.scanner.BlacklistRules
+import com.scanoss.scanner.Scanner
 import com.scanoss.scanner.Winnowing
 
 import java.io.File
 import java.time.Instant
+import java.util.Properties
 import java.util.UUID
 
 import kotlinx.coroutines.runBlocking
@@ -37,48 +38,43 @@ import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.clients.scanoss.ScanOssService
 import org.ossreviewtoolkit.model.ScanSummary
+import org.ossreviewtoolkit.model.ScannerDetails
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
-import org.ossreviewtoolkit.scanner.AbstractScannerFactory
-import org.ossreviewtoolkit.scanner.BuildConfig
-import org.ossreviewtoolkit.scanner.PathScanner
-import org.ossreviewtoolkit.scanner.experimental.AbstractScannerWrapperFactory
-import org.ossreviewtoolkit.scanner.experimental.PathScannerWrapper
-import org.ossreviewtoolkit.scanner.experimental.ScanContext
+import org.ossreviewtoolkit.scanner.AbstractScannerWrapperFactory
+import org.ossreviewtoolkit.scanner.PathScannerWrapper
+import org.ossreviewtoolkit.scanner.ScanContext
+import org.ossreviewtoolkit.scanner.ScannerCriteria
+import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
 
 // An arbitrary name to use for the multipart body being sent.
 private const val FAKE_WFP_FILE_NAME = "fake.wfp"
 
 class ScanOss internal constructor(
-    name: String,
-    scannerConfig: ScannerConfiguration,
-    downloaderConfig: DownloaderConfiguration
-) : PathScanner(name, scannerConfig, downloaderConfig), PathScannerWrapper {
+    private val name: String,
+    private val scannerConfig: ScannerConfiguration
+) : PathScannerWrapper {
     companion object : Logging
 
-    class ScanOssFactory : AbstractScannerWrapperFactory<ScanOss>("SCANOSS") {
+    class Factory : AbstractScannerWrapperFactory<ScanOss>("SCANOSS") {
         override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            ScanOss(scannerName, scannerConfig, downloaderConfig)
-    }
-
-    class Factory : AbstractScannerFactory<ScanOss>("SCANOSS") {
-        override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            ScanOss(scannerName, scannerConfig, downloaderConfig)
+            ScanOss(type, scannerConfig)
     }
 
     private val config = ScanOssConfig.create(scannerConfig).also {
-        logger.info { "The $scannerName API URL is ${it.apiUrl}." }
+        logger.info { "The $name API URL is ${it.apiUrl}." }
     }
 
     private val service = ScanOssService.create(config.apiUrl)
 
-    override val name = scannerName
-    override val criteria by lazy { getScannerCriteria() }
+    override val criteria by lazy { ScannerCriteria.fromConfig(details, scannerConfig) }
 
-    // TODO: Find out the best / cheapest way to query the SCANOSS server for its version.
-    override val version = BuildConfig.SCANOSS_VERSION
-
-    override val configuration = ""
+    override val details by lazy {
+        // TODO: Find out the best / cheapest way to query the SCANOSS server for its version.
+        val pomProperties = "/META-INF/maven/com.scanoss/scanner/pom.properties"
+        val properties = Scanner::class.java.getResourceAsStream(pomProperties).use { Properties().apply { load(it) } }
+        ScannerDetails(name, properties.getProperty("version"), "")
+    }
 
     /**
      * The name of the file corresponding to the fingerprints can be sent to SCANOSS for more precise matches.
@@ -90,16 +86,17 @@ class ScanOss internal constructor(
      */
     private val fileNamesAnonymizationMapping = mutableMapOf<UUID, String>()
 
-    override fun scanPathInternal(path: File): ScanSummary {
+    override fun scanPath(path: File, context: ScanContext): ScanSummary {
         val startTime = Instant.now()
 
         val wfpString = buildString {
             path.walk()
+                .onEnter { it.name !in VCS_DIRECTORIES }
                 // TODO: Consider not applying the (somewhat arbitrary) blacklist.
-                .filter { !it.isDirectory && !BlacklistRules.hasBlacklistedExt(it.name) }
+                .filterNot { it.isDirectory || BlacklistRules.hasBlacklistedExt(it.name) }
                 .forEach {
                     logger.info { "Computing fingerprint for file ${it.absolutePath}..." }
-                    append(createWfpForFile(it.path))
+                    append(createWfpForFile(it))
                 }
         }
 
@@ -115,7 +112,7 @@ class ScanOss internal constructor(
             val uuid = UUID.fromString(entry.key)
 
             val fileName = fileNamesAnonymizationMapping[uuid] ?: throw IllegalArgumentException(
-                "The $scannerName server returned an UUID not present in the mapping."
+                "The $name server returned an UUID not present in the mapping."
             )
 
             fileName to entry.value
@@ -133,13 +130,11 @@ class ScanOss internal constructor(
 
     internal fun generateRandomUUID() = UUID.randomUUID()
 
-    internal fun createWfpForFile(filePath: String): String {
+    internal fun createWfpForFile(file: File): String {
         generateRandomUUID().let { uuid ->
             // TODO: Let's keep the original file extension to give SCANOSS some hint about the mime type.
-            fileNamesAnonymizationMapping[uuid] = filePath
-            return Winnowing.wfpForFile(uuid.toString(), filePath)
+            fileNamesAnonymizationMapping[uuid] = file.path
+            return Winnowing.wfpForFile(uuid.toString(), file.path)
         }
     }
-
-    override fun scanPath(path: File, context: ScanContext) = scanPathInternal(path)
 }

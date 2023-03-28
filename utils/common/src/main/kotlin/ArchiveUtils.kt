@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +17,7 @@
  * License-Filename: LICENSE
  */
 
-@file:Suppress("MatchingDeclarationName", "TooManyFunctions")
+@file:Suppress("TooManyFunctions")
 
 package org.ossreviewtoolkit.utils.common
 
@@ -46,6 +45,9 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import org.apache.commons.compress.utils.SeekableInMemoryByteChannel
+import org.apache.logging.log4j.kotlin.Logging
+
+object ArchiveUtils : Logging
 
 enum class ArchiveType(vararg val extensions: String) {
     SEVENZIP(".7z"),
@@ -124,6 +126,8 @@ fun File.unpackTryAllTypes(targetDirectory: File, filter: (ArchiveEntry) -> Bool
  */
 fun File.unpack7Zip(targetDirectory: File, filter: (ArchiveEntry) -> Boolean = { true }) {
     SevenZFile(this).use { zipFile ->
+        val canonicalTargetDirectory = targetDirectory.canonicalFile
+
         while (true) {
             val entry = zipFile.nextEntry ?: break
 
@@ -133,6 +137,14 @@ fun File.unpack7Zip(targetDirectory: File, filter: (ArchiveEntry) -> Boolean = {
             }
 
             val target = targetDirectory.resolve(entry.name)
+
+            if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
+                ArchiveUtils.logger.warn {
+                    "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
+                }
+
+                continue
+            }
 
             // There is no guarantee that directory entries appear before file entries, so ensure that the parent
             // directory for a file exists.
@@ -163,6 +175,7 @@ fun File.unpackZip(targetDirectory: File, filter: (ArchiveEntry) -> Boolean = { 
  */
 private fun ZipFile.unpack(targetDirectory: File, filter: (ArchiveEntry) -> Boolean) =
     use { zipFile ->
+        val canonicalTargetDirectory = targetDirectory.canonicalFile
         val entries = zipFile.entries
 
         while (entries.hasMoreElements()) {
@@ -174,6 +187,14 @@ private fun ZipFile.unpack(targetDirectory: File, filter: (ArchiveEntry) -> Bool
             }
 
             val target = targetDirectory.resolve(entry.name)
+
+            if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
+                ArchiveUtils.logger.warn {
+                    "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
+                }
+
+                continue
+            }
 
             // There is no guarantee that directory entries appear before file entries, so ensure that the parent
             // directory for a file exists.
@@ -209,7 +230,7 @@ fun File.unpackDeb(targetDirectory: File, filter: (ArchiveEntry) -> Boolean = { 
 
         DEB_NESTED_ARCHIVES.forEach { name ->
             val subDirectoryName = name.substringBefore('.')
-            val subDirectory = targetDirectory.resolve(subDirectoryName).apply { safeMkdirs() }
+            val subDirectory = targetDirectory.resolve(subDirectoryName).safeMkdirs()
             val file = tempDir.resolve(name)
             file.unpack(subDirectory, filter = filter)
         }
@@ -250,6 +271,7 @@ private fun ArchiveInputStream.unpack(
     mode: (ArchiveEntry) -> Int
 ) =
     use { input ->
+        val canonicalTargetDirectory = targetDirectory.canonicalFile
         var processed = false
 
         while (true) {
@@ -259,6 +281,14 @@ private fun ArchiveInputStream.unpack(
             if (shouldSkip(entry)) continue
 
             val target = targetDirectory.resolve(entry.name)
+
+            if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
+                ArchiveUtils.logger.warn {
+                    "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
+                }
+
+                continue
+            }
 
             // There is no guarantee that directory entries appear before file entries, so ensure that the parent
             // directory for a file exists.
@@ -314,7 +344,7 @@ fun File.packZip(
         }.filter {
             Files.isRegularFile(it.toPath(), LinkOption.NOFOLLOW_LINKS) && fileFilter(it) && it != targetFile
         }.forEach { file ->
-            val packPath = prefix + file.toRelativeString(this)
+            val packPath = prefix + file.toRelativeString(takeUnless { it.isFile } ?: parentFile)
             val entry = ZipArchiveEntry(file, packPath)
             output.putArchiveEntry(entry)
             file.inputStream().use { input -> input.copyTo(output) }

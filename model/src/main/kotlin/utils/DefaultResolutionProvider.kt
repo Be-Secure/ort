@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +21,7 @@ package org.ossreviewtoolkit.model.utils
 
 import java.io.File
 
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.Vulnerability
@@ -30,28 +29,22 @@ import org.ossreviewtoolkit.model.config.Resolutions
 import org.ossreviewtoolkit.model.readValue
 
 /**
- * A provider of previously added resolutions for [OrtIssue]s and [RuleViolation]s.
+ * A [ResolutionProvider] that provides the given [resolutions].
  */
-class DefaultResolutionProvider : ResolutionProvider {
+class DefaultResolutionProvider(private val resolutions: Resolutions = Resolutions()) : ResolutionProvider {
     companion object {
         /**
          * Create a [DefaultResolutionProvider] and add the resolutions from the [ortResult] and the [resolutionsFile].
          */
-        fun create(ortResult: OrtResult? = null, resolutionsFile: File? = null): DefaultResolutionProvider =
-            DefaultResolutionProvider().apply {
-                ortResult?.let { add(it.getResolutions()) }
-                resolutionsFile?.takeIf { it.isFile }?.readValue<Resolutions>()?.let { add(it) }
-            }
+        fun create(ortResult: OrtResult? = null, resolutionsFile: File? = null): DefaultResolutionProvider {
+            val resolutionsFromOrtResult = ortResult?.getResolutions() ?: Resolutions()
+            val resolutionsFromFile = resolutionsFile?.takeIf { it.isFile }?.readValue() ?: Resolutions()
+
+            return DefaultResolutionProvider(resolutionsFromOrtResult.merge(resolutionsFromFile))
+        }
     }
 
-    private var resolutions = Resolutions()
-
-    /**
-     * Add [other] resolutions that get merged with the existing resolutions.
-     */
-    fun add(other: Resolutions) = apply { resolutions = resolutions.merge(other) }
-
-    override fun getIssueResolutionsFor(issue: OrtIssue) = resolutions.issues.filter { it.matches(issue) }
+    override fun getIssueResolutionsFor(issue: Issue) = resolutions.issues.filter { it.matches(issue) }
 
     override fun getRuleViolationResolutionsFor(violation: RuleViolation) =
         resolutions.ruleViolations.filter { it.matches(violation) }
@@ -68,6 +61,10 @@ class DefaultResolutionProvider : ResolutionProvider {
             resolutions.ruleViolations.filter { resolution -> violations.any { resolution.matches(it) } }
         }.orEmpty()
 
-        return Resolutions(issueResolutions, ruleViolationResolutions)
+        val vulnerabilityResolutions = ortResult.getVulnerabilities().values.flatten().let { vulnerabilities ->
+            resolutions.vulnerabilities.filter { resolution -> vulnerabilities.any { resolution.matches(it) } }
+        }
+
+        return Resolutions(issueResolutions, ruleViolationResolutions, vulnerabilityResolutions)
     }
 }

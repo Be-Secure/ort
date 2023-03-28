@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,16 +24,15 @@ package org.ossreviewtoolkit.analyzer.managers
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
-import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 import org.apache.logging.log4j.kotlin.Logging
 
@@ -55,8 +54,8 @@ import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
-import org.ossreviewtoolkit.model.PackageReference
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
 import org.ossreviewtoolkit.model.RemoteArtifact
@@ -65,7 +64,6 @@ import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.model.readTree
@@ -82,6 +80,18 @@ import org.ossreviewtoolkit.utils.common.stashDirectories
 import org.ossreviewtoolkit.utils.common.textValueOrEmpty
 import org.ossreviewtoolkit.utils.common.withoutPrefix
 
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
+
+/** Name of the scope with the regular dependencies. */
+private const val DEPENDENCIES_SCOPE = "dependencies"
+
+/** Name of the scope with optional dependencies. */
+private const val OPTIONAL_DEPENDENCIES_SCOPE = "optionalDependencies"
+
+/** Name of the scope with development dependencies. */
+private const val DEV_DEPENDENCIES_SCOPE = "devDependencies"
+
 /**
  * The [Node package manager](https://www.npmjs.com/) for JavaScript.
  *
@@ -97,7 +107,10 @@ open class Npm(
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
-    companion object : Logging
+    companion object : Logging {
+        /** Name of the configuration option to toggle legacy peer dependency support. */
+        const val OPTION_LEGACY_PEER_DEPS = "legacyPeerDeps"
+    }
 
     class Factory : AbstractPackageManagerFactory<Npm>("NPM") {
         override val globsForDefinitionFiles = listOf("package.json")
@@ -106,14 +119,14 @@ open class Npm(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Npm(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Npm(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
-    private val legacyPeerDeps =
-        analyzerConfig.getPackageManagerConfiguration(managerName)?.options?.get(OPTION_LEGACY_PEER_DEPS)
-            .toBoolean()
+    private val legacyPeerDeps = options[OPTION_LEGACY_PEER_DEPS].toBoolean()
 
     private val graphBuilder = DependencyGraphBuilder(NpmDependencyHandler(this))
+
+    private val npmViewCache = ConcurrentHashMap<String, Deferred<JsonNode>>()
 
     /**
      * Search depth in the `node_modules` directory for `package.json` files used for collecting all packages of the
@@ -146,7 +159,7 @@ open class Npm(
 
     override fun command(workingDir: File?) = if (Os.isWindows) "npm.cmd" else "npm"
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildNPM("6.* - 8.5.*")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create("6.* - 8.*")
 
     override fun mapDefinitionFiles(definitionFiles: List<File>) = mapDefinitionFilesForNpm(definitionFiles).toList()
 
@@ -177,14 +190,23 @@ open class Npm(
         // Actually installing the dependencies is the easiest way to get the metadata of all transitive
         // dependencies (i.e. their respective "package.json" files). As NPM uses a global cache, the same
         // dependency is only ever downloaded once.
-        installDependencies(workingDir)
+        val issues = installDependencies(workingDir)
+
+        val project = runCatching {
+            parseProject(definitionFile)
+        }.getOrElse {
+            logger.error { "Failed to parse project information: ${it.collectMessages()}" }
+            Project.EMPTY
+        }
+
+        if (issues.any { it.severity == Severity.ERROR }) {
+            return listOf(ProjectAnalyzerResult(project, emptySet(), issues))
+        }
 
         // Create packages for all modules found in the workspace and add them to the graph builder. They are
         // reused when they are referenced by scope dependencies.
         val packages = parseInstalledModules(workingDir)
         graphBuilder.addPackages(packages.values)
-
-        val project = parseProject(definitionFile)
 
         val scopeNames = listOfNotNull(
             // Optional dependencies are just like regular dependencies except that NPM ignores failures when
@@ -207,7 +229,14 @@ open class Npm(
 
         // TODO: add support for peerDependencies and bundledDependencies.
 
-        return listOf(ProjectAnalyzerResult(project.copy(scopeNames = scopeNames.toSortedSet()), sortedSetOf()))
+        return listOf(
+            ProjectAnalyzerResult(
+                project = project.copy(scopeNames = scopeNames.toSortedSet()),
+                // Packages are set later by createPackageManagerResult().
+                packages = emptySet(),
+                issues = issues
+            )
+        )
     }
 
     private fun parseInstalledModules(rootDirectory: File): Map<String, Package> {
@@ -262,7 +291,7 @@ open class Npm(
      * Construct a [Package] by parsing its _package.json_ file and - if applicable - querying additional
      * content via the `npm view` command. The result is a [Pair] with the raw identifier and the new package.
      */
-    internal fun parsePackage(workingDir: File, packageFile: File): Pair<String, Package> {
+    internal suspend fun parsePackage(workingDir: File, packageFile: File): Pair<String, Package> {
         val packageDir = packageFile.parentFile
 
         logger.debug { "Found a 'package.json' file in '$packageDir'." }
@@ -310,7 +339,7 @@ open class Npm(
 
             if (hasIncompleteData) {
                 runCatching {
-                    getRemotePackageDetails(workingDir, "$rawName@$version")
+                    getRemotePackageDetailsAsync(workingDir, "$rawName@$version").await()
                 }.onSuccess { details ->
                     if (description.isEmpty()) description = details["description"].textValueOrEmpty()
                     if (homepageUrl.isEmpty()) homepageUrl = details["homepage"].textValueOrEmpty()
@@ -352,15 +381,24 @@ open class Npm(
         )
 
         require(module.id.name.isNotEmpty()) {
-            "Generated package info for ${id.toCoordinates()} has no name."
+            "Generated package info for '${id.toCoordinates()}' has no name."
         }
 
         require(module.id.version.isNotEmpty()) {
-            "Generated package info for ${id.toCoordinates()} has no version."
+            "Generated package info for '${id.toCoordinates()}' has no version."
         }
 
         return Pair(id.toCoordinates(), module)
     }
+
+    private suspend fun getRemotePackageDetailsAsync(workingDir: File, packageName: String): Deferred<JsonNode> =
+        withContext(Dispatchers.IO) {
+            npmViewCache.getOrPut(packageName) {
+                async {
+                    getRemotePackageDetails(workingDir, packageName)
+                }
+            }
+        }
 
     protected open fun getRemotePackageDetails(workingDir: File, packageName: String): JsonNode {
         val process = run(workingDir, "view", "--json", packageName)
@@ -368,7 +406,7 @@ open class Npm(
     }
 
     /** Cache for submodules identified by its moduleDir absolutePath */
-    private val submodulesCache: ConcurrentHashMap<String, List<File>> = ConcurrentHashMap()
+    private val submodulesCache = ConcurrentHashMap<String, List<File>>()
 
     /**
      * Find the directories which are defined as submodules of the project within [moduleDir].
@@ -388,29 +426,14 @@ open class Npm(
         scopes: Set<String>,
         targetScope: String
     ): String? {
+        if (excludes.isScopeExcluded(targetScope)) return null
+
         val qualifiedScopeName = DependencyGraph.qualifyScope(project, targetScope)
         val moduleDependencies = getModuleDependencies(workingDir, scopes)
 
         moduleDependencies.forEach { graphBuilder.addDependency(qualifiedScopeName, it) }
 
         return targetScope.takeUnless { moduleDependencies.isEmpty() }
-    }
-
-    private fun getPackageReferenceForMissingModule(moduleName: String, rootModuleDir: File): PackageReference {
-        val issue = createAndLogIssue(
-            source = managerName,
-            message = "Package '$moduleName' was not installed, because the package file could not be found " +
-                    "anywhere in '$rootModuleDir'. This might be fine if the module was not installed because it is " +
-                    "specific to a different platform.",
-            severity = Severity.WARNING
-        )
-
-        val (namespace, name) = splitNpmNamespaceAndName(moduleName)
-
-        return PackageReference(
-            id = Identifier(managerName, namespace, name, ""),
-            issues = listOf(issue)
-        )
     }
 
     private fun getModuleDependencies(moduleDir: File, scopes: Set<String>): Set<NpmModuleInfo> {
@@ -464,8 +487,11 @@ open class Npm(
                 return@forEach
             }
 
-            logger.debug { "Could not find module dir for '$dependencyName' within: '${pathToRoot.joinToString()}'." }
-            getPackageReferenceForMissingModule(dependencyName, pathToRoot.first())
+            logger.debug {
+                "It seems that the '$dependencyName' module was not installed as the package file could not be found " +
+                    "anywhere in '${pathToRoot.joinToString()}'. This might be fine if the module is specific to a " +
+                        "platform other than the one ORT is running on. A typical example is the 'fsevents' module."
+            }
         }
 
         return NpmModuleInfo(moduleId, moduleDir, moduleInfo.packageJson, dependencies)
@@ -570,15 +596,78 @@ open class Npm(
     /**
      * Install dependencies using the given package manager command.
      */
-    private fun installDependencies(workingDir: File) {
+    private fun installDependencies(workingDir: File): List<Issue> {
         requireLockfile(workingDir) { hasLockFile(workingDir) }
 
         // Install all NPM dependencies to enable NPM to list dependencies.
         val process = runInstall(workingDir)
 
-        // TODO: Capture warnings from npm output, e.g. "Unsupported platform" which happens for fsevents on all
-        //       platforms except for Mac.
-        process.stderr.withoutPrefix("Error: ")?.also { throw IOException(it.lineSequence().first()) }
+        val lines = process.stderr.lines()
+        val issues = mutableListOf<Issue>()
+
+        fun mapLinesToIssues(prefix: String, severity: Severity) {
+            val ignorablePrefixes = setOf("code ", "errno ", "path ", "syscall ")
+            val singleLinePrefixes = setOf("deprecated ")
+            val minSecondaryPrefixLength = 5
+
+            val issueLines = lines.mapNotNull { line ->
+                line.withoutPrefix(prefix)?.takeUnless { ignorablePrefixes.any { prefix -> it.startsWith(prefix) } }
+            }
+
+            var commonPrefix: String
+            var previousPrefix = ""
+
+            val collapsedLines = issueLines.fold(mutableListOf<String>()) { messages, line ->
+                if (messages.isEmpty()) {
+                    // The first line is always added including the prefix. The prefix will be removed later.
+                    messages += line
+                } else {
+                    // Find the longest common prefix that ends with space.
+                    commonPrefix = line.commonPrefixWith(messages.last())
+                    if (!commonPrefix.endsWith(' ')) {
+                        // Deal with prefixes being used on their own as separators.
+                        commonPrefix = if ("$commonPrefix " == previousPrefix) {
+                            "$commonPrefix "
+                        } else {
+                            commonPrefix.dropLastWhile { it != ' ' }
+                        }
+                    }
+
+                    if (commonPrefix !in singleLinePrefixes && commonPrefix.length >= minSecondaryPrefixLength) {
+                        // Do not drop the whole prefix but keep the space when concatenating lines.
+                        messages[messages.size - 1] += line.drop(commonPrefix.length - 1).trimEnd()
+                        previousPrefix = commonPrefix
+                    } else {
+                        // Remove the prefix from previously added message start.
+                        messages[messages.size - 1] = messages.last().removePrefix(previousPrefix).trimStart()
+                        messages += line
+                    }
+                }
+
+                messages
+            }
+
+            if (collapsedLines.isNotEmpty()) {
+                // Remove the prefix from the last added message start.
+                collapsedLines[collapsedLines.size - 1] = collapsedLines.last().removePrefix(previousPrefix).trimStart()
+            }
+
+            collapsedLines.forEach { line ->
+                // Skip any footer as a whole.
+                if (line == "A complete log of this run can be found in:") return
+
+                issues += Issue(
+                    source = managerName,
+                    message = line,
+                    severity = severity
+                )
+            }
+        }
+
+        mapLinesToIssues("npm WARN ", Severity.WARNING)
+        mapLinesToIssues("npm ERR! ", Severity.ERROR)
+
+        return issues
     }
 
     protected open fun runInstall(workingDir: File): ProcessCapture {
@@ -588,18 +677,7 @@ open class Npm(
             "--legacy-peer-deps".takeIf { legacyPeerDeps }
         )
 
-        return run(workingDir, if (hasLockFile(workingDir)) "ci" else "install", *options.toTypedArray())
+        val subcommand = if (hasLockFile(workingDir)) "ci" else "install"
+        return ProcessCapture(workingDir, command(workingDir), subcommand, *options.toTypedArray())
     }
 }
-
-/** Name of the configuration option to toggle legacy peer dependency support. */
-private const val OPTION_LEGACY_PEER_DEPS = "legacyPeerDeps"
-
-/** Name of the scope with the regular dependencies. */
-private const val DEPENDENCIES_SCOPE = "dependencies"
-
-/** Name of the scope with optional dependencies. */
-private const val OPTIONAL_DEPENDENCIES_SCOPE = "optionalDependencies"
-
-/** Name of the scope with development dependencies. */
-private const val DEV_DEPENDENCIES_SCOPE = "devDependencies"

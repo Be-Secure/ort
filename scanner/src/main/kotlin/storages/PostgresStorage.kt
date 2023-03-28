@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -50,8 +50,8 @@ import org.ossreviewtoolkit.model.utils.arrayParam
 import org.ossreviewtoolkit.model.utils.rawParam
 import org.ossreviewtoolkit.model.utils.tilde
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
+import org.ossreviewtoolkit.scanner.ScanStorageException
 import org.ossreviewtoolkit.scanner.ScannerCriteria
-import org.ossreviewtoolkit.scanner.experimental.ScanStorageException
 import org.ossreviewtoolkit.scanner.storages.utils.ScanResultDao
 import org.ossreviewtoolkit.scanner.storages.utils.ScanResults
 import org.ossreviewtoolkit.utils.common.collectMessages
@@ -140,7 +140,7 @@ class PostgresStorage(
             if (it is JsonProcessingException || it is SQLException) {
                 it.showStackTrace()
 
-                val message = "Could not read scan results for ${id.toCoordinates()} from database: " +
+                val message = "Could not read scan results for '${id.toCoordinates()}' from database: " +
                         it.collectMessages()
 
                 logger.info { message }
@@ -172,7 +172,7 @@ class PostgresStorage(
             if (it is JsonProcessingException || it is SQLException) {
                 it.showStackTrace()
 
-                val message = "Could not read scan results for ${pkg.id.toCoordinates()} with " +
+                val message = "Could not read scan results for '${pkg.id.toCoordinates()}' with " +
                         "$scannerCriteria from database: ${it.collectMessages()}"
 
                 logger.info { message }
@@ -233,7 +233,7 @@ class PostgresStorage(
     }
 
     override fun addInternal(id: Identifier, scanResult: ScanResult): Result<Unit> {
-        logger.info { "Storing scan result for ${id.toCoordinates()} in storage." }
+        logger.info { "Storing scan result for '${id.toCoordinates()}' in storage." }
 
         // TODO: Check if there is already a matching entry for this provenance and scanner details.
 

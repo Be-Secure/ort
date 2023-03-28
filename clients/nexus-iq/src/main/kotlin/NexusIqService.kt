@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,21 +74,19 @@ interface NexusIqService {
             password: String? = null,
             client: OkHttpClient? = null
         ): NexusIqService {
-            val nexusIqClient = (client ?: OkHttpClient()).newBuilder()
-                .addInterceptor { chain ->
-                    val request = chain.request()
-                    val token = UUID.randomUUID().toString()
-                    val requestBuilder = request.newBuilder()
-                        .header("X-CSRF-TOKEN", token)
-                        .header("Cookie", "CLM-CSRF-TOKEN=$token")
+            val nexusIqClient = (client?.newBuilder() ?: OkHttpClient.Builder()).addInterceptor { chain ->
+                val request = chain.request()
+                val token = UUID.randomUUID().toString()
+                val requestBuilder = request.newBuilder()
+                    .header("X-CSRF-TOKEN", token)
+                    .header("Cookie", "CLM-CSRF-TOKEN=$token")
 
-                    if (user != null && password != null) {
-                        requestBuilder.header("Authorization", Credentials.basic(user, password))
-                    }
-
-                    chain.proceed(requestBuilder.build())
+                if (user != null && password != null) {
+                    requestBuilder.header("Authorization", Credentials.basic(user, password))
                 }
-                .build()
+
+                chain.proceed(requestBuilder.build())
+            }.build()
 
             val contentType = "application/json".toMediaType()
             val retrofit = Retrofit.Builder()

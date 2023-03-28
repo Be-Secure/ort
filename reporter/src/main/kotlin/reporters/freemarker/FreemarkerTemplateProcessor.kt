@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import org.ossreviewtoolkit.model.AdvisorRecord
 import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.AdvisorResultFilter
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.RepositoryProvenance
@@ -54,6 +54,7 @@ import org.ossreviewtoolkit.model.licenses.ResolvedLicense
 import org.ossreviewtoolkit.model.licenses.ResolvedLicenseFileInfo
 import org.ossreviewtoolkit.model.licenses.ResolvedLicenseInfo
 import org.ossreviewtoolkit.model.licenses.filterExcluded
+import org.ossreviewtoolkit.model.utils.getRepositoryPath
 import org.ossreviewtoolkit.reporter.Reporter
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.utils.common.expandTilde
@@ -67,14 +68,31 @@ import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
  * [1]: https://freemarker.apache.org
  */
 class FreemarkerTemplateProcessor(
-    private val filePrefix: String,
-    private val fileExtension: String,
-    private val templatesResourceDirectory: String
+    templatesResourceDirectory: String,
+    private val filePrefix: String = "",
+    private val fileExtension: String = ""
 ) {
     companion object : Logging {
         const val OPTION_TEMPLATE_ID = "template.id"
         const val OPTION_TEMPLATE_PATH = "template.path"
         const val OPTION_PROJECT_TYPES_AS_PACKAGES = "project-types-as-packages"
+    }
+
+    private val freemarkerConfig: Configuration by lazy {
+        Configuration(Configuration.VERSION_2_3_30).apply {
+            defaultEncoding = "UTF-8"
+            fallbackOnNullLoopVariable = false
+            logTemplateExceptions = true
+            tagSyntax = Configuration.SQUARE_BRACKET_TAG_SYNTAX
+            templateExceptionHandler = TemplateExceptionHandler.RETHROW_HANDLER
+            templateLoader = ClassTemplateLoader(
+                this@FreemarkerTemplateProcessor.javaClass.classLoader,
+                "templates/$templatesResourceDirectory"
+            )
+            wrapUncheckedExceptions = true
+
+            setSharedVariable("statics", (objectWrapper as DefaultObjectWrapper).staticModels)
+        }
     }
 
     /**
@@ -93,12 +111,9 @@ class FreemarkerTemplateProcessor(
             }
         }
 
-        return processTemplatesInternal(
-            input = input.deduplicateProjectScanResults(projectsAsPackages),
-            outputDir = outputDir,
-            options = options,
-            projectsAsPackages = projectsAsPackages
-        )
+        val dataModel = createDataModel(input.deduplicateProjectScanResults(projectsAsPackages), projectsAsPackages)
+
+        return processTemplatesInternal(dataModel, outputDir, options)
     }
 
     /**
@@ -106,46 +121,10 @@ class FreemarkerTemplateProcessor(
      * generated files.
      */
     private fun processTemplatesInternal(
-        input: ReporterInput,
+        dataModel: Map<String, Any>,
         outputDir: File,
-        options: Map<String, String>,
-        projectsAsPackages: Set<Identifier>
+        options: Map<String, String>
     ): List<File> {
-        val projects = input.ortResult.getProjects().map { project ->
-            PackageModel(project.id, input)
-        }
-
-        val packages = input.ortResult.getPackages().map { pkg ->
-            PackageModel(pkg.pkg.id, input)
-        }
-
-        // Keep this in sync with "resources/templates/freemarker_implicit.ftl".
-        val dataModel = mapOf(
-            "projects" to projects,
-            "packages" to packages,
-            "ortResult" to input.ortResult,
-            "licenseTextProvider" to input.licenseTextProvider,
-            "LicenseView" to LicenseView,
-            "helper" to TemplateHelper(input),
-            "projectsAsPackages" to projectsAsPackages,
-            "vulnerabilityReference" to VulnerabilityReference
-        ) + enumModel()
-
-        val freemarkerConfig = Configuration(Configuration.VERSION_2_3_30).apply {
-            defaultEncoding = "UTF-8"
-            fallbackOnNullLoopVariable = false
-            logTemplateExceptions = true
-            tagSyntax = Configuration.SQUARE_BRACKET_TAG_SYNTAX
-            templateExceptionHandler = TemplateExceptionHandler.RETHROW_HANDLER
-            templateLoader = ClassTemplateLoader(
-                this@FreemarkerTemplateProcessor.javaClass.classLoader,
-                "templates/$templatesResourceDirectory"
-            )
-            wrapUncheckedExceptions = true
-
-            setSharedVariable("statics", (objectWrapper as DefaultObjectWrapper).staticModels)
-        }
-
         val templatePaths = options[OPTION_TEMPLATE_PATH]?.split(',').orEmpty()
         val templateIds = options[OPTION_TEMPLATE_ID]?.split(',').orEmpty()
 
@@ -184,18 +163,6 @@ class FreemarkerTemplateProcessor(
         }
 
         return outputFiles
-    }
-
-    /**
-     * Return a map with wrapper beans for the enum classes that are relevant for templates.These enums can then be
-     * referenced directly by templates.
-     * See https://freemarker.apache.org/docs/pgui_misc_beanwrapper.html#jdk_15_enums.
-     */
-    private fun enumModel(): Map<String, Any> {
-        val beansWrapper = BeansWrapperBuilder(Configuration.VERSION_2_3_30).build()
-        val enumModels = beansWrapper.enumModels
-
-        return ENUM_CLASSES.associate { it.simpleName to enumModels.get(it.name) }
     }
 
     /**
@@ -292,12 +259,15 @@ class FreemarkerTemplateProcessor(
         ): List<ResolvedLicense> =
             mergeResolvedLicenses(
                 models.filter { !omitExcluded || !it.excluded }.flatMap { model ->
-                    val chosenResolvedLicenseInfo = if (skipLicenseChoices) model.license else licenseView.filter(
-                        model.license,
-                        model.licenseChoices
-                    )
+                    val chosenResolvedLicenseInfo = if (skipLicenseChoices) {
+                        model.license
+                    } else {
+                        licenseView.filter(model.license, model.licenseChoices)
+                    }
+
                     val licenses = chosenResolvedLicenseInfo.filter(licenseView).licenses
                     val filteredLicenses = if (omitExcluded) licenses.filterExcluded() else licenses
+
                     if (omitNotPresent) filteredLicenses.filter(::isLicensePresent) else filteredLicenses
                 }
             )
@@ -319,7 +289,7 @@ class FreemarkerTemplateProcessor(
         fun isLicensePresent(license: ResolvedLicense): Boolean = SpdxConstants.isPresent(license.license.toString())
 
         /**
-         * Return `true` if there are any unresolved and non-excluded [OrtIssue]s whose severity is equal to or greater
+         * Return `true` if there are any unresolved and non-excluded [Issue]s whose severity is equal to or greater
          * than the [threshold], or `false` otherwise.
          */
         @JvmOverloads
@@ -409,18 +379,48 @@ class FreemarkerTemplateProcessor(
          * identifiers of affected packages, but not the packages themselves.
          */
         fun getPackage(id: Identifier): Package =
-            input.ortResult.getPackage(id)?.pkg
+            input.ortResult.getPackage(id)?.metadata
                 ?: Package.EMPTY.also { logger.warn { "Could not resolve package '${id.toCoordinates()}'." } }
     }
 }
 
 /**
- * A list of the enum classes that are made available to templates.
+ * Return a map with wrapper beans for the enum classes that are relevant for templates.These enums can then be
+ * referenced directly by templates.
+ * See https://freemarker.apache.org/docs/pgui_misc_beanwrapper.html#jdk_15_enums.
  */
-private val ENUM_CLASSES = listOf(
-    AdvisorCapability::class.java,
-    Severity::class.java
-)
+private fun enumModel(): Map<String, Any> {
+    val beansWrapper = BeansWrapperBuilder(Configuration.VERSION_2_3_30).build()
+    val enumModels = beansWrapper.enumModels
+
+    return listOf(
+        AdvisorCapability::class.java,
+        Severity::class.java
+    ).associate { it.simpleName to enumModels.get(it.name) }
+}
+
+private fun createDataModel(input: ReporterInput, projectsAsPackages: Set<Identifier>): Map<String, Any> {
+    val projects = input.ortResult.getProjects().sortedBy { it.id }.map { project ->
+        FreemarkerTemplateProcessor.PackageModel(project.id, input)
+    }
+
+    val packages = input.ortResult.getPackages().sortedBy { it.metadata.id }.map { pkg ->
+        FreemarkerTemplateProcessor.PackageModel(pkg.metadata.id, input)
+    }
+
+    // Keep this in sync with "resources/templates/freemarker_implicit.ftl".
+    return mapOf(
+        "projects" to projects,
+        "packages" to packages,
+        "ortResult" to input.ortResult,
+        "licenseTextProvider" to input.licenseTextProvider,
+        "LicenseView" to LicenseView,
+        "helper" to FreemarkerTemplateProcessor.TemplateHelper(input),
+        "projectsAsPackages" to projectsAsPackages,
+        "statistics" to input.statistics,
+        "vulnerabilityReference" to VulnerabilityReference
+    ) + enumModel()
+}
 
 private fun List<ResolvedLicense>.merge(): ResolvedLicense {
     require(isNotEmpty()) { "Cannot merge an empty list." }
@@ -459,7 +459,7 @@ internal fun OrtResult.deduplicateProjectScanResults(targetProjects: Set<Identif
 
     val projectsToFilter = getProjects().mapTo(mutableSetOf()) { it.id } - targetProjects
 
-    val scanResults = scanner?.results?.scanResults?.mapValuesTo(sortedMapOf()) { (id, results) ->
+    val scanResults = scanner?.scanResults?.mapValuesTo(sortedMapOf()) { (id, results) ->
         if (id !in projectsToFilter) {
             results
         } else {
@@ -485,30 +485,12 @@ internal fun OrtResult.deduplicateProjectScanResults(targetProjects: Set<Identif
 }
 
 /**
- * Return the path where the repository given by [provenance] is linked into the source tree.
- */
-private fun OrtResult.getRepositoryPath(provenance: RepositoryProvenance): String {
-    repository.nestedRepositories.forEach { (path, vcsInfo) ->
-        if (vcsInfo.type == provenance.vcsInfo.type
-            && vcsInfo.url == provenance.vcsInfo.url
-            && vcsInfo.revision == provenance.resolvedRevision
-        ) {
-            return "/$path/"
-        }
-    }
-
-    return "/"
-}
-
-/**
  * Return a copy of this [OrtResult] with the scan results replaced by the given [scanResults].
  */
 private fun OrtResult.replaceScanResults(scanResults: SortedMap<Identifier, List<ScanResult>>): OrtResult =
     copy(
         scanner = scanner?.copy(
-            results = scanner!!.results.copy(
-                scanResults = scanResults
-            )
+            scanResults = scanResults
         )
     )
 
@@ -535,7 +517,7 @@ private fun ReporterInput.replaceOrtResult(ortResult: OrtResult): ReporterInput 
             copyrightGarbage = copyrightGarbage,
             addAuthorsToCopyrights = licenseInfoResolver.addAuthorsToCopyrights,
             archiver = licenseInfoResolver.archiver,
-            licenseFilenamePatterns = licenseInfoResolver.licenseFilenamePatterns
+            licenseFilePatterns = licenseInfoResolver.licenseFilePatterns
         )
     )
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,12 +83,19 @@ abstract class ScriptRunner {
 
     private fun logReports(reports: List<ScriptDiagnostic>) =
         reports.forEach { report ->
+            val renderedReport = report.render(
+                withSeverity = false,
+                withLocation = true,
+                withException = false,
+                withStackTrace = false
+            )
+
             when (report.severity) {
-                ScriptDiagnostic.Severity.DEBUG -> logger.debug(report.message, report.exception)
-                ScriptDiagnostic.Severity.INFO -> logger.info(report.message, report.exception)
-                ScriptDiagnostic.Severity.WARNING -> logger.warn(report.message, report.exception)
-                ScriptDiagnostic.Severity.ERROR -> logger.error(report.message, report.exception)
-                ScriptDiagnostic.Severity.FATAL -> logger.fatal(report.message, report.exception)
+                ScriptDiagnostic.Severity.DEBUG -> logger.debug(renderedReport, report.exception)
+                ScriptDiagnostic.Severity.INFO -> logger.info(renderedReport, report.exception)
+                ScriptDiagnostic.Severity.WARNING -> logger.warn(renderedReport, report.exception)
+                ScriptDiagnostic.Severity.ERROR -> logger.error(renderedReport, report.exception)
+                ScriptDiagnostic.Severity.FATAL -> logger.fatal(renderedReport, report.exception)
             }
         }
 }

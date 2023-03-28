@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,7 @@
 package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonProperty
 
-import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
 /**
@@ -33,36 +31,13 @@ data class CuratedPackage(
     /**
      * The curated package after applying the [curations].
      */
-    @JsonProperty("package")
-    val pkg: Package,
+    val metadata: Package,
 
     /**
      * The curations in the order they were applied.
      */
     val curations: List<PackageCurationResult> = emptyList()
-) : Comparable<CuratedPackage> {
-    /**
-     * A comparison function to sort packages by their identifier.
-     */
-    override fun compareTo(other: CuratedPackage) = pkg.id.compareTo(other.pkg.id)
-
-    /**
-     * Return a [Package] representing the same package as this one but which does not have any curations applied.
-     */
-    fun toUncuratedPackage() =
-        curations.reversed().fold(this) { current, curation ->
-            curation.base.apply(current)
-        }.pkg.copy(
-            // The declared license mapping cannot be reversed as it is additive.
-            declaredLicensesProcessed = DeclaredLicenseProcessor.process(pkg.declaredLicenses),
-
-            // It is not possible to derive the original concluded license value with the above reversed application
-            // of the base curations, even if the function Package.diff() was extended to handle the concluded license,
-            // see also https://github.com/oss-review-toolkit/ort/issues/5637. Until this is fixed just set the
-            // concluded license to null, because an un-curated package cannot have a non-null concluded license.
-            concludedLicense = null
-        )
-
+) {
     @JsonIgnore
     fun getDeclaredLicenseMapping(): Map<String, SpdxExpression> =
         buildMap {

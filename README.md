@@ -8,7 +8,7 @@
 
 [![Build and Test][7]][8] [![JitPack build status][9]][10] [![Code coverage][11]][12]
 
-[![TODOs][13]][14] [![LGTM][15]][16] [![REUSE status][17]][18] [![CII][19]][20]
+[![TODOs][13]][14] [![REUSE status][15]][16] [![CII][17]][18]
 
 [1]: https://img.shields.io/badge/Join_us_on_Slack!-ort--talk-blue.svg?longCache=true&logo=slack
 [2]: https://join.slack.com/t/ort-talk/shared_invite/zt-1c7yi4sj6-mk7R1fAa6ZdW5MQ6DfAVRg
@@ -24,21 +24,27 @@
 [12]: https://app.codecov.io/gh/oss-review-toolkit/ort
 [13]: https://badgen.net/https/api.tickgit.com/badgen/github.com/oss-review-toolkit/ort
 [14]: https://www.tickgit.com/browse?repo=github.com/oss-review-toolkit/ort
-[15]: https://img.shields.io/lgtm/alerts/g/oss-review-toolkit/ort.svg?logo=lgtm&logoWidth=18
-[16]: https://lgtm.com/projects/g/oss-review-toolkit/ort/alerts/
-[17]: https://api.reuse.software/badge/github.com/oss-review-toolkit/ort
-[18]: https://api.reuse.software/info/github.com/oss-review-toolkit/ort
-[19]: https://bestpractices.coreinfrastructure.org/projects/4618/badge
-[20]: https://bestpractices.coreinfrastructure.org/projects/4618
+[15]: https://api.reuse.software/badge/github.com/oss-review-toolkit/ort
+[16]: https://api.reuse.software/info/github.com/oss-review-toolkit/ort
+[17]: https://bestpractices.coreinfrastructure.org/projects/4618/badge
+[18]: https://bestpractices.coreinfrastructure.org/projects/4618
 
 # Introduction
 
-The OSS Review Toolkit (ORT) aims to assist with the tasks that commonly need to be performed in the context of license
-compliance checks, especially for (but not limited to) Free and Open Source Software dependencies.
+The OSS Review Toolkit (ORT) is a FOSS policy automation and orchestration toolkit which you can use to manage your
+(open source) software dependencies in a strategic, safe and efficient manner.
 
-It does so by orchestrating a _highly customizable_ pipeline of tools that _abstract away_ the underlying services.
-These tools are implemented as libraries (for programmatic use) and exposed via a command line interface (for scripted
-use):
+You can use it to:
+
+- Generate CycloneDX, SPDX SBOMs, or custom FOSS attribution documentation for your software project
+- Automate your FOSS policy using risk-based Policy as Code to do licensing, security vulnerability, InnerSource
+and engineering standards checks for your software project and its dependencies
+- Create a source code archive for your software project and its dependencies to comply with certain licenses or have
+your own copy as nothing on the internet is forever
+- Correct package metadata or licensing findings yourself, using InnerSource or with the help of the FOSS community
+
+ORT can be used as library (for programmatic use), via a command line interface (for scripted use), or via its CI
+integrations. It consists of the following tools which can be combined into a _highly customizable_ pipeline:
 
 * [_Analyzer_](#analyzer) - determines the dependencies of projects and their metadata, abstracting which package
   managers or build systems are actually being used.
@@ -48,12 +54,14 @@ use):
   the type of scanner.
 * [_Advisor_](#advisor) - retrieves security advisories for used dependencies from configured vulnerability data 
   services.
-* [_Evaluator_](#evaluator) - evaluates license / copyright findings against customizable policy rules and license
-  classifications.
+* [_Evaluator_](#evaluator) - evaluates custom policy rules along with custom license classifications against the data
+  gathered in preceding stages and returns a list of policy violations, e.g. to flag license findings.
 * [_Reporter_](#reporter) - presents results in various formats such as visual reports, Open Source notices or
   Bill-Of-Materials (BOMs) to easily identify dependencies, licenses, copyrights or policy rule violations.
 * [_Notifier_](./notifier) - sends result notifications via different channels (like
   [emails](./examples/notifications/src/main/resources/example.notifications.kts) and / or JIRA tickets).
+
+Also see the [list of related tools](#related-tools) that help with running ORT. 
 
 # Installation
 
@@ -95,56 +103,46 @@ Gradle and download all required dependencies).
 
 ## Basic usage
 
-ORT can now be run using
+Depending on how ORT was installed, it can be run in the following ways:
 
-    ./cli/build/install/ort/bin/ort --help
+- If the Docker image was built, use
 
-Note that if you make any changes to ORT's source code, you would have to regenerate the distribution using the steps
-above.
+      docker run ort --help
 
-To avoid that, you can also build and run ORT in one go (if you have the prerequisites from the
-[Build natively](#build-natively) section installed):
+  You can find further hints for using ORT with Docker in the [documentation](./docs/hints-for-use-with-docker.md).
 
-    ./gradlew cli:run --args="--help"
+- If the ORT distribution was built from sources, use
 
-Note that in this case the working directory used by ORT is that of the `cli` project, not the directory `gradlew` is
-located in (see https://github.com/gradle/gradle/issues/6074).
+      ./cli/build/install/ort/bin/ort --help
+
+- If running directly from sources via Gradle, use
+
+      ./gradlew cli:run --args="--help"
+
+  Note that in this case the working directory used by ORT is that of the `cli` project, not the directory `gradlew` is
+  located in (see https://github.com/gradle/gradle/issues/6074).
+
+For simplicity of the following usage examples, the above ORT invocations are unified to just `ort --help`.
 
 # Running the tools
-
-Like for building ORT from sources you have the option to run ORT from a Docker image (which comes with all runtime
-dependencies) or to run ORT natively (in which case some additional requirements need to be fulfilled).
-
-## Run using Docker
-
-After you have built the image as [described above](#build-using-docker), simply run
-`docker run <DOCKER_ARGS> ort <ORT_ARGS>`. You typically use `<DOCKER_ARGS>` to mount the project directory to analyze
-into the container for ORT to access it, like:
-
-    docker run -v /workspace:/project ort --info analyze -f JSON -i /project -o /project/ort/analyzer
-
-You can find further hints for using ORT with Docker in the [documentation](./docs/hints-for-use-with-docker.md).
-
-## Run natively
 
 First, make sure that the locale of your system is set to `en_US.UTF-8` as using other locales might lead to issues with
 parsing the output of some external tools.
 
-Then install any missing external command line tools as listed by
+Then, let ORT check whether all required external tools are available by running
 
-    ./cli/build/install/ort/bin/ort requirements
+    ort requirements
 
-or
+and install any missing tools or add compatible versions as indicated.
 
-    ./gradlew cli:run --args="requirements"
+Finally, ORT tools like the _analyzer_ can be run like
 
-Then run ORT like
+    ort --info analyze -f JSON -i /project -o /project/ort/analyzer
 
-    ./cli/build/install/ort/bin/ort --info analyze -f JSON -i /project -o /project/ort/analyzer
+Just the like top-level `ort` command, the subcommands for all tools provide a `--help` option for detailed usage help.
+Use it like `ort analyze --help`.
 
-or
-
-    ./gradlew cli:run --args="--info analyze -f JSON -i /project -o /project/ort/analyzer"
+Please see [Getting Started](./docs/getting-started.md) for an introduction to the individual tools.
 
 ## Running on CI
 
@@ -154,10 +152,6 @@ A basic ORT pipeline (using the _analyzer_, _scanner_ and _reporter_) can easily
 itself for documentation of the required Jenkins plugins. The job accepts various parameters that are translated to ORT
 command line arguments. Additionally, one can trigger a downstream job which e.g. further processes scan results. Note
 that it is the downstream job's responsibility to copy any artifacts it needs from the upstream job.
-
-## Getting started
-
-Please see [Getting Started](./docs/getting-started.md) for an introduction to the individual tools.
 
 ## Configuration
 
@@ -182,17 +176,17 @@ environment variable, which in turn defaults to the `.ort` directory below the c
 
 The following provides an overview of the various configuration files that can be used to customize ORT behavior:
 
-#### [ORT configuration file](./model/src/main/resources/reference.conf)
+#### [ORT configuration file](./model/src/main/resources/reference.yml)
 
 The main configuration file for the operation of ORT. This configuration is maintained by an administrator who manages
 the ORT instance. In contrast to the configuration files in the following, this file rarely changes once ORT is
 operational.
 
-| Format | Scope  | Default location           |
-|--------|--------|----------------------------|
-| HOCON  | Global | `$ORT_CONFIG_DIR/ort.conf` |
+| Format | Scope  | Default location             |
+|--------|--------|------------------------------|
+| YAML   | Global | `$ORT_CONFIG_DIR/config.yml` |
 
-The [reference configuration file](./model/src/main/resources/reference.conf) gives a good impression about the content
+The [reference configuration file](./model/src/main/resources/reference.yml) gives a good impression about the content
 of the main ORT configuration file. It consists of sections related to different subcomponents of ORT. The meaning
 of these sections and the properties they can contain is described together with the corresponding subcomponents.
 
@@ -201,28 +195,32 @@ customize the configuration to a specific environment. The following options are
 
 * Properties can be defined via environment variables by using the full property path as the variable name.
   For instance, one can override the Postgres schema by setting 
-  `ort.scanner.storages.postgres.schema=test_schema`. The variable's name is case-sensitive.
+  `ort.scanner.storages.postgres.connection.schema=test_schema`. The variable's name is case-sensitive.
   Some programs like Bash do not support dots in variable names. For this case, the dots can be
   replaced by double underscores, i.e., the above example is turned into 
-  `ort__scanner__storages__postgres__schema=test_schema`.
+  `ort__scanner__storages__postgres__connection__schema=test_schema`.
 * In addition to that, one can override the values of properties on the command line using the `-P` option. The option
   expects a key-value pair. Again, the key must define the full path to the property to be overridden, e.g.
-  `-P ort.scanner.storages.postgres.schema=test_schema`. The `-P` option can be repeated on the command
+  `-P ort.scanner.storages.postgres.connection.schema=test_schema`. The `-P` option can be repeated on the command
   line to override multiple properties.
 * Properties in the configuration file can reference environment variables using the syntax `${VAR}`.
   This is especially useful to reference dynamic or sensitive data. As an example, the credentials for the
   Postgres database used as scan results storage could be defined in the `POSTGRES_USERNAME` and `POSTGRES_PASSWORD`
   environment variables. The configuration file can then reference these values as follows:
 
-  ```hocon
-  postgres {
-    connection {
-      url = "jdbc:postgresql://your-postgresql-server:5444/your-database"
-      username = ${POSTGRES_USERNAME}
-      password = ${POSTGRES_PASSWORD}
-    }
-  }
+  ```yaml
+  postgres:
+    connection:
+      url: "jdbc:postgresql://your-postgresql-server:5444/your-database"
+      username: ${POSTGRES_USERNAME}
+      password: ${POSTGRES_PASSWORD}
   ```
+
+To print the active configuration use:
+
+```bash
+ort config --show-active
+```
 
 #### [Copyright garbage file](./docs/config-file-copyright-garbage-yml.md)
 
@@ -302,6 +300,31 @@ The file containing any policy rule implementations to be used with the _evaluat
 |---------------------|-----------|---------------------------------------|
 | Kotlin script (DSL) | Evaluator | `$ORT_CONFIG_DIR/evaluator.rules.kts` |
 
+### Protecting environment variables
+
+In order to do its analysis, ORT invokes a number of external tools, such as package managers or scanners. Especially
+when interacting with package managers to obtain the dependencies of the analyzed project, this can lead to the
+execution of code in build scripts from potentially unknown sources. A possible risk in this constellation is that
+untrusted code could read sensitive information from environment variables used for the ORT configuration, such as
+database connection strings or service credentials. This is because the environment variables of a process are by
+default propagated to the child processes spawned by it.
+
+To reduce this risk, ORT filters out certain environment variables when it runs external tools in child processes.
+This filter mechanism can be configured via the following properties in the
+[ORT configuration file](./model/src/main/resources/reference.yml):
+
+| Property | Description |
+|----------|-------------|
+| deniedProcessEnvironmentVariablesSubstrings | A list of substrings that identify variables containing sensitive information. All variables that contain at least one of these strings (ignoring case) are not propagated to child processes. The default for this property contains strings like "PASS", "PWD", or "TOKEN", which are typically used to reference credentials. |
+| allowedProcessEnvironmentVariableNames | This is a list of variable names that are explicitly allowed to be passed to child processes - even if they contain a substring listed in `deniedProcessEnvironmentVariablesSubstrings`. Via this property variables required by external tools, e.g. credentials for repositories needed by package managers, can be passed through. Here, entries must match variables names exactly and case-sensitively. |
+
+This mechanism offers a certain level of security without enforcing an excessive amount of configuration, which would
+be needed for instance to define an explicit allow list. With the two configuration properties even corner cases can be
+defined:
+
+* In order to disable filtering of environment variables completely, set the `deniedProcessEnvironmentVariablesSubstrings` property to a single string that is certainly not contained in any environment variable, such as "This is for sure not contained in a variable name".
+* To prevent that any environment variable is passed to a child process, substrings can be configured in `deniedProcessEnvironmentVariablesSubstrings` that match all variables, for instance one string for each letter of the alphabet.
+
 # Details on the tools
 
 <a name="analyzer"></a>
@@ -359,12 +382,9 @@ supported:
 * PHP
   * [Composer](https://getcomposer.org/)
 * Python
-  * [PIP](https://pip.pypa.io/) (limitations:
-    [Python 2.7 or 3.8 and PIP 18.1 only](https://github.com/oss-review-toolkit/ort/issues/3671))
-  * [Pipenv](https://pipenv.pypa.io/en/latest/) (limitations:
-    [Python 2.7 or 3.8 and PIP 18.1 only](https://github.com/oss-review-toolkit/ort/issues/3671))
-  * [Poetry](https://python-poetry.org/) (limitations:
-    [Python 2.7 or 3.8 and PIP 18.1 only](https://github.com/oss-review-toolkit/ort/issues/3671))
+  * [PIP](https://pip.pypa.io/)
+  * [Pipenv](https://pipenv.pypa.io/en/latest/)
+  * [Poetry](https://python-poetry.org/)
 * Ruby
   * [Bundler](https://bundler.io/) (limitations:
     [restricted to the version available on the host](https://github.com/oss-review-toolkit/ort/issues/1308))
@@ -389,7 +409,7 @@ fallback to [SPDX documents](https://spdx.dev/specifications/) can be leveraged 
 
 Taking an ORT result file with an _analyzer_ result as the input (`-i`), the _downloader_ retrieves the source code of
 all contained packages to the specified output directory (`-o`). The _downloader_ takes care of things like normalizing
-URLs and using the [appropriate VCS tool](./downloader/src/main/kotlin/vcs) to checkout source code from version
+URLs and using the [appropriate VCS tool](./downloader/src/main/kotlin/vcs) to check out source code from version
 control.
 
 Currently, the following Version Control Systems (VCS) are supported:
@@ -411,7 +431,7 @@ _scanner_ will automatically download the sources of the dependencies via the _d
 We recommend to use ORT with one of the following scanners as their integration has been thoroughly tested (in
 alphabetical order):
 
-* [FossID](https://fossid.com/)
+* FossID
 * [ScanCode](https://github.com/nexB/scancode-toolkit)
 
 Additionally, the following reference implementations exist (in alphabetical order):
@@ -432,6 +452,12 @@ whether compatible scan results are already available in one of the storages dec
 are fetched and reused. Otherwise, the package's source code is downloaded and scanned. Afterwards, the new scan
 results can be put into a storage for later reuse.
 
+This reuse of scan results can actually happen on a per-repository (`type: "PROVENANCE_BASED"`) or per-package
+(`type: "PACKAGE_BASED"`) basis. For all storages based on `FileBasedStorage` or `PostgresStorage`, the scanner wrapper
+groups packages by their provenance before scanning. This ensures that a certain revision of a VCS repository is only
+scanned once, and the results are shared for all packages that are provided by this repository. In the case of
+repositories that provide a lot of packages, this can bring a significant performance improvement.
+
 It is possible to configure multiple storages to read scan results from or to write scan results to. For reading,
 the declaration order in the configuration is important, as the scanner queries the storages in this order and uses
 the first matching result. This allows a fine-grained control over the sources, from which existing scan results are
@@ -445,7 +471,7 @@ operation is considered successful if all writer storages could successfully per
 
 The configuration of storage backends is located in the [ORT configuration file](#ort-configuration-file). (For the
 general structure of this file and the set of options available refer to the
-[reference configuration](./model/src/main/resources/reference.conf).) The file has a section named _storages_ that
+[reference configuration](./model/src/main/resources/reference.yml).) The file has a section named _storages_ that
 lists all the storage backends and assigns them a name. Each storage backend is of a specific type and needs to be
 configured with type-specific properties. The different types of storage backends supported by ORT are described below.
 
@@ -467,29 +493,18 @@ By default, the _scanner_ stores scan results on the local file system in the cu
 `~/.ort/scanner/scan-results`) for later reuse. Settings like the storage directory and the compression flag can be
 customized in the ORT configuration file (`-c`) with a respective storage configuration:
 
-```hocon
-ort {
-  scanner {
-    storages {
-      fileBasedStorage {
-        backend {
-          localFileStorage {
-            directory = "/tmp/ort/scan-results"
-            compression = false
-          }
-        }
-      }
-    }
+```yaml
+ort:
+  scanner:
+    storages:
+      fileBasedStorage:
+        backend:
+          localFileStorage:
+            directory: "/tmp/ort/scan-results"
+            compression: false
 
-    storageReaders: [
-      "fileBasedStorage"
-    ]
-
-    storageWriters: [
-      "fileBasedStorage"
-    ]
-  }
-}
+    storageReaders: ["fileBasedStorage"]
+    storageWriters: ["fileBasedStorage"]
 ```
 
 ### HTTP Storage
@@ -497,31 +512,19 @@ ort {
 Any HTTP file server can be used to store scan results. Custom headers can be configured to provide authentication
 credentials. For example, to use Artifactory to store scan results, use the following configuration:
 
-```hocon
-ort {
-  scanner {
-    storages {
-      artifactoryStorage {
-        backend {
-          httpFileStorage {
-            url = "https://artifactory.domain.com/artifactory/repository/scan-results"
-            headers {
-              X-JFrog-Art-Api = "api-token"
-            }
-          }
-        }
-      }
-    }
-
-    storageReaders: [
-      "artifactoryStorage"
-    ]
-
-    storageWriters: [
-      "artifactoryStorage"
-    ]
-  }
-}
+```yaml
+ort:
+  scanner:
+    storages:
+      artifactoryStorage:
+        backend:
+          httpFileStorage:
+            url: "https://artifactory.domain.com/artifactory/repository/scan-results"
+            headers:
+              X-JFrog-Art-Api: "api-token"
+              
+    storageReaders: ["artifactoryStorage"]
+    storageWriters: ["artifactoryStorage"]
 ```
 
 ### PostgreSQL Storage
@@ -529,30 +532,20 @@ ort {
 To use PostgreSQL for storing scan results you need at least version 9.4, create a database with the `client_encoding`
 set to `UTF8`, and a configuration like the following:
 
-```hocon
-ort {
-  scanner {
-    storages {
-      postgresStorage {
-        connection {
-          url = "jdbc:postgresql://example.com:5444/database"
-          schema = "public"
-          username = "username"
-          password = "password"
-          sslmode = "verify-full"
-        }
-      }
-    }
+```yaml
+ort:
+  scanner:
+    storages:
+      postgresStorage:
+        connection:
+          url: "jdbc:postgresql://example.com:5444/database"
+          schema: "public"
+          username: "username"
+          password: "password"
+          sslmode: "verify-full"
 
-    storageReaders: [
-      "postgresStorage"
-    ]
-
-    storageWriters: [
-      "postgresStorage"
-    ]
-  }
-}
+    storageReaders: ["postgresStorage"]
+    storageWriters: ["postgresStorage"]
 ```
 
 The database needs to exist. If the schema is set to something else than the default of `public`, it needs to exist and
@@ -562,8 +555,8 @@ The _scanner_ will itself create a table called `scan_results` and
 store the data in a [jsonb](https://www.postgresql.org/docs/current/datatype-json.html) column.
 
 If you do not want to use SSL set the `sslmode` to `disable`, other possible values are explained in the
-[documentation](https://jdbc.postgresql.org/documentation/head/ssl-client.html). For other supported configuration
-options see [ScanStorageConfiguration.kt](./model/src/main/kotlin/config/ScanStorageConfiguration.kt).
+[documentation](https://jdbc.postgresql.org/documentation/ssl/#configuring-the-client). For other supported
+configuration options see [ScanStorageConfiguration.kt](./model/src/main/kotlin/config/ScanStorageConfiguration.kt).
 
 ### ClearlyDefined Storage
 
@@ -573,76 +566,14 @@ version with a suitable configuration). This storage backend queries the Clearly
 packages to be processed. It is read-only; so it will not upload any new scan results to ClearlyDefined. In the
 configuration the URL of the ClearlyDefined service needs to be set:
 
-```hocon
-ort {
-  scanner {
-    storages {
-      clearlyDefined {
-        serverUrl = "https://api.clearlydefined.io"
-      }
-    }
+```yaml
+ort:
+  scanner:
+    storages:
+      clearlyDefined:
+        serverUrl: "https://api.clearlydefined.io"
 
-    storageReaders: [
-      "clearlyDefined"
-    ]
-  }
-}
-```
-
-## Experimental Scanner
-
-ORT provides an alternative scanner implementation which is currently called "experimental scanner". By now, this
-implementation can be considered stable, and it will replace the default scanner implementation in the middle of
-September 2022. Therefore, we encourage all ORT users to test the new implementation and report any discovered issues.
-
-The main difference to the old implementation is that the experimental scanner groups packages by their provenance
-before scanning. This ensures that a certain revision of a VCS repository is only scanned once, and the results are
-shared for all packages that are provided by this repository. In the case of repositories that provide a lot of
-packages, this can bring a significant performance improvement.
-
-Also, the new implementation better tracks if the VCS revision provided by the metadata of a package points to a moving
-revision, like a Git branch, and resolves the revision before reusing any scan results from a storage. This fixes an
-issue where ORT would reuse scan results for a branch even if they do not match the current revision of the branch
-anymore (see https://github.com/oss-review-toolkit/ort/issues/4562).
-
-The experimental scanner can be enabled by using the `--experimental-scanners` (and optional
-`--experimental-project-scanners`) option of the `scan` command. For details run `ort scan --help`.
-
-### Storage backends
-
-To fully benefit from the experimental scanner improvements, the storages need to be configured to store scan results by
-provenance instead of by package. This is supported by the local file storage, the HTTP storage, and the PostgreSQL
-storage (see above). To enable the feature add `type = "PROVENANCE_BASED` to the storage configuration, for example:
-
-```hocon
-postgres {
-  type = "PROVENANCE_BASED"
-
-  connection { ... }
-}
-```
-
-Existing package based storages can still be used to avoid having to scan all sources again when switching to the
-experimental scanner. For this purpose the old package based storage can be configured as read-only storage, for
-example:
-
-```hocon
-storages {
-  postgresLegacy {
-    type = "PACKAGE_BASED"
-
-    connection { ... }
-  }
-
-  postgres {
-    type = "PROVENANCE_BASED"
-
-    connection { ... }
-  }
-}
-
-storageReaders: ["postgresLegacy", "postgres"]
-storageWriters: ["postgres"]
+    storageReaders: ["clearlyDefined"]
 ```
 
 <a name="advisor">&nbsp;</a>
@@ -655,7 +586,7 @@ vulnerabilities returned by these services are then stored in the output result 
 information like the source of the data and a severity (if available).
 
 Multiple providers for security advisories are available. The providers require specific configuration in the
-[ORT configuration file](./model/src/main/resources/reference.conf), which needs to be placed in the _advisor_
+[ORT configuration file](./model/src/main/resources/reference.yml), which needs to be placed in the _advisor_
 section. When executing the advisor the providers to enable are selected with the `--advisors` option (or its short
 alias `-a`); here a comma-separated list with provider IDs is expected. The following sections describe the providers
 supported by the advisor:
@@ -665,16 +596,13 @@ supported by the advisor:
 A security data provider that queries [Nexus IQ Server](https://help.sonatype.com/iqserver). In the configuration,
 the URL where Nexus IQ Server is running and the credentials to authenticate need to be provided:
 
-```hocon
-ort {
-  advisor {
-    nexusIq {
-      serverUrl = "https://nexusiq.ossreviewtoolkit.org"
-      username = myUser
-      password = myPassword
-    }
-  }
-}
+```yaml
+ort:
+  advisor:
+    nexusIq:
+      serverUrl: "https://nexusiq.ossreviewtoolkit.org"
+      username: myUser
+      password: myPassword
 ```
 
 To enable this provider, pass `-a NexusIQ` on the command line.
@@ -693,14 +621,11 @@ This provider obtains information about security vulnerabilities from a
 [VulnerableCode](https://github.com/nexB/vulnerablecode) instance. The configuration is limited to the server URL, as
 authentication is not required:
 
-```hocon
-ort {
-  advisor {
-    vulnerableCode {
-      serverUrl = "http://localhost:8000"
-    }
-  }
-}
+```yaml
+ort:
+  advisor:
+    vulnerableCode:
+      serverUrl: "http://localhost:8000"
 ```
 
 To enable this provider, pass `-a VulnerableCode` on the command line.
@@ -711,14 +636,11 @@ This provider obtains information about security vulnerabilities from Google [OS
 vulnerability database for Open Source. The database aggregates data from different sources for various ecosystems. The
 configuration is optional and limited to overriding the server URL.
 
-```hocon
-ort {
-  advisor {
-    osv {
-      serverUrl = "https://api-staging.osv.dev"
-    }
-  }
-}
+```yaml
+ort:
+  advisor:
+    osv:
+      serverUrl: "https://api-staging.osv.dev"
 ```
 
 To enable this provider, pass `-a OSV` on the command line.
@@ -739,36 +661,38 @@ script is wrapped into a minimal [evaluator-rules](./examples/evaluator-rules) p
 The _reporter_ generates a wide variety of documents in different formats from ORT result files. Currently, the
 following formats are supported (reporter names are case-insensitive):
 
-* [AsciiDoc Template](docs/reporters/AsciiDocTemplateReporter.md) (`-f AsciiDocTemplate`)
+* [AsciiDoc Template](docs/reporters/asciidoc-templates.md) (`-f AsciiDocTemplate`)
   * Content customizable with [Apache Freemarker](https://freemarker.apache.org/) templates and
     [AsciiDoc](https://asciidoc.org/)
   * PDF style customizable with Asciidoctor
-    [PDF themes](https://github.com/asciidoctor/asciidoctor-pdf/blob/master/docs/theming-guide.adoc)
+    [PDF themes](https://docs.asciidoctor.org/pdf-converter/latest/theme/)
   * Supports multiple AsciiDoc backends:
     * PDF (`-f PdfTemplate`)
     * HTML (`-f HtmlTemplate`)
     * XHTML (`-f XHtmlTemplate`)
     * DocBook (`-f DocBookTemplate`)
     * Man page (`-f ManPageTemplate`)
-    * AsciiDoc (`-f AdocTemplate`): Does not convert the created AsciiDoc files but writes the generated files as
-      reports.
 * [ctrlX AUTOMATION](https://apps.boschrexroth.com/microsites/ctrlx-automation/) platform
   [FOSS information](https://github.com/boschrexroth/json-schema/tree/master/ctrlx-automation/ctrlx-core/apps/fossinfo)
   (`-f CtrlXAutomation`)
 * [CycloneDX](https://cyclonedx.org/) BOM (`-f CycloneDx`)
-* [Excel](https://www.microsoft.com/en-us/microsoft-365/excel) sheet (`-f Excel`)
+* [Excel](https://en.wikipedia.org/wiki/Microsoft_Excel) sheet (`-f Excel`)
+* FossID report download (HTML, SPDX, and Excel types)
 * [GitLabLicenseModel](https://docs.gitlab.com/ee/ci/pipelines/job_artifacts.html#artifactsreportslicense_scanning-ultimate)
   (`-f GitLabLicenseModel`)
-  * A nice tutorial video has been [published](https://youtu.be/dNmH_kYJ34g) by GitLab engineer @mokhan.
+  * There is a [tutorial video](https://youtu.be/dNmH_kYJ34g) by @xlgmokha
 * [NOTICE](https://infra.apache.org/licensing-howto.html) file in two variants
-  * List license texts and copyrights by package (`-f NoticeTemplate`)
-  * Summarize all license texts and copyrights (`-f NoticeTemplate -O NoticeTemplate=template.id=summary`)
+  * List license texts and copyrights by package (`-f PlainTextTemplate`)
+  * Summarize all license texts and copyrights (`-f PlainTextTemplate -O PlainTextTemplate=template.id=NOTICE_SUMMARY`)
   * Customizable with [Apache Freemarker](https://freemarker.apache.org/) templates
 * Opossum input that can be visualized and edited in the [OpossumUI](https://github.com/opossum-tool/opossumUI)
   (`-f Opossum`)
 * [SPDX Document](https://spdx.dev/specifications/), version 2.2 (`-f SpdxDocument`)
 * Static HTML (`-f StaticHtml`)
 * Web App (`-f WebApp`)
+  * Also see the [EvaluatedModelReporter](reporter/src/main/kotlin/reporters/evaluatedmodel/EvaluatedModelReporter.kt)
+    (`-f EvaluatedModel`) which is the JSON / YAML format used by the Web App report that is also suitable for custom
+    post-processing.
 
 # System requirements
 
@@ -787,7 +711,7 @@ external tools to be installed.
 # Development
 
 ORT is written in [Kotlin](https://kotlinlang.org/) and uses [Gradle](https://gradle.org/) as the build system, with
-[Kotlin script](https://docs.gradle.org/current/userguide/kotlin_dsl.html) instead of Groovy as the DSL.
+[Kotlin script](https://docs.gradle.org/current/userguide/kotlin_dsl.html) instead of Groovy as the DSL. Please ensure to have Gradle's incubating [configuration on demand](https://docs.gradle.org/current/userguide/multi_project_configuration_and_execution.html#sec:configuration_on_demand) feature disabled as it is currently [incompatible with ORT](https://github.com/gradle/gradle/issues/4823).
 
 When developing on the command line, use the committed
 [Gradle wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html) to bootstrap Gradle in the configured
@@ -829,6 +753,32 @@ For running tests and individual test cases from the IDE, the
 [kotest plugin](https://plugins.jetbrains.com/plugin/14080-kotest) needs to be installed. Afterwards tests can be run
 via the green "Play" icon from the gutter as described above.
 
+# Related Tools
+
+## ORT Config Repository
+
+A [repository](https://github.com/oss-review-toolkit/ort-config) with exemplary ORT configuration files.
+
+## ORT Workbench
+
+The [ORT Workbench](https://github.com/oss-review-toolkit/ort-workbench) is an ORT result file viewer developed by the
+ORT core team. It can be used as an alternative to creating a [report](#reporter) to review the ORT output. 
+
+![Screenshot](https://github.com/oss-review-toolkit/ort-workbench/raw/main/assets/screenshot.png)
+
+## ORT GitHub Action
+
+A [GitHub Action](https://github.com/oss-review-toolkit/ort-ci-github-action) to run ORT for your GitHub repositories. 
+
+## ORT GitLab Pipeline
+
+A [GitLab Pipeline](https://github.com/oss-review-toolkit/ort-gitlab-ci) to run ORT for your GitLab repositories.
+
+## ORTHW
+
+A [bash script](https://github.com/oss-review-toolkit/orthw) that helps to simplify and speed up common tasks performed
+when processing ORT results.
+
 # Want to Help or have Questions?
 
 All contributions are welcome. If you are interested in contributing, please read our
@@ -838,9 +788,7 @@ to any of your questions we recommend you
 
 # License
 
-Copyright (C) 2017-2022 HERE Europe B.V.\
-Copyright (C) 2019-2020 Bosch Software Innovations GmbH\
-Copyright (C) 2020-2022 Bosch.IO GmbH
+Copyright (C) 2017-2023 [The ORT Project Authors](./NOTICE).
 
 See the [LICENSE](./LICENSE) file in the root of this project for license details.
 

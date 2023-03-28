@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,11 +30,15 @@ import org.apache.logging.log4j.kotlin.Logging
  * An (almost) drop-in replacement for ProcessBuilder that is able to capture huge outputs to the standard output and
  * standard error streams by redirecting output to temporary files.
  */
-class ProcessCapture(vararg command: String, workingDir: File? = null, environment: Map<String, String> = emptyMap()) {
+class ProcessCapture(
+    vararg command: CharSequence,
+    workingDir: File? = null,
+    environment: Map<String, String> = emptyMap()
+) {
     // A convenience constructor to avoid the need for a named parameter if only the [workingDir] argument needs to be
     // specified. Even in unambiguous cases Kotlin unfortunately requires named parameters for arguments that follow
     // vararg parameters, see https://stackoverflow.com/a/46456379/1127485.
-    constructor(workingDir: File?, vararg command: String) : this(*command, workingDir = workingDir)
+    constructor(workingDir: File?, vararg command: CharSequence) : this(*command, workingDir = workingDir)
 
     companion object : Logging {
         private const val MAX_OUTPUT_LINES = 20
@@ -58,11 +62,10 @@ class ProcessCapture(vararg command: String, workingDir: File? = null, environme
         }
     }
 
-    private val tempDir = createTempDirectory("$command-process").toFile().apply { deleteOnExit() }
-    private val tempPrefix = command.first().substringAfterLast(File.separatorChar)
-
-    private val stdoutFile = tempDir.resolve("$tempPrefix.stdout").apply { deleteOnExit() }
-    private val stderrFile = tempDir.resolve("$tempPrefix.stderr").apply { deleteOnExit() }
+    private val tempDir = createTempDirectory(javaClass.simpleName).toFile().apply { deleteOnExit() }
+    private val commandName = command.first().toString().substringAfterLast(File.separatorChar)
+    private val stdoutFile = tempDir.resolve("$commandName.stdout").apply { deleteOnExit() }
+    private val stderrFile = tempDir.resolve("$commandName.stderr").apply { deleteOnExit() }
 
     /**
      * Get the standard output stream of the terminated process as a string.
@@ -76,12 +79,14 @@ class ProcessCapture(vararg command: String, workingDir: File? = null, environme
     val stderr
         get() = stderrFile.readText()
 
-    private val builder = ProcessBuilder(*command)
+    private val builder = ProcessBuilder(*unmaskedStrings(*command))
         .directory(workingDir)
         .redirectOutput(stdoutFile)
         .redirectError(stderrFile)
         .apply {
-            environment().putAll(environment)
+            // Apply the environment filter to the map with inherited variables, but not to the variables added
+            // explicitly via the environment parameter, since these are expected to be always relevant for the command.
+            EnvironmentVariableFilter.filter(environment()).putAll(environment)
         }
 
     val commandLine = command.joinToString(" ")

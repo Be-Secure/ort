@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -216,6 +216,27 @@ class TableView extends React.Component {
                     sortOrder: sortedInfo.field === 'concludedLicense' && sortedInfo.order,
                     textWrap: 'word-break',
                     title: 'Concluded License',
+                    width: '18%'
+                });
+            }
+        }
+
+        if (webAppOrtResult.hasEffectiveLicenses()) {
+            toggleColumnMenuItems.push({ text: 'Effective License', value: 'effectiveLicense' });
+
+            if (showKeys.includes('effectiveLicense')) {
+                columns.push({
+                    align: 'left',
+                    dataIndex: 'effectiveLicense',
+                    sorter: (a, b) => {
+                        const lenA = a.effectiveLicense ? a.effectiveLicense.length : 0;
+                        const lenB = b.effectiveLicense ? b.effectiveLicense.length : 0;
+
+                        return lenA - lenB;
+                    },
+                    sortOrder: sortedInfo.field === 'effectiveLicense' && sortedInfo.order,
+                    textWrap: 'word-break',
+                    title: 'Effective License',
                     width: '18%'
                 });
             }

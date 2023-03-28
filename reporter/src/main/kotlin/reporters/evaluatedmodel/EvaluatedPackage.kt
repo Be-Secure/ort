@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,8 @@ data class EvaluatedPackage(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val purl: String? = null,
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    val authors: Set<String>,
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val declaredLicenses: List<LicenseId>,
     val declaredLicensesProcessed: EvaluatedProcessedDeclaredLicense,
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -51,6 +53,8 @@ data class EvaluatedPackage(
     val detectedExcludedLicenses: Set<LicenseId>,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val concludedLicense: SpdxExpression? = null,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val effectiveLicense: SpdxExpression? = null,
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val description: String,
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
@@ -77,5 +81,5 @@ data class EvaluatedPackage(
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val scopeExcludes: List<ScopeExclude>,
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val issues: List<EvaluatedOrtIssue>
+    val issues: List<EvaluatedIssue>
 )

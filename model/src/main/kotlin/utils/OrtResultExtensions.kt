@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,36 +19,35 @@
 
 package org.ossreviewtoolkit.model.utils
 
-import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.OrtResult
+import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.licenses.DefaultLicenseInfoProvider
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 
 /**
- * Return a map of concluded licenses for each package [Identifier] that has a concluded license. Note that this
- * function only returns license identifiers, license exceptions associated to licenses using the SPDX `WITH` operator
- * are currently ignored.
+ * Add all package configurations from [packageConfigurationProvider] that match any scan result in this [OrtResult] to
+ * [OrtResult.resolvedConfiguration], overwriting any previously contained package configurations.
  */
-fun OrtResult.collectConcludedLicenses(omitExcluded: Boolean = false): Map<Identifier, List<String>> =
-    getPackages(omitExcluded)
-        .filter { it.pkg.concludedLicense != null }
-        .associate {
-            Pair(it.pkg.id, it.pkg.concludedLicense?.licenses().orEmpty())
+fun OrtResult.addPackageConfigurations(packageConfigurationProvider: PackageConfigurationProvider): OrtResult {
+    val packageConfigurations = getUncuratedPackages().flatMap { pkg ->
+        getScanResultsForId(pkg.id).flatMap { scanResult ->
+            packageConfigurationProvider.getPackageConfigurations(pkg.id, scanResult.provenance)
         }
+    }.distinct()
+
+    return copy(resolvedConfiguration = resolvedConfiguration.copy(packageConfigurations = packageConfigurations))
+}
 
 /**
- * Return a map of declared licenses for each project or package [Identifier]. Only licenses contained in the SPDX
- * expression of the processed declared license are included. Note that this function only returns license identifiers,
- * license exceptions associated to licenses using the SPDX `WITH` operator are currently ignored.
+ * Add all resolutions from [resolutionProvider] that match the content of this [OrtResult] to
+ * [OrtResult.resolvedConfiguration], overwriting any previously contained resolutions.
  */
-fun OrtResult.collectDeclaredLicenses(omitExcluded: Boolean = false): Map<Identifier, List<String>> =
-    getProjects(omitExcluded).associate {
-        Pair(it.id, it.declaredLicensesProcessed.spdxExpression?.licenses().orEmpty())
-    } + getPackages(omitExcluded).associate {
-        Pair(it.pkg.id, it.pkg.declaredLicensesProcessed.spdxExpression?.licenses().orEmpty())
-    }
+fun OrtResult.addResolutions(resolutionProvider: ResolutionProvider): OrtResult {
+    val resolutions = resolutionProvider.getResolutionsFor(this)
+    return copy(resolvedConfiguration = resolvedConfiguration.copy(resolutions = resolutions))
+}
 
 /**
  * Create a [LicenseInfoResolver] for [this] [OrtResult]. If the resolver is used multiple times it should be stored
@@ -65,8 +63,24 @@ fun OrtResult.createLicenseInfoResolver(
         copyrightGarbage,
         addAuthorsToCopyrights,
         archiver,
-        LicenseFilenamePatterns.getInstance()
+        LicenseFilePatterns.getInstance()
     )
+
+/**
+ * Return the path where the repository given by [provenance] is linked into the source tree.
+ */
+fun OrtResult.getRepositoryPath(provenance: RepositoryProvenance): String {
+    repository.nestedRepositories.forEach { (path, vcsInfo) ->
+        if (vcsInfo.type == provenance.vcsInfo.type
+            && vcsInfo.url == provenance.vcsInfo.url
+            && vcsInfo.revision == provenance.resolvedRevision
+        ) {
+            return "/$path/"
+        }
+    }
+
+    return "/"
+}
 
 /**
  * Copy this [OrtResult] and add all [labels] to the existing labels, overwriting existing labels on conflict.

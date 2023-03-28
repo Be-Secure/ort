@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,12 @@ package org.ossreviewtoolkit.utils.ort
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
 
 import org.apache.logging.log4j.kotlin.Logging
 
+import org.ossreviewtoolkit.utils.common.StringSortedSetConverter
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.unquote
 import org.ossreviewtoolkit.utils.spdx.SpdxCompoundExpression
@@ -108,7 +111,7 @@ object DeclaredLicenseProcessor : Logging {
         operator: SpdxOperator = SpdxOperator.AND
     ): ProcessedDeclaredLicense {
         val processedLicenses = mutableMapOf<String, SpdxExpression>()
-        val unmapped = mutableListOf<String>()
+        val unmapped = mutableSetOf<String>()
 
         declaredLicenses.forEach { declaredLicense ->
             process(declaredLicense, customLicenseMapping)?.let {
@@ -144,6 +147,7 @@ data class ProcessedDeclaredLicense(
      * The resulting SPDX expression, or null if no license could be mapped.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonSerialize(converter = SpdxExpressionSortedConverter::class)
     val spdxExpression: SpdxExpression?,
 
     /**
@@ -151,20 +155,22 @@ data class ProcessedDeclaredLicense(
      * declared license string and the processed declared license are identical they are not contained in this map.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonPropertyOrder(alphabetic = true)
     val mapped: Map<String, SpdxExpression> = emptyMap(),
 
     /**
      * Declared licenses that could not be mapped to an SPDX expression.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val unmapped: List<String> = emptyList()
+    @JsonSerialize(converter = StringSortedSetConverter::class)
+    val unmapped: Set<String> = emptySet()
 ) {
     companion object {
         @JvmField
         val EMPTY = ProcessedDeclaredLicense(
             spdxExpression = null,
             mapped = emptyMap(),
-            unmapped = emptyList()
+            unmapped = emptySet()
         )
     }
 
@@ -172,5 +178,10 @@ data class ProcessedDeclaredLicense(
      * The list of all mapped and unmapped licenses.
      */
     @JsonIgnore
-    val allLicenses = spdxExpression?.decompose().orEmpty().map { it.toString() } + unmapped
+    val allLicenses = decompose().map { it.toString() } + unmapped
+
+    /**
+     * [Decompose][SpdxExpression.decompose] the [spdxExpression] or return an empty string if it is null.
+     */
+    fun decompose() = spdxExpression?.decompose().orEmpty()
 }

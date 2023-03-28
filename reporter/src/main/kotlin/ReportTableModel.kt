@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -175,7 +175,7 @@ data class ReportTableModel(
         /**
          * The licenses declared by the package.
          */
-        val declaredLicenses: SortedSet<String>,
+        val declaredLicenses: Set<String>,
 
         /**
          * The detected licenses aggregated from all [ScanResult]s for this package.
@@ -199,7 +199,7 @@ data class ReportTableModel(
                     left.zipWithCollections(right).toSortedMap()
                 }.toSortedMap(),
                 concludedLicenses = (concludedLicenses + other.concludedLicenses),
-                declaredLicenses = (declaredLicenses + other.declaredLicenses).toSortedSet(),
+                declaredLicenses = declaredLicenses + other.declaredLicenses,
                 detectedLicenses = (detectedLicenses + other.detectedLicenses).toSortedSet(),
                 analyzerIssues = analyzerIssues.zipWithCollections(other.analyzerIssues).toSortedMap(),
                 scanIssues = scanIssues.zipWithCollections(other.scanIssues).toSortedMap()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -135,8 +135,7 @@ class LocalFileStorageFunTest : WordSpec() {
 
             "fail if the target path is a directory" {
                 storage { storage, directory ->
-                    val dir = directory.resolve("dir")
-                    dir.safeMkdirs()
+                    val dir = directory.resolve("dir").safeMkdirs()
 
                     shouldThrow<FileNotFoundException> {
                         storage.write("dir", "content".byteInputStream())

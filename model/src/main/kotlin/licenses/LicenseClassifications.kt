@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@
 
 package org.ossreviewtoolkit.model.licenses
 
-import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 
 import java.util.SortedSet
@@ -39,41 +39,38 @@ data class LicenseClassifications(
      * Defines metadata for the license categories.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    @JsonAlias("license_sets")
     val categories: List<LicenseCategory> = emptyList(),
 
     /**
      * Defines metadata for licenses.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    @JsonAlias("licenses")
     val categorizations: List<LicenseCategorization> = emptyList()
 ) {
     /** A property for fast look-ups of licenses for a given category. */
+    @get:JsonIgnore
     val licensesByCategory: Map<String, Set<SpdxSingleLicenseExpression>> by lazy {
-        val result = mutableMapOf<String, MutableSet<SpdxSingleLicenseExpression>>()
+        buildMap<String, MutableSet<SpdxSingleLicenseExpression>> {
+            categorizations.forEach { license ->
+                license.categories.forEach { category ->
+                    getOrPut(category) { mutableSetOf() } += license.id
+                }
+            }
 
-        categorizations.forEach { license ->
-            license.categories.forEach { category ->
-                result.getOrPut(category) { mutableSetOf() } += license.id
+            categories.forEach { category ->
+                putIfAbsent(category.name, mutableSetOf())
             }
         }
-
-        result
     }
 
     /** A property for fast look-ups of categories for a given license. */
+    @get:JsonIgnore
     val categoriesByLicense: Map<SpdxSingleLicenseExpression, Set<String>> by lazy {
-        val result = mutableMapOf<SpdxSingleLicenseExpression, Set<String>>()
-
-        categorizations.forEach { license ->
-            result[license.id] = license.categories
-        }
-
-        result
+        categorizations.associate { it.id to it.categories }
     }
 
     /** A property allowing convenient access to the names of all categories defined. */
+    @get:JsonIgnore
     val categoryNames: SortedSet<String> by lazy {
         categories.mapTo(sortedSetOf()) { it.name }
     }
@@ -111,6 +108,34 @@ data class LicenseClassifications(
 
     /** A convenience function to check whether there is a categorization for the given license [id]. */
     fun isCategorized(id: SpdxExpression) = id in categoriesByLicense
+
+    /**
+     * Merge [other] into these classifications, overwriting any conflicting existing classifications.
+     */
+    fun merge(other: LicenseClassifications): LicenseClassifications {
+        val filteredCategoriesByLicense = mutableMapOf<SpdxSingleLicenseExpression, MutableSet<String>>()
+
+        // Remove categories that are also used in the other classification as different classifications might use
+        // different semantics for the same category name.
+        categorizations.forEach { (id, categories) ->
+            val filteredCategories = categories.filterTo(mutableSetOf()) { it !in other.categoryNames }
+            if (filteredCategories.isNotEmpty()) filteredCategoriesByLicense[id] = filteredCategories
+        }
+
+        // Merge other into existing categories for each license.
+        other.categorizations.forEach { (id, categories) ->
+            filteredCategoriesByLicense.getOrPut(id) { mutableSetOf() } += categories
+        }
+
+        val usedCategories = filteredCategoriesByLicense.values.flatten().toSet()
+
+        return LicenseClassifications(
+            categories = (categories + other.categories).toSet().filter { it.name in usedCategories },
+            categorizations = filteredCategoriesByLicense.map { (id, categories) ->
+                LicenseCategorization(id, categories)
+            }
+        )
+    }
 }
 
 /**

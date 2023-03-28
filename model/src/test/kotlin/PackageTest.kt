@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,14 +43,14 @@ class PackageTest : StringSpec({
                 name = "name",
                 version = "version"
             ),
-            authors = sortedSetOf("author"),
-            declaredLicenses = sortedSetOf("declared license"),
+            authors = setOf("author"),
+            declaredLicenses = setOf("declared license"),
             description = "description",
             homepageUrl = "homepageUrl",
             binaryArtifact = RemoteArtifact("url", Hash.create("hash")),
             sourceArtifact = RemoteArtifact("url", Hash.create("hash")),
-            vcs = VcsInfo(VcsType("type"), "url", "revision"),
-            isMetaDataOnly = false,
+            vcs = VcsInfo(VcsType.forName("type"), "url", "revision"),
+            isMetadataOnly = false,
             isModified = false
         )
 
@@ -61,14 +61,14 @@ class PackageTest : StringSpec({
                 name = "name",
                 version = "version"
             ),
-            authors = sortedSetOf("other author"),
-            declaredLicenses = sortedSetOf("other declared license"),
+            authors = setOf("other author"),
+            declaredLicenses = setOf("other declared license"),
             description = "other description",
             homepageUrl = "other homepageUrl",
             binaryArtifact = RemoteArtifact("other url", Hash.create("other hash")),
             sourceArtifact = RemoteArtifact("other url", Hash.create("other hash")),
-            vcs = VcsInfo(VcsType("other type"), "other url", "other revision"),
-            isMetaDataOnly = true,
+            vcs = VcsInfo(VcsType.forName("other type"), "other url", "other revision"),
+            isMetadataOnly = true,
             isModified = true
         )
 
@@ -80,7 +80,7 @@ class PackageTest : StringSpec({
         diff.homepageUrl shouldBe pkg.homepageUrl
         diff.sourceArtifact shouldBe pkg.sourceArtifact
         diff.vcs shouldBe pkg.vcsProcessed.toCuration()
-        diff.isMetaDataOnly shouldBe pkg.isMetaDataOnly
+        diff.isMetadataOnly shouldBe pkg.isMetadataOnly
         diff.isModified shouldBe pkg.isModified
     }
 
@@ -92,13 +92,13 @@ class PackageTest : StringSpec({
                 name = "name",
                 version = "version"
             ),
-            authors = sortedSetOf("author"),
-            declaredLicenses = sortedSetOf("declared license"),
+            authors = setOf("author"),
+            declaredLicenses = setOf("declared license"),
             description = "description",
             homepageUrl = "homepageUrl",
             binaryArtifact = RemoteArtifact("url", Hash.create("hash")),
             sourceArtifact = RemoteArtifact("url", Hash.create("hash")),
-            vcs = VcsInfo(VcsType("type"), "url", "revision")
+            vcs = VcsInfo(VcsType.forName("type"), "url", "revision")
         )
 
         val diff = pkg.diff(pkg)
@@ -109,6 +109,6 @@ class PackageTest : StringSpec({
         diff.homepageUrl should beNull()
         diff.sourceArtifact should beNull()
         diff.vcs should beNull()
-        diff.isMetaDataOnly should beNull()
+        diff.isMetadataOnly should beNull()
     }
 })

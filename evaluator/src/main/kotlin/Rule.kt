@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ package org.ossreviewtoolkit.evaluator
 import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseSource
-import org.ossreviewtoolkit.model.OrtIssue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.Severity
@@ -107,34 +107,18 @@ abstract class Rule(
 
     /**
      * A [RuleMatcher] that checks whether a [label] exists in the [ORT result][OrtResult.labels]. If [value] is null
-     * the value of the label is ignored.
+     * the value of the label is ignored. If [splitValue] is true, the label value is interpreted as comma-separated
+     * list.
      */
-    fun hasLabel(label: String, value: String? = null) =
+    fun hasLabel(label: String, value: String? = null, splitValue: Boolean = true) =
         object : RuleMatcher {
-            override val description = "hasLabel(${listOfNotNull(label, value).joinToString()})"
+            override val description = "hasLabel(${listOfNotNull(label, value, splitValue).joinToString()})"
 
-            override fun matches() =
-                if (value == null) {
-                    label in ruleSet.ortResult.labels
-                } else {
-                    ruleSet.ortResult.labels[label] == value
-                }
+            override fun matches() = ruleSet.ortResult.hasLabel(label, value, splitValue)
         }
 
     /**
-     * A [RuleMatcher] that checks whether a [label] exists in the [ORT result][OrtResult.labels] and contains a
-     * specific [value]. The value of the label is interpreted as a comma-separated list. The check is successful if
-     * this list contains the [value].
-     */
-    fun labelContains(label: String, value: String) =
-        object : RuleMatcher {
-            override val description = "labelContains($label, $value)"
-
-            override fun matches() = value in ruleSet.ortResult.getLabelValues(label)
-        }
-
-    /**
-     * Return a string to be used as [source][OrtIssue.source] for issues generated in [hint], [warning], and [error].
+     * Return a string to be used as [source][Issue.source] for issues generated in [hint], [warning], and [error].
      */
     abstract fun issueSource(): String
 

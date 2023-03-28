@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,25 +20,25 @@
 package org.ossreviewtoolkit.downloader.vcs
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.maps.beEmpty
+import io.kotest.matchers.maps.beEmpty as beEmptyMap
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
-
-import java.io.File
+import io.kotest.matchers.shouldNot
+import io.kotest.matchers.string.beEmpty
 
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.utils.common.unpack
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class CvsWorkingTreeFunTest : StringSpec({
     val cvs = Cvs()
     val zipContentDir = createSpecTempDir()
 
     beforeSpec {
-        val zipFile = File("src/funTest/assets/jhove-2019-12-11-cvs.zip")
+        val zipFile = getAssetFile("jhove-2019-12-11-cvs.zip")
         println("Extracting '$zipFile' to '$zipContentDir'...")
         zipFile.unpack(zipContentDir)
     }
@@ -46,7 +46,7 @@ class CvsWorkingTreeFunTest : StringSpec({
     "Detected CVS version is not empty" {
         val version = cvs.getVersion()
         println("CVS version $version detected.")
-        version shouldNotBe ""
+        version shouldNot beEmpty()
     }
 
     "CVS detects non-working-trees" {
@@ -59,7 +59,7 @@ class CvsWorkingTreeFunTest : StringSpec({
         cvs.isApplicableUrl("https://svn.code.sf.net/p/grepwin/code/") shouldBe false
     }
 
-    "Detected CVS working tree information is correct".config(enabled = false /* Failing due to SF issues. */) {
+    "Detected CVS working tree information is correct" {
         val workingTree = cvs.getWorkingTree(zipContentDir)
 
         workingTree.isValid() shouldBe true
@@ -69,12 +69,12 @@ class CvsWorkingTreeFunTest : StringSpec({
             revision = "449addc0d9e0ee7be48bfaa06f99a6f23cd3bae0",
             path = ""
         )
-        workingTree.getNested() should beEmpty()
+        workingTree.getNested() should beEmptyMap()
         workingTree.getRootPath() shouldBe zipContentDir
         workingTree.getPathToRoot(zipContentDir.resolve("lib")) shouldBe "lib"
     }
 
-    "CVS correctly lists remote branches".config(enabled = false /* Failing due to SF issues. */) {
+    "CVS correctly lists remote branches".config(enabled = false) {
         val expectedBranches = listOf(
             "JHOVE_1_7",
             "branch_lpeer",
@@ -86,7 +86,7 @@ class CvsWorkingTreeFunTest : StringSpec({
         workingTree.listRemoteBranches().joinToString("\n") shouldBe expectedBranches.joinToString("\n")
     }
 
-    "CVS correctly lists remote tags".config(enabled = false /* Failing due to SF issues. */) {
+    "CVS correctly lists remote tags".config(enabled = false) {
         val expectedTags = listOf(
             "JHOVE_1_1",
             "JHOVE_1_11",

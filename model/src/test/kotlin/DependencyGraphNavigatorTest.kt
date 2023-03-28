@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,8 +22,6 @@ package org.ossreviewtoolkit.model
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.types.shouldBeTypeOf
 
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.test.readOrtResult
 
 class DependencyGraphNavigatorTest : AbstractDependencyNavigatorTest() {
@@ -41,10 +39,8 @@ class DependencyGraphNavigatorTest : AbstractDependencyNavigatorTest() {
 
             "fail if the map with dependency graphs is empty" {
                 val result = OrtResult.EMPTY.copy(
-                    analyzer = AnalyzerRun(
-                        result = AnalyzerResult.EMPTY,
-                        environment = Environment(),
-                        config = AnalyzerConfiguration()
+                    analyzer = AnalyzerRun.EMPTY.copy(
+                        result = AnalyzerResult.EMPTY
                     )
                 )
 

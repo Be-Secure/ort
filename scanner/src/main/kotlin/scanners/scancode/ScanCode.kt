@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021-2022 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +20,6 @@
 package org.ossreviewtoolkit.scanner.scanners.scancode
 
 import java.io.File
-import java.time.Instant
 
 import kotlin.math.max
 
@@ -32,23 +30,21 @@ import org.ossreviewtoolkit.model.ScannerDetails
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.readTree
-import org.ossreviewtoolkit.scanner.AbstractScannerFactory
-import org.ossreviewtoolkit.scanner.BuildConfig
-import org.ossreviewtoolkit.scanner.CommandLineScanner
+import org.ossreviewtoolkit.scanner.AbstractScannerWrapperFactory
+import org.ossreviewtoolkit.scanner.CommandLinePathScannerWrapper
+import org.ossreviewtoolkit.scanner.ScanContext
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
-import org.ossreviewtoolkit.scanner.experimental.AbstractScannerWrapperFactory
-import org.ossreviewtoolkit.scanner.experimental.PathScannerWrapper
-import org.ossreviewtoolkit.scanner.experimental.ScanContext
+import org.ossreviewtoolkit.scanner.ScannerCriteria
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.common.isTrue
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
-import org.ossreviewtoolkit.utils.common.safeMkdirs
-import org.ossreviewtoolkit.utils.common.unpack
+import org.ossreviewtoolkit.utils.common.splitOnWhitespace
 import org.ossreviewtoolkit.utils.common.withoutPrefix
-import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
-import org.ossreviewtoolkit.utils.ort.ortToolsDirectory
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
 
 /**
  * A wrapper for [ScanCode](https://github.com/nexB/scancode-toolkit).
@@ -66,9 +62,8 @@ import org.ossreviewtoolkit.utils.ort.ortToolsDirectory
  */
 class ScanCode internal constructor(
     name: String,
-    scannerConfig: ScannerConfiguration,
-    downloaderConfig: DownloaderConfiguration
-) : CommandLineScanner(name, scannerConfig, downloaderConfig), PathScannerWrapper {
+    private val scannerConfig: ScannerConfiguration
+) : CommandLinePathScannerWrapper(name) {
     companion object : Logging {
         const val SCANNER_NAME = "ScanCode"
 
@@ -101,19 +96,12 @@ class ScanCode internal constructor(
         }
     }
 
-    class ScanCodeFactory : AbstractScannerWrapperFactory<ScanCode>(SCANNER_NAME) {
+    class Factory : AbstractScannerWrapperFactory<ScanCode>(SCANNER_NAME) {
         override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            ScanCode(scannerName, scannerConfig, downloaderConfig)
+            ScanCode(type, scannerConfig)
     }
 
-    class Factory : AbstractScannerFactory<ScanCode>(SCANNER_NAME) {
-        override fun create(scannerConfig: ScannerConfiguration, downloaderConfig: DownloaderConfiguration) =
-            ScanCode(scannerName, scannerConfig, downloaderConfig)
-    }
-
-    override val name = SCANNER_NAME
-    override val criteria by lazy { getScannerCriteria() }
-    override val expectedVersion = BuildConfig.SCANCODE_VERSION
+    override val criteria by lazy { ScannerCriteria.fromConfig(details, scannerConfig) }
 
     override val configuration by lazy {
         buildList {
@@ -124,9 +112,9 @@ class ScanCode internal constructor(
 
     private val scanCodeConfiguration = scannerConfig.options?.get("ScanCode").orEmpty()
 
-    private val configurationOptions = scanCodeConfiguration["commandLine"]?.split(' ')
+    private val configurationOptions = scanCodeConfiguration["commandLine"]?.splitOnWhitespace()
         ?: DEFAULT_CONFIGURATION_OPTIONS
-    private val nonConfigurationOptions = scanCodeConfiguration["commandLineNonConfig"]?.split(' ')
+    private val nonConfigurationOptions = scanCodeConfiguration["commandLineNonConfig"]?.splitOnWhitespace()
         ?: DEFAULT_NON_CONFIGURATION_OPTIONS
 
     val commandLineOptions by lazy {
@@ -139,6 +127,8 @@ class ScanCode internal constructor(
     override fun command(workingDir: File?) =
         listOfNotNull(workingDir, if (Os.isWindows) "scancode.bat" else "scancode").joinToString(File.separator)
 
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create(">=3.0.0")
+
     override fun transformVersion(output: String): String {
         // On first use, the output is prefixed by "Configuring ScanCode for first use...". The version string can be
         // something like:
@@ -149,58 +139,15 @@ class ScanCode internal constructor(
         }.orEmpty()
     }
 
-    override fun bootstrap(): File {
-        val versionWithoutHyphen = expectedVersion.replace("-", "")
-        val unpackDir = ortToolsDirectory.resolve(name).resolve(expectedVersion)
-        val scannerDir = unpackDir.resolve("scancode-toolkit-$versionWithoutHyphen")
-
-        if (scannerDir.resolve(command()).isFile) {
-            logger.info { "Skipping to bootstrap $name as it was found in $unpackDir." }
-            return scannerDir
-        }
-
-        val archive = when {
-            // Use the .zip file despite it being slightly larger than the .tar.gz file here as the latter for some
-            // reason does not complete to unpack on Windows.
-            Os.isWindows -> "v$versionWithoutHyphen.zip"
-            else -> "v$versionWithoutHyphen.tar.gz"
-        }
-
-        // Use the source code archive instead of the release artifact from S3 to enable OkHttp to cache the download
-        // locally. For details see https://github.com/square/okhttp/issues/4355#issuecomment-435679393.
-        val url = "https://github.com/nexB/scancode-toolkit/archive/$archive"
-
-        // Download ScanCode to a file instead of unpacking directly from the response body as doing so on the > 200 MiB
-        // archive causes issues.
-        logger.info { "Downloading $scannerName from $url... " }
-        unpackDir.safeMkdirs()
-        val scannerArchive = OkHttpClientHelper.downloadFile(url, unpackDir).getOrThrow()
-
-        logger.info { "Unpacking '$scannerArchive' to '$unpackDir'... " }
-        scannerArchive.unpack(unpackDir)
-
-        if (!scannerArchive.delete()) {
-            logger.warn { "Unable to delete temporary file '$scannerArchive'." }
-        }
-
-        return scannerDir
-    }
-
-    override fun scanPathInternal(path: File): ScanSummary {
-        val startTime = Instant.now()
-
+    override fun scanPath(path: File, context: ScanContext): ScanSummary {
         val resultFile = createOrtTempDir().resolve("result.json")
         val process = runScanCode(path, resultFile)
-
-        val endTime = Instant.now()
 
         val result = resultFile.readTree()
         resultFile.parentFile.safeDeleteRecursively(force = true)
 
         val parseLicenseExpressions = scanCodeConfiguration["parseLicenseExpressions"].isTrue()
         val summary = generateSummary(
-            startTime,
-            endTime,
             path,
             result,
             scannerConfig.detectedLicenseMapping,
@@ -226,7 +173,7 @@ class ScanCode internal constructor(
         path: File,
         resultFile: File
     ) = ProcessCapture(
-        scannerPath.absolutePath,
+        command(),
         *commandLineOptions.toTypedArray(),
         path.absolutePath,
         OUTPUT_FORMAT_OPTION,
@@ -244,6 +191,4 @@ class ScanCode internal constructor(
                 it
             }
         }
-
-    override fun scanPath(path: File, context: ScanContext) = scanPathInternal(path)
 }

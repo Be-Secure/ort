@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -119,7 +119,7 @@ private fun OrtResult.getLicenseFindingsForAllProjects(): Set<LicenseFinding> {
     val result = mutableSetOf<LicenseFinding>()
 
     val projectIds = getProjects().mapTo(mutableSetOf()) { it.id }
-    scanner?.results?.scanResults?.forEach { (id, results) ->
+    scanner?.scanResults?.forEach { (id, results) ->
         if (id in projectIds) {
             results.forEach { scanResult ->
                 result += scanResult.summary.licenseFindings

@@ -1,12 +1,12 @@
 #!/bin/bash
 #
-# Copyright (C) 2020 Bosch.IO GmbH
+# Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -32,12 +32,13 @@ writeProxyStringToGradleProps () {
         # Strip authentication info.
         HOST=${HOST#$AUTH@}
         # Extract the user.
-        local USER=${AUTH%%:*}
+        local PROXY_USER=${AUTH%%:*}
         # Extract the password.
-        local PASSWORD=${AUTH#*:}
+        local PROXY_PASSWORD=${AUTH#*:}
     fi
 
     local PORT=${PROXY##*:}
+    PORT=${PORT/%\//}
     [ "$PORT" -ge 0 ] 2>/dev/null || PORT=80
 
     grep -qF "systemProp.$PROTOCOL.proxy" $FILE 2>/dev/null && return 1
@@ -47,8 +48,8 @@ writeProxyStringToGradleProps () {
     cat <<- EOF >> $FILE
 	systemProp.$PROTOCOL.proxyHost=$HOST
 	systemProp.$PROTOCOL.proxyPort=$PORT
-	systemProp.$PROTOCOL.proxyUser=$USER
-	systemProp.$PROTOCOL.proxyPassword=$PASSWORD
+	systemProp.$PROTOCOL.proxyUser=$PROXY_USER
+	systemProp.$PROTOCOL.proxyPassword=$PROXY_PASSWORD
 	EOF
 }
 
@@ -64,7 +65,11 @@ writeNoProxyEnvToGradleProps () {
 }
 
 writeProxyEnvToGradleProps () {
-    local GRADLE_PROPS="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+    local GRADLE_PROPS=$1
+
+    if [ -z "$GRADLE_PROPS" ]; then
+        local GRADLE_PROPS="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+    fi
 
     if [ -n "$http_proxy" ]; then
         echo "Setting HTTP proxy $http_proxy for Gradle in file '$GRADLE_PROPS'..."
@@ -88,4 +93,4 @@ writeProxyEnvToGradleProps () {
     fi
 }
 
-writeProxyEnvToGradleProps
+writeProxyEnvToGradleProps $1

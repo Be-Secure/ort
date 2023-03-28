@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.utils.FileArchiver
 import org.ossreviewtoolkit.model.utils.FindingCurationMatcher
@@ -45,14 +45,14 @@ class LicenseInfoResolver(
     private val copyrightGarbage: CopyrightGarbage,
     val addAuthorsToCopyrights: Boolean,
     val archiver: FileArchiver?,
-    val licenseFilenamePatterns: LicenseFilenamePatterns = LicenseFilenamePatterns.DEFAULT
+    val licenseFilePatterns: LicenseFilePatterns = LicenseFilePatterns.DEFAULT
 ) {
     private val resolvedLicenseInfo = ConcurrentHashMap<Identifier, ResolvedLicenseInfo>()
     private val resolvedLicenseFiles = ConcurrentHashMap<Identifier, ResolvedLicenseFileInfo>()
     private val rootLicenseMatcher = RootLicenseMatcher(
-        licenseFilenamePatterns = licenseFilenamePatterns.copy(rootLicenseFilenames = emptyList())
+        licenseFilePatterns = licenseFilePatterns.copy(rootLicenseFilenames = emptyList())
     )
-    private val findingsMatcher = FindingsMatcher(RootLicenseMatcher(licenseFilenamePatterns))
+    private val findingsMatcher = FindingsMatcher(RootLicenseMatcher(licenseFilePatterns))
 
     /**
      * Get the [ResolvedLicenseInfo] for the project or package identified by [id].
@@ -71,7 +71,7 @@ class LicenseInfoResolver(
         val licenseInfo = provider.get(id)
 
         val concludedLicenses = licenseInfo.concludedLicenseInfo.concludedLicense?.decompose().orEmpty()
-        val declaredLicenses = licenseInfo.declaredLicenseInfo.processed.spdxExpression?.decompose().orEmpty()
+        val declaredLicenses = licenseInfo.declaredLicenseInfo.processed.decompose()
 
         val resolvedLicenses = mutableMapOf<SpdxSingleLicenseExpression, ResolvedLicenseBuilder>()
 
@@ -81,7 +81,7 @@ class LicenseInfoResolver(
         // Handle concluded licenses.
         concludedLicenses.forEach { license ->
             license.builder().apply {
-                licenseInfo.concludedLicenseInfo.concludedLicense?.let {
+                licenseInfo.concludedLicenseInfo.concludedLicense?.also {
                     originalExpressions += ResolvedOriginalExpression(expression = it, source = LicenseSource.CONCLUDED)
                 }
             }
@@ -90,7 +90,7 @@ class LicenseInfoResolver(
         // Handle declared licenses.
         declaredLicenses.forEach { license ->
             license.builder().apply {
-                licenseInfo.declaredLicenseInfo.processed.spdxExpression?.let {
+                licenseInfo.declaredLicenseInfo.processed.spdxExpression?.also {
                     originalExpressions += ResolvedOriginalExpression(expression = it, source = LicenseSource.DECLARED)
                 }
 
@@ -145,7 +145,7 @@ class LicenseInfoResolver(
 
         resolvedLocations.keys.forEach { license ->
             license.builder().apply {
-                resolvedLocations[license]?.let { locations += it }
+                resolvedLocations[license]?.also { locations += it }
 
                 originalExpressions += detectedLicenses.entries.filter { (expression, _) ->
                     license in expression.decompose()
@@ -167,12 +167,12 @@ class LicenseInfoResolver(
     private fun DetectedLicenseInfo.filterCopyrightGarbage(
         copyrightGarbageFindings: MutableMap<Provenance, Set<CopyrightFinding>>
     ): DetectedLicenseInfo {
-        val filteredFindings = findings.map {
-            val partitionedFindings = it.copyrights.partition { copyrightFinding ->
-                copyrightFinding.statement in copyrightGarbage.items
+        val filteredFindings = findings.map { finding ->
+            val (copyrightGarbage, copyrightFindings) = finding.copyrights.partition { copyrightFinding ->
+                copyrightFinding.statement in copyrightGarbage
             }
-            copyrightGarbageFindings[it.provenance] = partitionedFindings.first.toSet()
-            it.copy(copyrights = partitionedFindings.second.toSet())
+            copyrightGarbageFindings[finding.provenance] = copyrightGarbage.toSet()
+            finding.copy(copyrights = copyrightFindings.toSet())
         }
         return DetectedLicenseInfo(filteredFindings)
     }
@@ -285,9 +285,9 @@ class LicenseInfoResolver(
 }
 
 private class ResolvedLicenseBuilder(val license: SpdxSingleLicenseExpression) {
-    var originalDeclaredLicenses = mutableSetOf<String>()
-    var originalExpressions = mutableSetOf<ResolvedOriginalExpression>()
-    var locations = mutableSetOf<ResolvedLicenseLocation>()
+    val originalDeclaredLicenses = mutableSetOf<String>()
+    val originalExpressions = mutableSetOf<ResolvedOriginalExpression>()
+    val locations = mutableSetOf<ResolvedLicenseLocation>()
 
     fun build() = ResolvedLicense(license, originalDeclaredLicenses, originalExpressions, locations)
 }

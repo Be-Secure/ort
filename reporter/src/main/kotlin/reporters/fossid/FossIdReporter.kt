@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class FossIdReporter : Reporter {
         const val SCAN_CODE_KEY = "scancode"
     }
 
-    override val reporterName = "FossId"
+    override val type = "FossId"
 
     override fun generateReport(input: ReporterInput, outputDir: File, options: Map<String, String>): List<File> {
         val serverUrl = requireNotNull(options[SERVER_URL_PROPERTY]) {
@@ -90,10 +90,10 @@ class FossIdReporter : Reporter {
             }.getOrNull()
         } ?: SelectionType.INCLUDE_ALL_LICENSES
 
-        val service = FossIdRestService.createService(serverUrl)
+        val service = FossIdRestService.create(serverUrl)
 
         return runBlocking(Dispatchers.IO) {
-            input.ortResult.scanner?.results?.scanResults?.values?.flatten()?.mapNotNull { result ->
+            input.ortResult.scanner?.scanResults?.values?.flatten()?.mapNotNull { result ->
                 result.additionalData[SCAN_CODE_KEY]?.let { scanCode ->
                     async {
                         logger.info { "Generating report for scan $scanCode." }

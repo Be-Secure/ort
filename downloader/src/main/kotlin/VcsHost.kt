@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -319,6 +318,7 @@ enum class VcsHost(
         private val SVN_BRANCH_OR_TAG_PATTERN = Regex("(.*svn.*)/(branches|tags)/([^/]+)/?(.*)")
         private val SVN_TRUNK_PATTERN = Regex("(.*svn.*)/(trunk)/?(.*)")
         private val GIT_REVISION_FRAGMENT = Regex("git.+#[a-fA-F0-9]{7,}")
+        private val GIT_PROJECT_NAME = Regex("/([^/]+)\\.git")
 
         /**
          * Return the applicable [VcsHost] for the given [url], or null if no applicable host is found.
@@ -336,7 +336,7 @@ enum class VcsHost(
         fun parseUrl(vcsUrl: String): VcsInfo {
             val projectUrl = vcsUrl.takeUnless { it.isBlank() } ?: return VcsInfo.EMPTY
             val unknownVcsInfo = VcsInfo.EMPTY.copy(url = projectUrl)
-            val projectUri = projectUrl.toUri().getOrNull() ?: return unknownVcsInfo
+            val projectUri = projectUrl.toUri().getOrElse { return unknownVcsInfo }
 
             fun URI.isTfsGitUrl() = path != null && host != null &&
                     ("/tfs/" in path || ".visualstudio.com" in host) && "/_git/" in path
@@ -446,6 +446,16 @@ enum class VcsHost(
                 val vcsInfo = host.toVcsInfoInternal(it)
                 host.toRawDownloadUrlInternal(userOrOrg, project, vcsInfo)
             }.getOrNull()
+        }
+
+        /**
+         * Return the project's name, with generic handling of unknown VCS hosts (those not covered by the enumeration,
+         * e.g. an on-premises Git server).
+         */
+        fun getProject(projectUrl: String): String? {
+            val host = values().find { it.isApplicable(projectUrl) }
+                ?: return GIT_PROJECT_NAME.find(projectUrl)?.groupValues?.getOrNull(1)
+            return projectUrl.toUri { host.getProjectInternal(it) }.getOrNull()
         }
     }
 

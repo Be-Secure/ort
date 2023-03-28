@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,10 @@
 
 package org.ossreviewtoolkit.model
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+
 import java.time.Instant
+import java.util.SortedMap
 
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.utils.ort.Environment
@@ -27,18 +30,72 @@ import org.ossreviewtoolkit.utils.ort.Environment
 /**
  * The summary of a single run of the scanner.
  */
+@JsonIgnoreProperties(value = ["has_issues"], allowGetters = true)
 data class ScannerRun(
     /**
-     * The [Instant] the scanner was started. The default value exists only for backward compatibility.
+     * The [Instant] the scanner was started.
      */
-    val startTime: Instant = Instant.EPOCH,
+    val startTime: Instant,
 
     /**
-     * The [Instant] the scanner has finished. The default value exists only for backward compatibility.
+     * The [Instant] the scanner has finished.
      */
-    val endTime: Instant = Instant.EPOCH,
+    val endTime: Instant,
 
+    /**
+     * The [Environment] in which the scanner was executed.
+     */
     val environment: Environment,
+
+    /**
+     * The [ScannerConfiguration] used for this run.
+     */
     val config: ScannerConfiguration,
-    val results: ScanRecord
-)
+
+    /**
+     * The [ScanResult]s for all [Package]s.
+     */
+    val scanResults: SortedMap<Identifier, List<ScanResult>>,
+
+    /**
+     * The [AccessStatistics] for the scan results storage.
+     */
+    val storageStats: AccessStatistics
+) {
+    companion object {
+        /**
+         * A constant for a [ScannerRun] where all properties are empty.
+         */
+        @JvmField
+        val EMPTY = ScannerRun(
+            startTime = Instant.EPOCH,
+            endTime = Instant.EPOCH,
+            environment = Environment(),
+            config = ScannerConfiguration(),
+            scanResults = sortedMapOf(),
+            storageStats = AccessStatistics()
+        )
+    }
+
+    /**
+     * Return a map of all de-duplicated [Issue]s associated by [Identifier].
+     */
+    fun collectIssues(): Map<Identifier, Set<Issue>> {
+        val collectedIssues = mutableMapOf<Identifier, MutableSet<Issue>>()
+
+        scanResults.forEach { (id, results) ->
+            results.forEach { result ->
+                if (result.summary.issues.isNotEmpty()) {
+                    collectedIssues.getOrPut(id) { mutableSetOf() } += result.summary.issues
+                }
+            }
+        }
+
+        return collectedIssues
+    }
+
+    /**
+     * True if any of the [scanResults] contain [Issue]s.
+     */
+    val hasIssues by lazy { collectIssues().isNotEmpty() }
+}

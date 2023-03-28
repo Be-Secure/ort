@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,19 +19,14 @@
 
 package org.ossreviewtoolkit.model.licenses
 
-import java.time.Instant
-
-import org.ossreviewtoolkit.model.AccessStatistics
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
-import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.Repository
-import org.ossreviewtoolkit.model.ScanRecord
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
@@ -40,21 +35,18 @@ import org.ossreviewtoolkit.model.Scope
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.VcsInfo
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.PathExcludeReason
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
-import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.spdx.toSpdx
 
-val authors = sortedSetOf("The Author", "The Other Author")
-val projectAuthors = sortedSetOf("The Project Author")
+val authors = setOf("The Author", "The Other Author")
+val projectAuthors = setOf("The Project Author")
 
 val concludedLicense = "LicenseRef-a AND LicenseRef-b".toSpdx()
-val declaredLicenses = sortedSetOf("LicenseRef-a", "LicenseRef-b")
+val declaredLicenses = setOf("LicenseRef-a", "LicenseRef-b")
 val declaredLicensesProcessed = DeclaredLicenseProcessor.process(declaredLicenses)
 
 val licenseFindings = sortedSetOf(
@@ -111,7 +103,7 @@ val packageWithConcludedAndDeclaredAndDetectedLicense = Package.EMPTY.copy(
     declaredLicensesProcessed = declaredLicensesProcessed
 )
 
-val allPackages = listOf(
+val allPackages = setOf(
     packageWithAuthors,
     packageWithoutLicense,
     packageWithConcludedLicense,
@@ -152,12 +144,8 @@ val scanResults = listOf(
         ScanResult(
             provenance = provenance,
             scanner = ScannerDetails.EMPTY,
-            summary = ScanSummary(
-                startTime = Instant.EPOCH,
-                endTime = Instant.EPOCH,
-                packageVerificationCode = "",
+            summary = ScanSummary.EMPTY.copy(
                 licenseFindings = licenseFindings,
-                copyrightFindings = sortedSetOf()
             )
         )
     )
@@ -178,20 +166,13 @@ val ortResult = OrtResult(
             )
         )
     ),
-    analyzer = AnalyzerRun(
-        environment = Environment(),
-        config = AnalyzerConfiguration(allowDynamicVersions = true),
+    analyzer = AnalyzerRun.EMPTY.copy(
         result = AnalyzerResult(
-            projects = sortedSetOf(project),
-            packages = allPackages.mapTo(sortedSetOf()) { CuratedPackage(it) }
+            projects = setOf(project),
+            packages = allPackages
         )
     ),
-    scanner = ScannerRun(
-        environment = Environment(),
-        config = ScannerConfiguration(),
-        results = ScanRecord(
-            scanResults = scanResults,
-            storageStats = AccessStatistics()
-        )
+    scanner = ScannerRun.EMPTY.copy(
+        scanResults = scanResults
     )
 )

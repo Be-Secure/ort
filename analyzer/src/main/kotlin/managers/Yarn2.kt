@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,10 +25,7 @@ import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.readValues
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
-import java.util.SortedSet
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -51,7 +48,7 @@ import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.Project
@@ -73,7 +70,8 @@ import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.common.textValueOrEmpty
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
-internal const val OPTION_DISABLE_REGISTRY_CERTIFICATE_VERIFICATION = "disableRegistryCertificateVerification"
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
 
 // The various Yarn dependency types supported by this package manager.
 private enum class YarnDependencyType(val type: String) {
@@ -85,9 +83,9 @@ private enum class YarnDependencyType(val type: String) {
  * The [Yarn 2+](https://next.yarnpkg.com/) package manager for JavaScript.
  *
  * This package manager supports the following [options][PackageManagerConfiguration.options]:
- * - *disableRegistryCertificateVerification*: If true, the 'yarn npm info' commands called by this package manager
- * won't verify the server certificate of the HTTPS connection to the NPM registry. This allows to replace the latter by
- * a local one, e.g. for intercepting the requests or replaying them.
+ * - *disableRegistryCertificateVerification*: If true, the `yarn npm info` commands called by this package manager will
+ *   not verify the server certificate of the HTTPS connection to the NPM registry. This allows to replace the latter by
+ *   a local one, e.g. for intercepting the requests or replaying them.
  */
 class Yarn2(
     name: String,
@@ -96,6 +94,11 @@ class Yarn2(
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
     companion object : Logging {
+        /**
+         * The name of the option to disable HTTPS server certificate verification.
+         */
+        const val OPTION_DISABLE_REGISTRY_CERTIFICATE_VERIFICATION = "disableRegistryCertificateVerification"
+
         /**
          * The name of Yarn 2+ resource file.
          */
@@ -124,7 +127,7 @@ class Yarn2(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Yarn2(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Yarn2(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     /**
@@ -135,10 +138,8 @@ class Yarn2(
      */
     private val yarn2ExecutablesByPath: MutableMap<File, String> = mutableMapOf()
 
-    private val disableRegistryCertificateVerification = analyzerConfig.getPackageManagerConfiguration(managerName)
-        ?.options
-        ?.get(OPTION_DISABLE_REGISTRY_CERTIFICATE_VERIFICATION)
-        .toBoolean()
+    private val disableRegistryCertificateVerification =
+        options[OPTION_DISABLE_REGISTRY_CERTIFICATE_VERIFICATION].toBoolean()
 
     // A builder to build the dependency graph of the project.
     private val graphBuilder = DependencyGraphBuilder(Yarn2DependencyHandler())
@@ -150,7 +151,7 @@ class Yarn2(
     private val allProjects = mutableMapOf<Identifier, Project>()
 
     // The issues that have been found when resolving the dependencies.
-    private val issues = mutableListOf<OrtIssue>()
+    private val issues = mutableListOf<Issue>()
 
     override fun command(workingDir: File?): String {
         if (workingDir == null) return ""
@@ -192,7 +193,7 @@ class Yarn2(
         // TODO: An alternative would be to collate the versions of all tools in `yarn2CommandsByPath`.
         if (workingDir == null) "" else super.getVersion(workingDir)
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildNPM(">=2.0.0")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create(">=2.0.0")
 
     override fun mapDefinitionFiles(definitionFiles: List<File>) = mapDefinitionFilesForYarn2(definitionFiles).toList()
 
@@ -238,7 +239,7 @@ class Yarn2(
             val allProjects = parseAllPackages(iterator, definitionFile, packagesHeaders, packagedDetails)
             val scopeNames = YarnDependencyType.values().map { it.type }.toSortedSet()
             return allProjects.values.map { project ->
-                ProjectAnalyzerResult(project.copy(scopeNames = scopeNames), sortedSetOf(), issues)
+                ProjectAnalyzerResult(project.copy(scopeNames = scopeNames), emptySet(), issues)
             }.toList()
         }
     }
@@ -340,55 +341,55 @@ class Yarn2(
                 mapping += it.value
             }
         }
-        graphBuilder.addPackages(allPackages.values)
 
-        allDependencies.forEach { (dependencyType, allScopedDependencies) ->
-            allProjects.values.forEach { project ->
-                val qualifiedScopeName = DependencyGraph.qualifyScope(project.id, dependencyType.type)
-                val dependencies = allScopedDependencies[project.id]
-                val dependenciesInfo = dependencies?.mapNotNull { dependency ->
-                    if ("Yarn2" in dependency.type) {
-                        val projectAsDependency = allProjects.entries.find { entry ->
-                            entry.key.type == "Yarn2" && entry.key.name == dependency.name &&
-                                    entry.key.namespace == dependency.namespace
-                        }
+        allDependencies.filterNot { excludes.isScopeExcluded(it.key.type) }
+            .forEach { (dependencyType, allScopedDependencies) ->
+                allProjects.values.forEach { project ->
+                    val qualifiedScopeName = DependencyGraph.qualifyScope(project.id, dependencyType.type)
+                    val dependencies = allScopedDependencies[project.id]
+                    val dependenciesInfo = dependencies?.mapNotNull { dependency ->
+                        if ("Yarn2" in dependency.type) {
+                            val projectAsDependency = allProjects.entries.find { entry ->
+                                entry.key.type == "Yarn2" && entry.key.name == dependency.name &&
+                                        entry.key.namespace == dependency.namespace
+                            }
 
-                        if (projectAsDependency == null) {
-                            logger.warn { "Could not find project for dependency '$dependency.'" }
-                            null
+                            if (projectAsDependency == null) {
+                                logger.warn { "Could not find project for dependency '$dependency.'" }
+                                null
+                            } else {
+                                val projectAsDependencyPkg = projectAsDependency.value.toPackage()
+                                YarnModuleInfo(
+                                    projectAsDependency.key,
+                                    null,
+                                    projectAsDependencyPkg.collectDependencies(allScopedDependencies)
+                                )
+                            }
                         } else {
-                            val projectAsDependencyPkg = projectAsDependency.value.toPackage()
-                            YarnModuleInfo(
-                                projectAsDependency.key,
-                                null,
-                                projectAsDependencyPkg.collectDependencies(allScopedDependencies)
-                            )
+                            val packageDependency = allPackages[dependency]
+                            if (packageDependency == null) {
+                                logger.warn { "Could not find package for dependency $dependency." }
+                                null
+                            } else {
+                                // As small hack here: Because the detection of dependencies per scope is limited (due
+                                // to the fact it relies on package.json parsing and only the project ones are
+                                // available), the dependencies of a package are always searched in the 'Dependencies'
+                                // scope, instead of the scope of this package.
+                                val dependenciesInDependenciesScope = allDependencies[YarnDependencyType.DEPENDENCIES]!!
+                                YarnModuleInfo(
+                                    packageDependency.id,
+                                    packageDependency,
+                                    packageDependency.collectDependencies(dependenciesInDependenciesScope)
+                                )
+                            }
                         }
-                    } else {
-                        val packageDependency = allPackages[dependency]
-                        if (packageDependency == null) {
-                            logger.warn { "Could not find package for dependency $dependency." }
-                            null
-                        } else {
-                            // As small hack here: Because the detection of dependencies per scope is limited (due to
-                            // the fact it relies on package.json parsing and only the project ones are available), the
-                            // dependencies of a package are always searched in the 'Dependencies' scope, instead of
-                            // the scope of this package.
-                            val dependenciesInDependenciesScope = allDependencies[YarnDependencyType.DEPENDENCIES]!!
-                            YarnModuleInfo(
-                                packageDependency.id,
-                                packageDependency,
-                                packageDependency.collectDependencies(dependenciesInDependenciesScope)
-                            )
-                        }
+                    }?.toSet().orEmpty()
+
+                    dependenciesInfo.forEach {
+                        graphBuilder.addDependency(qualifiedScopeName, it)
                     }
-                }?.toSet().orEmpty()
-
-                dependenciesInfo.forEach {
-                    graphBuilder.addDependency(qualifiedScopeName, it)
                 }
             }
-        }
         return allProjects
     }
 
@@ -435,7 +436,7 @@ class Yarn2(
         var homepageUrl = manifest["Homepage"].textValueOrEmpty()
 
         val id = if (header.type == "workspace") {
-            val projectFile = definitionFile.parentFile.resolve(header.version).resolve(definitionFile.name)
+            val projectFile = definitionFile.resolveSibling(header.version).resolve(definitionFile.name)
             val workingDir = definitionFile.parentFile
 
             val additionalData = getProjectAdditionalData(workingDir, name, version)
@@ -491,11 +492,11 @@ class Yarn2(
             )
 
             require(pkg.id.name.isNotEmpty()) {
-                "Generated package info for ${id.toCoordinates()} has no name."
+                "Generated package info for '${id.toCoordinates()}' has no name."
             }
 
             require(pkg.id.version.isNotEmpty()) {
-                "Generated package info for ${id.toCoordinates()} has no version."
+                "Generated package info for '${id.toCoordinates()}' has no version."
             }
             allPackages += id to pkg
             id
@@ -720,7 +721,7 @@ class Yarn2(
         override fun linkageFor(dependency: YarnModuleInfo): PackageLinkage =
             if (dependency.pkg == null) PackageLinkage.PROJECT_DYNAMIC else PackageLinkage.DYNAMIC
 
-        override fun createPackage(dependency: YarnModuleInfo, issues: MutableList<OrtIssue>): Package? = dependency.pkg
+        override fun createPackage(dependency: YarnModuleInfo, issues: MutableList<Issue>): Package? = dependency.pkg
     }
 
     /**
@@ -744,6 +745,6 @@ class Yarn2(
         val homepage: String = "",
         val downloadUrl: String = "",
         val hash: Hash = Hash.NONE,
-        val author: SortedSet<String> = emptySet<String>().toSortedSet()
+        val author: Set<String> = emptySet()
     )
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 HERE Europe B.V.
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,9 +25,9 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 
-import org.ossreviewtoolkit.analyzer.curation.FilePackageCurationProvider
 import org.ossreviewtoolkit.helper.utils.readOrtResult
 import org.ossreviewtoolkit.helper.utils.writeOrtResult
+import org.ossreviewtoolkit.plugins.packagecurationproviders.file.FilePackageCurationProvider
 import org.ossreviewtoolkit.utils.common.expandTilde
 
 class SetCommand : CliktCommand(
@@ -57,9 +57,9 @@ class SetCommand : CliktCommand(
         .convert { it.absoluteFile.normalize() }
 
     override fun run() {
-        val curations = FilePackageCurationProvider.from(packageCurationsFile, packageCurationsDir).packageCurations
+        val provider = FilePackageCurationProvider(packageCurationsFile, packageCurationsDir)
 
-        val ortResult = readOrtResult(ortFile).replacePackageCurations(curations)
+        val ortResult = readOrtResult(ortFile).replacePackageCurations(provider, providerId = "SetCommandOption")
 
         writeOrtResult(ortResult, ortFile)
     }

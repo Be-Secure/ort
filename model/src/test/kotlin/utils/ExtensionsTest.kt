@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,22 +39,6 @@ class ExtensionsTest : WordSpec({
         "return null if the string is no valid URI" {
             "^invalid-uri".parseRepoManifestPath() shouldBe null
             "^invalid-uri?manifest=default.xml".parseRepoManifestPath() shouldBe null
-        }
-    }
-
-    "sanitizeMessage()" should {
-        "remove additional white spaces" {
-            "String with additional   white spaces. ".sanitizeMessage() shouldBe "String with additional white spaces."
-        }
-
-        "remove newlines" {
-            "String\nwith\n\nnewlines.".sanitizeMessage() shouldBe "String with newlines."
-        }
-
-        "remove indentations" {
-            """
-                String with indentation.
-            """.sanitizeMessage() shouldBe "String with indentation."
         }
     }
 })

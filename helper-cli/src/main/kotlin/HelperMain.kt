@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,31 +31,16 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.switch
 
-import org.ossreviewtoolkit.helper.commands.ConvertOrtFileCommand
-import org.ossreviewtoolkit.helper.commands.CreateAnalyzerResultCommand
-import org.ossreviewtoolkit.helper.commands.DownloadResultsFromPostgresCommand
-import org.ossreviewtoolkit.helper.commands.ExtractRepositoryConfigurationCommand
-import org.ossreviewtoolkit.helper.commands.GenerateTimeoutErrorResolutionsCommand
-import org.ossreviewtoolkit.helper.commands.GetPackageLicensesCommand
-import org.ossreviewtoolkit.helper.commands.ImportCopyrightGarbageCommand
-import org.ossreviewtoolkit.helper.commands.ImportScanResultsCommand
-import org.ossreviewtoolkit.helper.commands.ListCopyrightsCommand
-import org.ossreviewtoolkit.helper.commands.ListLicenseCategoriesCommand
-import org.ossreviewtoolkit.helper.commands.ListLicensesCommand
-import org.ossreviewtoolkit.helper.commands.ListPackagesCommand
-import org.ossreviewtoolkit.helper.commands.ListStoredScanResultsCommand
-import org.ossreviewtoolkit.helper.commands.MapCopyrightsCommand
-import org.ossreviewtoolkit.helper.commands.MergeRepositoryConfigurationsCommand
-import org.ossreviewtoolkit.helper.commands.SetDependencyRepresentationCommand
-import org.ossreviewtoolkit.helper.commands.SetLabelsCommand
-import org.ossreviewtoolkit.helper.commands.SubtractScanResultsCommand
-import org.ossreviewtoolkit.helper.commands.TransformResultCommand
-import org.ossreviewtoolkit.helper.commands.VerifySourceArtifactCurationsCommand
+import kotlin.system.exitProcess
+
+import org.ossreviewtoolkit.helper.commands.*
+import org.ossreviewtoolkit.helper.commands.classifications.LicenseClassificationsCommand
 import org.ossreviewtoolkit.helper.commands.packageconfig.PackageConfigurationCommand
 import org.ossreviewtoolkit.helper.commands.packagecuration.PackageCurationsCommand
 import org.ossreviewtoolkit.helper.commands.repoconfig.RepositoryConfigurationCommand
 import org.ossreviewtoolkit.helper.commands.scanstorage.ScanStorageCommand
 import org.ossreviewtoolkit.helper.utils.ORTH_NAME
+import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.ort.printStackTrace
 
 import org.slf4j.LoggerFactory
@@ -64,11 +49,15 @@ import org.slf4j.LoggerFactory
  * The entry point for the application with [args] being the list of arguments.
  */
 fun main(args: Array<String>) {
-    return HelperMain().main(args)
+    Os.fixupUserHomeProperty()
+    HelperMain().main(args)
+    exitProcess(0)
 }
 
 internal class HelperMain : CliktCommand(name = ORTH_NAME, epilog = "* denotes required options.") {
     private val logLevel by option(help = "Set the verbosity level of log output.").switch(
+        "--error" to Level.ERROR,
+        "--warn" to Level.WARN,
         "--info" to Level.INFO,
         "--debug" to Level.DEBUG
     ).default(Level.WARN)
@@ -90,6 +79,7 @@ internal class HelperMain : CliktCommand(name = ORTH_NAME, epilog = "* denotes r
             DownloadResultsFromPostgresCommand(),
             ImportCopyrightGarbageCommand(),
             ImportScanResultsCommand(),
+            LicenseClassificationsCommand(),
             ListCopyrightsCommand(),
             ListLicenseCategoriesCommand(),
             ListLicensesCommand(),

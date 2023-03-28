@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 EPAM Systems, Inc.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,22 +44,39 @@ import retrofit2.http.Path
  */
 interface OsvApiClient {
     companion object {
-        const val SERVER_URL_PRODUCTION = "https://api.osv.dev"
-        const val SERVER_URL_STAGING = "https://api-staging.osv.dev"
         const val BATCH_REQUEST_MAX_SIZE = 1000
 
         val JSON = Json.Default
 
-        fun create(serverUrl: String = SERVER_URL_PRODUCTION, client: OkHttpClient? = null): OsvApiClient {
+        /**
+         * Create an OsvApiClient instance for communicating with the given [server], optionally using a pre-built
+         * OkHttp [client].
+         */
+        fun create(server: Server, client: OkHttpClient? = null): OsvApiClient =
+            create(server.url, client)
+
+        fun create(serverUrl: String? = null, client: OkHttpClient? = null): OsvApiClient {
             val converterFactory = JSON.asConverterFactory(contentType = "application/json".toMediaType())
 
             return Retrofit.Builder()
                 .apply { client(client ?: defaultHttpClient()) }
-                .baseUrl(serverUrl)
+                .baseUrl(serverUrl ?: Server.PRODUCTION.url)
                 .addConverterFactory(converterFactory)
                 .build()
                 .create(OsvApiClient::class.java)
         }
+    }
+
+    enum class Server(val url: String) {
+        /**
+         * The production API server.
+         */
+        PRODUCTION("https://api.osv.dev"),
+
+        /**
+         * The staging API server.
+         */
+        STAGING("https://api-staging.osv.dev")
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,26 +19,30 @@
 
 package org.ossreviewtoolkit.cli.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.ProgramResult
 
 import java.io.File
 import java.lang.reflect.Modifier
 
 import org.ossreviewtoolkit.analyzer.PackageManager
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.logger
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
-import org.ossreviewtoolkit.scanner.Scanner
+import org.ossreviewtoolkit.scanner.CommandLinePathScannerWrapper
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.spdx.scanCodeLicenseTextDir
 
 import org.reflections.Reflections
 
-class RequirementsCommand : CliktCommand(help = "Check for the command line tools required by ORT.") {
+import org.semver4j.Semver
+
+class RequirementsCommand : OrtCommand(
+    name = "requirements",
+    help = "Check for the command line tools required by ORT."
+) {
     override fun run() {
         val reflections = Reflections("org.ossreviewtoolkit")
         val classes = reflections.getSubTypesOf(CommandLineTool::class.java)
@@ -69,19 +73,18 @@ class RequirementsCommand : CliktCommand(help = "Check for the command line tool
                         ).newInstance(
                             "",
                             File(""),
-                            AnalyzerConfiguration(allowDynamicVersions = false),
+                            AnalyzerConfiguration(),
                             RepositoryConfiguration()
                         )
                     }
 
-                    Scanner::class.java.isAssignableFrom(it) -> {
+                    CommandLinePathScannerWrapper::class.java.isAssignableFrom(it) -> {
                         category = "Scanner"
                         logger.debug { "$it is a $category." }
                         it.getDeclaredConstructor(
                             String::class.java,
-                            ScannerConfiguration::class.java,
-                            DownloaderConfiguration::class.java
-                        ).newInstance("", ScannerConfiguration(), DownloaderConfiguration())
+                            ScannerConfiguration::class.java
+                        ).newInstance("", ScannerConfiguration())
                     }
 
                     VersionControlSystem::class.java.isAssignableFrom(it) -> {
@@ -119,7 +122,7 @@ class RequirementsCommand : CliktCommand(help = "Check for the command line tool
                             val actualVersion = tool.getVersion()
                             runCatching {
                                 val isRequiredVersion = tool.getVersionRequirement().let {
-                                    it == CommandLineTool.ANY_VERSION || it.isSatisfiedBy(actualVersion)
+                                    Semver.coerce(actualVersion).satisfies(it)
                                 }
 
                                 if (isRequiredVersion) {
@@ -133,7 +136,7 @@ class RequirementsCommand : CliktCommand(help = "Check for the command line tool
                                 Pair("\t+ ", "Found version '$actualVersion'.")
                             }
                         }.getOrElse {
-                            if (tool.getVersionRequirement() != CommandLineTool.ANY_VERSION) {
+                            if (!tool.getVersionRequirement().isSatisfiedByAny) {
                                 statusCode = statusCode or 2
                             }
 
@@ -154,7 +157,7 @@ class RequirementsCommand : CliktCommand(help = "Check for the command line tool
                     append(prefix)
                     append("${tool.javaClass.simpleName}: Requires '${tool.command()}' in ")
 
-                    if (tool.getVersionRequirement() == CommandLineTool.ANY_VERSION) {
+                    if (tool.getVersionRequirement().isSatisfiedByAny) {
                         append("no specific version. ")
                     } else {
                         append("version ${tool.getVersionRequirement()}. ")

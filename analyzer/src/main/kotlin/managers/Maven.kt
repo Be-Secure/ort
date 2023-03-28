@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ class Maven(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Maven(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Maven(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     private inner class LocalProjectWorkspaceReader : WorkspaceReader {
@@ -119,9 +119,10 @@ class Maven(
             version = mavenProject.version
         )
 
-        projectBuildingResult.dependencies.forEach { node ->
-            graphBuilder.addDependency(DependencyGraph.qualifyScope(projectId, node.dependency.scope), node)
-        }
+        projectBuildingResult.dependencies.filterNot { excludes.isScopeExcluded(it.dependency.scope) }
+            .forEach { node ->
+                graphBuilder.addDependency(DependencyGraph.qualifyScope(projectId, node.dependency.scope), node)
+            }
 
         val declaredLicenses = MavenSupport.parseLicenses(mavenProject)
         val declaredLicensesProcessed = MavenSupport.processDeclaredLicenses(declaredLicenses)
@@ -152,8 +153,7 @@ class Maven(
             scopeNames = graphBuilder.scopesFor(projectId)
         )
 
-        val packages = graphBuilder.packages().toSortedSet()
-        val issues = packages.mapNotNull { pkg ->
+        val issues = graphBuilder.packages().mapNotNull { pkg ->
             if (pkg.description == "POM was created by Sonatype Nexus") {
                 createAndLogIssue(
                     managerName,
@@ -165,7 +165,7 @@ class Maven(
             }
         }
 
-        return listOf(ProjectAnalyzerResult(project, sortedSetOf(), issues))
+        return listOf(ProjectAnalyzerResult(project, emptySet(), issues))
     }
 }
 

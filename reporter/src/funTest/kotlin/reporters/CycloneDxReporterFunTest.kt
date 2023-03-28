@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2020 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,8 +29,6 @@ import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 
-import java.io.File
-
 import org.cyclonedx.parsers.JsonParser
 import org.cyclonedx.parsers.XmlParser
 
@@ -41,6 +37,7 @@ import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.reporter.patchCycloneDxResult
 import org.ossreviewtoolkit.utils.common.normalizeLineBreaks
 import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.getAssetAsString
 
 class CycloneDxReporterFunTest : WordSpec({
     val defaultSchemaVersion = CycloneDxReporter.DEFAULT_SCHEMA_VERSION.versionString
@@ -68,7 +65,7 @@ class CycloneDxReporterFunTest : WordSpec({
         }
 
         "create the expected XML file" {
-            val expectedBom = File("src/funTest/assets/cyclonedx-reporter-expected-result.xml").readText()
+            val expectedBom = getAssetAsString("cyclonedx-reporter-expected-result.xml")
             val xmlOptions = optionSingle + mapOf("output.file.formats" to "xml")
 
             val bomFile = CycloneDxReporter().generateReport(ReporterInput(ORT_RESULT), outputDir, xmlOptions).single()
@@ -88,7 +85,7 @@ class CycloneDxReporterFunTest : WordSpec({
         }
 
         "create the expected JSON file" {
-            val expectedBom = File("src/funTest/assets/cyclonedx-reporter-expected-result.json").readText()
+            val expectedBom = getAssetAsString("cyclonedx-reporter-expected-result.json")
             val jsonOptions = optionSingle + mapOf("output.file.formats" to "json")
 
             val bomFile = CycloneDxReporter().generateReport(ReporterInput(ORT_RESULT), outputDir, jsonOptions).single()
@@ -130,25 +127,6 @@ class CycloneDxReporterFunTest : WordSpec({
             ) should beEmpty()
         }
 
-        "generate expected XML files" {
-            val expectedBomWithFindings =
-                File("src/funTest/assets/cyclonedx-reporter-expected-result-with-findings.xml").readText()
-            val expectedBomWithoutFindings =
-                File("src/funTest/assets/cyclonedx-reporter-expected-result-without-findings.xml").readText()
-            val xmlOptions = optionMulti + mapOf("output.file.formats" to "xml")
-
-            val (bomProjectWithFindings, bomProjectWithoutFindings) = CycloneDxReporter()
-                .generateReport(ReporterInput(ORT_RESULT), outputDir, xmlOptions).also {
-                    it shouldHaveSize 2
-                }
-            val actualBomWithFindings = bomProjectWithFindings.readText().patchCycloneDxResult().normalizeLineBreaks()
-            val actualBomWithoutFindings = bomProjectWithoutFindings.readText().patchCycloneDxResult()
-                .normalizeLineBreaks()
-
-            actualBomWithFindings shouldBe expectedBomWithFindings
-            actualBomWithoutFindings shouldBe expectedBomWithoutFindings
-        }
-
         "generate valid JSON files according to schema version $defaultSchemaVersion" {
             val jsonOptions = optionMulti + mapOf("output.file.formats" to "json")
 
@@ -170,11 +148,10 @@ class CycloneDxReporterFunTest : WordSpec({
         }
 
         "generate expected JSON files" {
-            val expectedBomWithFindings =
-                File("src/funTest/assets/cyclonedx-reporter-expected-result-with-findings.json").readText()
-            val expectedBomWithoutFindings =
-                File("src/funTest/assets/cyclonedx-reporter-expected-result-without-findings.json")
-                    .readText()
+            val expectedBomWithFindings = getAssetAsString("cyclonedx-reporter-expected-result-with-findings.json")
+            val expectedBomWithoutFindings = getAssetAsString(
+                "cyclonedx-reporter-expected-result-without-findings.json"
+            )
             val jsonOptions = optionMulti + mapOf("output.file.formats" to "json")
 
             val (bomProjectWithFindings, bomProjectWithoutFindings) = CycloneDxReporter()

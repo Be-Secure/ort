@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,17 +23,27 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 
 import java.io.File
-import java.time.Instant
 
+import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.PackageType
 import org.ossreviewtoolkit.model.ScanSummary
+import org.ossreviewtoolkit.model.ScannerDetails
+import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.model.yamlMapper
-import org.ossreviewtoolkit.scanner.PathScanner
-import org.ossreviewtoolkit.scanner.ScanResultsStorage
-import org.ossreviewtoolkit.scanner.scanOrtResult
-import org.ossreviewtoolkit.utils.spdx.calculatePackageVerificationCode
+import org.ossreviewtoolkit.scanner.PathScannerWrapper
+import org.ossreviewtoolkit.scanner.ScanContext
+import org.ossreviewtoolkit.scanner.Scanner
+import org.ossreviewtoolkit.scanner.ScannerCriteria
+import org.ossreviewtoolkit.scanner.provenance.DefaultNestedProvenanceResolver
+import org.ossreviewtoolkit.scanner.provenance.DefaultPackageProvenanceResolver
+import org.ossreviewtoolkit.scanner.provenance.DefaultProvenanceDownloader
+import org.ossreviewtoolkit.scanner.provenance.DummyNestedProvenanceStorage
+import org.ossreviewtoolkit.scanner.provenance.DummyProvenanceStorage
+import org.ossreviewtoolkit.scanner.utils.DefaultWorkingTreeCache
+import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 import org.ossreviewtoolkit.utils.test.patchActualResult
 import org.ossreviewtoolkit.utils.test.patchExpectedResult
 
@@ -48,34 +57,50 @@ class ScannerIntegrationFunTest : StringSpec() {
                 assetsDir.resolve("dummy-expected-output-for-analyzer-result.yml")
             )
 
-            val scanner = DummyScanner("Dummy", ScannerConfiguration(), DownloaderConfiguration())
-            val ortResult = scanOrtResult(scanner, analyzerResultFile.readValue())
+            val downloaderConfiguration = DownloaderConfiguration()
+            val workingTreeCache = DefaultWorkingTreeCache()
+            val provenanceDownloader = DefaultProvenanceDownloader(downloaderConfiguration, workingTreeCache)
+            val packageProvenanceStorage = DummyProvenanceStorage()
+            val nestedProvenanceStorage = DummyNestedProvenanceStorage()
+            val packageProvenanceResolver = DefaultPackageProvenanceResolver(packageProvenanceStorage, workingTreeCache)
+            val nestedProvenanceResolver = DefaultNestedProvenanceResolver(nestedProvenanceStorage, workingTreeCache)
+            val dummyScanner = DummyScanner()
+
+            val scanner = Scanner(
+                scannerConfig = ScannerConfiguration(),
+                downloaderConfig = downloaderConfiguration,
+                provenanceDownloader = provenanceDownloader,
+                storageReaders = emptyList(),
+                storageWriters = emptyList(),
+                packageProvenanceResolver = packageProvenanceResolver,
+                nestedProvenanceResolver = nestedProvenanceResolver,
+                scannerWrappers = mapOf(
+                    PackageType.PROJECT to listOf(dummyScanner),
+                    PackageType.PACKAGE to listOf(dummyScanner)
+                )
+            )
+
+            val ortResult = scanner.scan(analyzerResultFile.readValue(), skipExcluded = false, emptyMap())
             val result = yamlMapper.writeValueAsString(ortResult)
 
             patchActualResult(result, patchStartAndEndTime = true) shouldBe expectedResult
-
-            ScanResultsStorage.storage.stats.reset()
         }
     }
 
-    class DummyScanner(
-        name: String,
-        scannerConfig: ScannerConfiguration,
-        downloaderConfig: DownloaderConfiguration
-    ) : PathScanner(name, scannerConfig, downloaderConfig) {
-        override val version = "1.0"
-        override val configuration = ""
+    class DummyScanner : PathScannerWrapper {
+        override val details = ScannerDetails(name = "Dummy", version = "1.0.0", configuration = "")
+        override val criteria = ScannerCriteria.forDetails(details)
 
-        override fun scanPathInternal(path: File): ScanSummary {
-            val time = Instant.now()
+        override fun scanPath(path: File, context: ScanContext): ScanSummary {
+            val licenseFindings = path.listFiles().orEmpty().mapTo(sortedSetOf()) { file ->
+                LicenseFinding(
+                    license = SpdxConstants.NONE,
+                    location = TextLocation(file.relativeTo(path).invariantSeparatorsPath, TextLocation.UNKNOWN_LINE)
+                )
+            }
 
-            return ScanSummary(
-                startTime = time,
-                endTime = time,
-                packageVerificationCode = calculatePackageVerificationCode(path),
-                licenseFindings = sortedSetOf(),
-                copyrightFindings = sortedSetOf(),
-                issues = mutableListOf()
+            return ScanSummary.EMPTY.copy(
+                licenseFindings = licenseFindings
             )
         }
     }

@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +47,7 @@ const val ORT_DATA_DIR_ENV_NAME = "ORT_DATA_DIR"
 /**
  * The name of the ORT (main) configuration file.
  */
-const val ORT_CONFIG_FILENAME = "ort.conf"
+const val ORT_CONFIG_FILENAME = "config.yml"
 
 /**
  * The name of the ORT copyright garbage configuration file.
@@ -84,6 +83,11 @@ const val ORT_LICENSE_CLASSIFICATIONS_FILENAME = "license-classifications.yml"
  * The name of the ORT package configurations directory.
  */
 const val ORT_PACKAGE_CONFIGURATIONS_DIRNAME = "package-configurations"
+
+/**
+ * The name of the ORT package configuration file.
+ */
+const val ORT_PACKAGE_CONFIGURATION_FILENAME = "package-configuration.yml"
 
 /**
  * The name of the ORT repository configuration file.

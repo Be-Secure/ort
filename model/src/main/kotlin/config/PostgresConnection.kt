@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@
 
 package org.ossreviewtoolkit.model.config
 
+import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonInclude.Include
 import com.fasterxml.jackson.annotation.JsonProperty
 
 data class PostgresConnection(
@@ -45,7 +47,7 @@ data class PostgresConnection(
 
     /**
      * The SSL mode to use, one of "disable", "allow", "prefer", "require", "verify-ca" or "verify-full".
-     * See: https://jdbc.postgresql.org/documentation/head/ssl-client.html
+     * See: https://jdbc.postgresql.org/documentation/ssl/#configuring-the-client
      */
     val sslmode: String = "verify-full",
 
@@ -53,18 +55,21 @@ data class PostgresConnection(
      * The full path of the certificate file.
      * See: https://jdbc.postgresql.org/documentation/head/connect.html
      */
+    @JsonInclude(Include.NON_NULL)
     val sslcert: String? = null,
 
     /**
      * The full path of the key file.
      * See: https://jdbc.postgresql.org/documentation/head/connect.html
      */
+    @JsonInclude(Include.NON_NULL)
     val sslkey: String? = null,
 
     /**
      * The full path of the root certificate file.
      * See: https://jdbc.postgresql.org/documentation/head/connect.html
      */
+    @JsonInclude(Include.NON_NULL)
     val sslrootcert: String? = null,
 
     /**

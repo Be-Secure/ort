@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,7 +169,7 @@ class DependencyGraphTest : WordSpec({
                 id("org.apache.commons", "commons-lang3", "3.10"),
                 id("org.apache.commons", "commons-collections4", "4.4")
             )
-            val issue = OrtIssue(source = "analyzer", message = "Could not analyze :-(")
+            val issue = Issue(source = "analyzer", message = "Could not analyze :-(")
             val refLang = DependencyReference(0, linkage = PackageLinkage.PROJECT_DYNAMIC)
             val refCol = DependencyReference(1, issues = listOf(issue), dependencies = sortedSetOf(refLang))
             val trees = sortedSetOf(refCol)
@@ -197,7 +197,7 @@ class DependencyGraphTest : WordSpec({
             val project = Project(
                 id = projectId,
                 definitionFilePath = "/some/path/pom.xml",
-                declaredLicenses = sortedSetOf(),
+                declaredLicenses = emptySet(),
                 homepageUrl = "https://project.example.org",
                 vcs = VcsInfo.EMPTY
             )

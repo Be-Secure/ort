@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,13 @@
 package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
 
 import java.util.SortedSet
 
+import org.ossreviewtoolkit.utils.common.StringSortedSetConverter
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.ort.ProcessedDeclaredLicense
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
@@ -36,7 +37,6 @@ import org.ossreviewtoolkit.utils.spdx.SpdxOperator
  * metadata like e.g. the [homepageUrl]. Most importantly, it defines the dependency scopes that refer to the actual
  * packages.
  */
-@JsonIgnoreProperties(value = ["aliases", "purl"])
 data class Project(
     /**
      * The unique identifier of this project. The [id]'s type is the name of the package manager that manages this
@@ -57,16 +57,18 @@ data class Project(
     val definitionFilePath: String,
 
     /**
-     * The list of authors declared for this project.
+     * The set of authors declared for this project.
      */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-    val authors: SortedSet<String> = sortedSetOf(),
+    @JsonSerialize(converter = StringSortedSetConverter::class)
+    val authors: Set<String> = emptySet(),
 
     /**
-     * The list of licenses the authors have declared for this project. This does not necessarily correspond to the
-     * licenses as detected by a scanner. Both need to be taken into account for any conclusions.
+     * The set of licenses declared for this project. This does not necessarily correspond to the licenses as detected
+     * by a scanner. Both need to be taken into account for any conclusions.
      */
-    val declaredLicenses: SortedSet<String>,
+    @JsonSerialize(converter = StringSortedSetConverter::class)
+    val declaredLicenses: Set<String>,
 
     /**
      * The declared licenses as [SpdxExpression]. If [declaredLicenses] contains multiple licenses they are
@@ -105,7 +107,7 @@ data class Project(
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     val scopeNames: SortedSet<String>? = null
-) : Comparable<Project> {
+) {
     companion object {
         /**
          * A constant for a [Project] where all properties are empty.
@@ -114,8 +116,8 @@ data class Project(
         val EMPTY = Project(
             id = Identifier.EMPTY,
             definitionFilePath = "",
-            authors = sortedSetOf(),
-            declaredLicenses = sortedSetOf(),
+            authors = emptySet(),
+            declaredLicenses = emptySet(),
             declaredLicensesProcessed = ProcessedDeclaredLicense.EMPTY,
             vcs = VcsInfo.EMPTY,
             vcsProcessed = VcsInfo.EMPTY,
@@ -145,16 +147,14 @@ data class Project(
      * graph. Otherwise, result is this same object.
      */
     fun withResolvedScopes(graph: DependencyGraph?): Project =
-        takeUnless { graph != null && scopeNames != null }
-            ?: copy(
-                scopeDependencies = graph!!.createScopes(qualifiedScopeNames()),
+        if (graph != null && scopeNames != null) {
+            copy(
+                scopeDependencies = graph.createScopes(qualifiedScopeNames()),
                 scopeNames = null
             )
-
-    /**
-     * A comparison function to sort projects by their identifier.
-     */
-    override fun compareTo(other: Project) = id.compareTo(other.id)
+        } else {
+            this
+        }
 
     /**
      * Return whether the package identified by [id] is contained as a (transitive) dependency in this project.

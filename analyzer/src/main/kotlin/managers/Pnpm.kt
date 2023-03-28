@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2019-2020 HERE Europe B.V.
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +19,6 @@
 
 package org.ossreviewtoolkit.analyzer.managers
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
@@ -31,6 +28,9 @@ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.realFile
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
 
 /**
  * The [fast, disk space efficient package manager](https://pnpm.io/).
@@ -48,7 +48,7 @@ class Pnpm(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Pnpm(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Pnpm(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     /**
@@ -70,7 +70,7 @@ class Pnpm(
 
     override fun command(workingDir: File?) = if (Os.isWindows) "pnpm.cmd" else "pnpm"
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildNPM("5.* - 7.*")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create("5.* - 7.*")
 
     override fun mapDefinitionFiles(definitionFiles: List<File>) = mapDefinitionFilesForPnpm(definitionFiles).toList()
 

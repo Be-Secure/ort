@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode
 import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.PathMatcher
-import java.util.SortedSet
 
 import org.apache.logging.log4j.kotlin.Logging
 
@@ -230,7 +229,7 @@ private fun getPnpmWorkspaceMatchers(definitionFile: File): List<PathMatcher> {
 
     fun String.isComment() = trim().startsWith("#")
 
-    val pnpmWorkspaceFile = definitionFile.parentFile.resolve("pnpm-workspace.yaml")
+    val pnpmWorkspaceFile = definitionFile.resolveSibling("pnpm-workspace.yaml")
 
     return if (pnpmWorkspaceFile.isFile && pnpmWorkspaceFile.readLines().any { !it.isComment() }) {
         val workspaceMatchers = pnpmWorkspaceFile.readValue<PnpmWorkspaces>().packages
@@ -250,7 +249,7 @@ private fun getPnpmWorkspaceSubmodules(definitionFiles: Set<File>): Set<File> {
     val result = mutableSetOf<File>()
 
     definitionFiles.forEach { definitionFile ->
-        val pnpmWorkspacesFile = definitionFile.parentFile.resolve("pnpm-workspace.yaml")
+        val pnpmWorkspacesFile = definitionFile.resolveSibling("pnpm-workspace.yaml")
 
         if (pnpmWorkspacesFile.isFile) {
             val pathMatchers = getPnpmWorkspaceMatchers(definitionFile)
@@ -324,8 +323,8 @@ private fun getYarnWorkspaceSubmodules(definitionFiles: Set<File>): Set<File> {
  * https://docs.npmjs.com/files/package.json#people-fields-author-contributors, there are two formats to
  * specify the author of a package: An object with multiple properties or a single string.
  */
-fun parseNpmAuthors(json: JsonNode): SortedSet<String> =
-    sortedSetOf<String>().apply {
+fun parseNpmAuthors(json: JsonNode): Set<String> =
+    mutableSetOf<String>().apply {
         json["author"]?.let { authorNode ->
             when {
                 authorNode.isObject -> authorNode["name"]?.textValue()
@@ -338,7 +337,7 @@ fun parseNpmAuthors(json: JsonNode): SortedSet<String> =
 /**
  * Parse information about licenses from the [package.json][json] file of a module.
  */
-fun parseNpmLicenses(json: JsonNode): SortedSet<String> {
+fun parseNpmLicenses(json: JsonNode): Set<String> {
     val declaredLicenses = mutableListOf<String>()
 
     // See https://docs.npmjs.com/files/package.json#license. Some old packages use a "license" (singular) node
@@ -360,14 +359,14 @@ fun parseNpmLicenses(json: JsonNode): SortedSet<String> {
         licenseNode["type"]?.textValue()
     }
 
-    return declaredLicenses.mapNotNullTo(sortedSetOf()) { declaredLicense ->
+    return declaredLicenses.mapNotNullTo(mutableSetOf()) { declaredLicense ->
         when {
             // NPM does not mean https://unlicense.org/ here, but the wish to not "grant others the right to use
             // a private or unpublished package under any terms", which corresponds to SPDX's "NONE".
             declaredLicense == "UNLICENSED" -> SpdxConstants.NONE
 
             // NPM allows declaring non-SPDX licenses only by referencing a license file. Avoid reporting an
-            // [OrtIssue] by mapping this to a valid license identifier.
+            // [Issue] by mapping this to a valid license identifier.
             declaredLicense.startsWith("SEE LICENSE IN ") -> SpdxConstants.NOASSERTION
 
             else -> declaredLicense.takeUnless { it.isBlank() }
@@ -388,7 +387,7 @@ fun parseNpmVcsInfo(node: JsonNode): VcsInfo {
         val path = repo["directory"].textValueOrEmpty()
 
         VcsInfo(
-            type = VcsType(type),
+            type = VcsType.forName(type),
             url = expandNpmShortcutUrl(url),
             revision = head,
             path = path

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,23 +26,25 @@ import io.kotest.matchers.string.startWith
 
 import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.TextLocation
-import org.ossreviewtoolkit.scanner.scanners.AbstractScannerFunTest
+import org.ossreviewtoolkit.scanner.scanners.AbstractPathScannerWrapperFunTest
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 import org.ossreviewtoolkit.utils.spdx.getLicenseText
 import org.ossreviewtoolkit.utils.test.ExpensiveTag
 import org.ossreviewtoolkit.utils.test.ScanCodeTag
 
-class ScanCodeScannerFunTest : AbstractScannerFunTest(setOf(ExpensiveTag, ScanCodeTag)) {
-    override val scanner = ScanCode("ScanCode", scannerConfig, downloaderConfig)
+class ScanCodeScannerFunTest : AbstractPathScannerWrapperFunTest(setOf(ExpensiveTag, ScanCodeTag)) {
+    override val scanner = ScanCode("ScanCode", scannerConfig)
 
     override val expectedFileLicenses = listOf(
-        LicenseFinding("Apache-2.0", TextLocation("LICENSE", 1, 201), 99.94f)
+        LicenseFinding("Apache-2.0", TextLocation("LICENSE", 1, 187), 100.0f),
+        LicenseFinding("Apache-2.0", TextLocation("LICENSE", 191, 201), 100.0f)
     )
 
     override val expectedDirectoryLicenses = listOf(
         LicenseFinding("Apache-2.0", TextLocation("COPYING", 1, 201), 99.18f),
         LicenseFinding("Apache-2.0", TextLocation("LICENCE", 1, 201), 99.18f),
-        LicenseFinding("Apache-2.0", TextLocation("LICENSE", 1, 201), 99.94f)
+        LicenseFinding("Apache-2.0", TextLocation("LICENSE", 1, 187), 100.0f),
+        LicenseFinding("Apache-2.0", TextLocation("LICENSE", 191, 201), 100.0f)
     )
 
     init {
@@ -64,7 +66,7 @@ class ScanCodeScannerFunTest : AbstractScannerFunTest(setOf(ExpensiveTag, ScanCo
             val id = "LicenseRef-scancode-here-proprietary"
             val text = "x\ny\n"
 
-            val outputDir = createOrtTempDir().apply { resolve(id).apply { writeText(text) } }
+            val outputDir = createOrtTempDir().apply { resolve(id).writeText(text) }
 
             getLicenseText(id, true, listOf(outputDir)) shouldBe getLicenseText(id, true)
         }

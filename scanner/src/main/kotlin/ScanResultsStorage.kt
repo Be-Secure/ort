@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,23 +33,8 @@ import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.UnknownProvenance
-import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
-import org.ossreviewtoolkit.model.config.FileBasedStorageConfiguration
-import org.ossreviewtoolkit.model.config.PostgresStorageConfiguration
-import org.ossreviewtoolkit.model.config.ScanStorageConfiguration
-import org.ossreviewtoolkit.model.config.ScannerConfiguration
-import org.ossreviewtoolkit.model.config.Sw360StorageConfiguration
-import org.ossreviewtoolkit.model.utils.DatabaseUtils
-import org.ossreviewtoolkit.scanner.experimental.NestedProvenance
-import org.ossreviewtoolkit.scanner.experimental.NestedProvenanceScanResult
-import org.ossreviewtoolkit.scanner.experimental.PackageBasedScanStorage
-import org.ossreviewtoolkit.scanner.experimental.ScanStorageException
-import org.ossreviewtoolkit.scanner.experimental.toNestedProvenanceScanResult
-import org.ossreviewtoolkit.scanner.storages.*
-import org.ossreviewtoolkit.utils.ort.ortDataDirectory
-import org.ossreviewtoolkit.utils.ort.storage.HttpFileStorage
-import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
-import org.ossreviewtoolkit.utils.ort.storage.XZCompressedLocalFileStorage
+import org.ossreviewtoolkit.scanner.provenance.NestedProvenance
+import org.ossreviewtoolkit.scanner.provenance.NestedProvenanceScanResult
 
 /**
  * The abstract class that storage backends for scan results need to implement.
@@ -64,123 +48,6 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
          * A successful [Result] with an empty list of [ScanResult]s.
          */
         val EMPTY_RESULT = Result.success<List<ScanResult>>(emptyList())
-
-        /**
-         * The scan result storage in use. Needs to be set via the corresponding [configure] function.
-         */
-        var storage: ScanResultsStorage = NoStorage()
-
-        /**
-         * Configure the [ScanResultsStorage]. If [config] does not contain a storage configuration by default a
-         * [FileBasedStorage] using a [XZCompressedLocalFileStorage] as backend is configured.
-         */
-        fun configure(config: ScannerConfiguration): ScanResultsStorage {
-            // Unfortunately, the smart cast does not work when moving this to a capturing "when" subject.
-            val configuredStorages = config.storages
-
-            storage = when {
-                configuredStorages.isNullOrEmpty() -> createDefaultStorage()
-                configuredStorages.size == 1 -> createStorage(configuredStorages.values.first())
-                else -> createCompositeStorage(config)
-            }
-
-            logger.info { "ScanResultStorage has been configured to ${storage.name}." }
-
-            return storage
-        }
-
-        /**
-         * Create a [FileBasedStorage] to be used as default if no other storage has been configured.
-         */
-        private fun createDefaultStorage(): ScanResultsStorage {
-            val localFileStorage = XZCompressedLocalFileStorage(ortDataDirectory.resolve("$TOOL_NAME/results"))
-            return FileBasedStorage(localFileStorage)
-        }
-
-        /**
-         * Create a [CompositeStorage] that manages all storages defined in the given [config].
-         */
-        private fun createCompositeStorage(config: ScannerConfiguration): ScanResultsStorage {
-            val storages = config.storages.orEmpty().mapValues { createStorage(it.value) }
-
-            fun resolve(name: String): ScanResultsStorage =
-                requireNotNull(storages[name]) {
-                    "Could not resolve storage '$name'."
-                }
-
-            val readers = config.storageReaders.orEmpty().map { resolve(it) }
-            val writers = config.storageWriters.orEmpty().map { resolve(it) }
-
-            logger.info {
-                "Using composite storage with readers ${readers.joinToString { it.name }} and writers " +
-                        "${writers.joinToString { it.name }}."
-            }
-
-            return CompositeStorage(readers, writers)
-        }
-
-        /**
-         * Create the concrete [ScanResultsStorage] implementation based on the [config] passed in.
-         */
-        private fun createStorage(config: ScanStorageConfiguration): ScanResultsStorage =
-            when (config) {
-                is FileBasedStorageConfiguration -> createFileBasedStorage(config)
-                is PostgresStorageConfiguration -> createPostgresStorage(config)
-                is ClearlyDefinedStorageConfiguration -> createClearlyDefinedStorage(config)
-                is Sw360StorageConfiguration -> createSw360Storage(config)
-            }
-
-        /**
-         * Create a [FileBasedStorage] based on the [config] passed in.
-         */
-        private fun createFileBasedStorage(config: FileBasedStorageConfiguration): ScanResultsStorage {
-            val backend = config.backend.createFileStorage()
-
-            when (backend) {
-                is HttpFileStorage -> logger.info { "Using file based storage with HTTP backend '${backend.url}'." }
-                is LocalFileStorage -> logger.info {
-                    "Using file based storage with local directory '${backend.directory.invariantSeparatorsPath}'."
-                }
-            }
-
-            return FileBasedStorage(backend)
-        }
-
-        /**
-         * Create a [PostgresStorage] based on the [config] passed in.
-         */
-        private fun createPostgresStorage(config: PostgresStorageConfiguration): ScanResultsStorage {
-            val dataSource = DatabaseUtils.createHikariDataSource(
-                config = config.connection,
-                applicationNameSuffix = TOOL_NAME,
-                // Use a value slightly higher than the number of transactions accessing the storage.
-                maxPoolSize = config.connection.parallelTransactions + 3
-            )
-
-            logger.info {
-                "Using Postgres storage with URL '${config.connection.url}' and schema '${config.connection.schema}'."
-            }
-
-            return PostgresStorage(dataSource, config.connection.parallelTransactions)
-        }
-
-        /**
-         * Create a [ClearlyDefinedStorage] based on the [config] passed in.
-         */
-        private fun createClearlyDefinedStorage(config: ClearlyDefinedStorageConfiguration): ScanResultsStorage =
-            ClearlyDefinedStorage(config).also {
-                logger.info { "Using ClearlyDefined storage with URL '${config.serverUrl}'." }
-            }
-
-        /**
-         * Configure a [Sw360Storage] as the current storage backend.
-         */
-        private fun createSw360Storage(config: Sw360StorageConfiguration): ScanResultsStorage =
-            Sw360Storage(config).also {
-                logger.info {
-                    "Using SW360 storage with auth URL '${config.authUrl}' and REST URL '${config.restUrl}'."
-                }
-            }
     }
 
     /**
@@ -362,8 +229,8 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
      */
     protected abstract fun addInternal(id: Identifier, scanResult: ScanResult): Result<Unit>
 
-    override fun read(pkg: Package, nestedProvenance: NestedProvenance): List<NestedProvenanceScanResult> =
-        read(pkg.id).toNestedProvenanceScanResult(nestedProvenance)
+    override fun read(id: Identifier, nestedProvenance: NestedProvenance): List<NestedProvenanceScanResult> =
+        read(id).toNestedProvenanceScanResult(nestedProvenance)
 
     override fun read(
         pkg: Package,

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ package org.ossreviewtoolkit.cli.utils
 
 import com.github.ajalt.clikt.core.ProgramResult
 
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.Severity
 
@@ -40,8 +40,8 @@ internal sealed class SeverityStats(
 
     companion object {
         fun createFromIssues(
-            resolvedIssues: Collection<OrtIssue>,
-            unresolvedIssues: Collection<OrtIssue>
+            resolvedIssues: Collection<Issue>,
+            unresolvedIssues: Collection<Issue>
         ) =
             IssueSeverityStats(
                 resolvedCounts = resolvedIssues.groupingBy { it.severity }.eachCount(),

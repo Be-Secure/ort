@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2019-2021 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,6 +24,8 @@ import { randomStringGenerator } from '../utils';
 
 class WebAppPackage {
     #_id;
+
+    #authors = new Set();
 
     #binaryArtifact;
 
@@ -58,7 +60,9 @@ class WebAppPackage {
     #detectedLicensesIndexes = new Set();
 
     #detectedLicensesProcessed = new Set();
-    
+
+    #effectiveLicense;
+
     #excludedFindings;
 
     #excludedFindingsIndexes = [];
@@ -121,6 +125,10 @@ class WebAppPackage {
         if (obj) {
             if (Number.isInteger(obj._id)) {
                 this.#_id = obj._id;
+            }
+
+            if (obj.authors) {
+                this.#authors = new Set(obj.authors);
             }
 
             if (obj.binary_artifact || obj.binaryArtifact) {
@@ -191,6 +199,11 @@ class WebAppPackage {
                 const detectedLicensesIndexes = obj.detected_licenses
                     || obj.detectedLicenses;
                 this.#detectedLicensesIndexes = new Set(detectedLicensesIndexes);
+            }
+
+            if (obj.effective_license || obj.effectiveLicense) {
+                this.#effectiveLicense = obj.effective_license
+                    || obj.effectiveLicense;
             }
 
             if (obj.homepage_url || obj.homepageUrl) {
@@ -317,6 +330,10 @@ class WebAppPackage {
         return this.#_id;
     }
 
+    get authors() {
+        return this.#authors;
+    }
+
     get binaryArtifact() {
         return this.#binaryArtifact;
     }
@@ -375,6 +392,10 @@ class WebAppPackage {
 
     get detectedLicensesProcessed() {
         return this.#detectedLicensesProcessed;
+    }
+
+    get effectiveLicense() {
+        return this.#effectiveLicense;
     }
 
     get excludeReasons() {
@@ -605,6 +626,10 @@ class WebAppPackage {
         return this.#vcsProcessed;
     }
 
+    hasAuthors() {
+        return this.#authors.size !== 0;
+    }
+
     hasConcludedLicense() {
         return this.#concludedLicense
             && this.#concludedLicense.length !== 0;
@@ -635,6 +660,11 @@ class WebAppPackage {
 
     hasDetectedExcludedLicenses() {
         return this.#detectedExcludedLicenses.size !== 0;
+    }
+
+    hasEffectiveLicense() {
+        return this.#effectiveLicense
+            && this.#effectiveLicense.length !== 0;
     }
 
     hasExcludedFindings() {

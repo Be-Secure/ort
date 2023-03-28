@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.eclipse.aether.graph.DependencyNode
 
 import org.ossreviewtoolkit.analyzer.managers.Maven
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.createAndLogIssue
@@ -90,21 +90,21 @@ class MavenDependencyHandler(
      * Create a [Package] representing a [dependency] if possible, recording any [issues]. Inter-project
      * dependencies are skipped.
      */
-    override fun createPackage(dependency: DependencyNode, issues: MutableList<OrtIssue>): Package? {
+    override fun createPackage(dependency: DependencyNode, issues: MutableList<Issue>): Package? {
         if (isLocalProject(dependency)) return null
 
         return runCatching {
-            support.parsePackage(dependency.artifact, dependency.repositories, sbtMode = sbtMode).let { pkg ->
-                // There is the corner case that a dependency references a project, but in a different version than
-                // the one used by the local build. Then, this dependency is actually a package, but Maven's
-                // resolution mechanism might prefer using the project. Therefore, the check whether the dependency
-                // is a project must be done after the package resolution again.
-                if (isLocalProject(pkg.id)) {
-                    localProjectIds += dependency.identifier()
-                    null
-                } else {
-                    pkg
-                }
+            val pkg = support.parsePackage(dependency.artifact, dependency.repositories, sbtMode = sbtMode)
+
+            // There is the corner case that a dependency references a project, but in a different version than
+            // the one used by the local build. Then, this dependency is actually a package, but Maven's
+            // resolution mechanism might prefer using the project. Therefore, the check whether the dependency
+            // is a project must be done after the package resolution again.
+            if (isLocalProject(pkg.id)) {
+                localProjectIds += dependency.identifier()
+                null
+            } else {
+                pkg
             }
         }.onFailure { e ->
             e.showStackTrace()

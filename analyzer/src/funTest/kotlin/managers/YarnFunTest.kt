@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,11 +25,13 @@ import io.kotest.matchers.shouldBe
 import java.io.File
 
 import org.ossreviewtoolkit.downloader.VersionControlSystem
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
 import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.patchExpectedResult
+import org.ossreviewtoolkit.utils.test.toYaml
 
 class YarnFunTest : WordSpec() {
     private fun getExpectedResult(projectDir: File, expectedResultTemplateFile: String): String {
@@ -37,7 +39,7 @@ class YarnFunTest : WordSpec() {
         val vcsUrl = vcsDir.getRemoteUrl()
         val vcsPath = vcsDir.getPathToRoot(projectDir)
         val vcsRevision = vcsDir.getRevision()
-        val expectedOutputTemplate = projectDir.parentFile.resolve(expectedResultTemplateFile)
+        val expectedOutputTemplate = projectDir.resolveSibling(expectedResultTemplateFile)
 
         return patchExpectedResult(
             result = expectedOutputTemplate,
@@ -50,15 +52,15 @@ class YarnFunTest : WordSpec() {
     }
 
     private fun resolveDependencies(projectDir: File): String {
-        val packageFile = projectDir.resolve("package.json")
-        val result = createYarn().resolveSingleProject(packageFile, resolveScopes = true)
+        val definitionFile = projectDir.resolve("package.json")
+        val result = createYarn().resolveSingleProject(definitionFile, resolveScopes = true)
         return result.toYaml()
     }
 
     init {
         "yarn" should {
             "resolve dependencies correctly" {
-                val projectDir = File("src/funTest/assets/projects/synthetic/yarn").absoluteFile
+                val projectDir = getAssetFile("projects/synthetic/yarn")
 
                 val result = resolveDependencies(projectDir)
 
@@ -69,7 +71,7 @@ class YarnFunTest : WordSpec() {
             "resolve workspace dependencies correctly" {
                 // This test case illustrates the lack of Yarn workspaces support, in particular not all workspace
                 // dependencies get assigned to a scope.
-                val projectDir = File("src/funTest/assets/projects/synthetic/yarn-workspaces").absoluteFile
+                val projectDir = getAssetFile("projects/synthetic/yarn-workspaces")
 
                 val result = resolveDependencies(projectDir)
 
@@ -80,5 +82,5 @@ class YarnFunTest : WordSpec() {
     }
 
     private fun createYarn() =
-        Yarn("Yarn", USER_DIR, DEFAULT_ANALYZER_CONFIGURATION, DEFAULT_REPOSITORY_CONFIGURATION)
+        Yarn("Yarn", USER_DIR, AnalyzerConfiguration(), RepositoryConfiguration())
 }

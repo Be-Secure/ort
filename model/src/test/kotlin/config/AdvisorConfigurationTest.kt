@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,33 @@ import java.io.File
 import org.ossreviewtoolkit.model.yamlMapper
 
 class AdvisorConfigurationTest : WordSpec({
+    "Generic advisor options" should {
+        "not be serialized as they might contain sensitive information" {
+            rereadAdvisorConfig(loadAdvisorConfig()).options.shouldBeNull()
+        }
+    }
+
+    "GitHubDefectsConfiguration" should {
+        "support a serialization round-trip via an ObjectMapper" {
+            val originalConfig = loadAdvisorConfig()
+            val rereadConfig = rereadAdvisorConfig(originalConfig)
+
+            val expectedGHConfig = originalConfig.gitHubDefects.shouldNotBeNull()
+            val actualGHConfig = rereadConfig.gitHubDefects.shouldNotBeNull()
+
+            actualGHConfig.endpointUrl shouldBe expectedGHConfig.endpointUrl
+            actualGHConfig.labelFilter shouldBe expectedGHConfig.labelFilter
+            actualGHConfig.maxNumberOfIssuesPerRepository shouldBe expectedGHConfig.maxNumberOfIssuesPerRepository
+            actualGHConfig.parallelRequests shouldBe expectedGHConfig.parallelRequests
+        }
+
+        "not serialize credentials" {
+            val rereadConfig = rereadAdvisorConfig(loadAdvisorConfig()).gitHubDefects.shouldNotBeNull()
+
+            rereadConfig.token.shouldBeNull()
+        }
+    }
+
     "NexusIqConfiguration" should {
         "support a serialization round-trip via an ObjectMapper" {
             val originalConfig = loadAdvisorConfig()
@@ -58,34 +85,13 @@ class AdvisorConfigurationTest : WordSpec({
             val expectedVCConfig = originalConfig.vulnerableCode.shouldNotBeNull()
             val actualVCConfig = rereadConfig.vulnerableCode.shouldNotBeNull()
 
-            actualVCConfig shouldBe expectedVCConfig
-        }
-    }
-
-    "GitHubDefectsConfiguration" should {
-        "support a serialization round-trip via an ObjectMapper" {
-            val originalConfig = loadAdvisorConfig()
-            val rereadConfig = rereadAdvisorConfig(originalConfig)
-
-            val expectedGHConfig = originalConfig.gitHubDefects.shouldNotBeNull()
-            val actualGHConfig = rereadConfig.gitHubDefects.shouldNotBeNull()
-
-            actualGHConfig.endpointUrl shouldBe expectedGHConfig.endpointUrl
-            actualGHConfig.labelFilter shouldBe expectedGHConfig.labelFilter
-            actualGHConfig.maxNumberOfIssuesPerRepository shouldBe expectedGHConfig.maxNumberOfIssuesPerRepository
-            actualGHConfig.parallelRequests shouldBe expectedGHConfig.parallelRequests
+            actualVCConfig.serverUrl shouldBe expectedVCConfig.serverUrl
         }
 
         "not serialize credentials" {
-            val rereadConfig = rereadAdvisorConfig(loadAdvisorConfig()).gitHubDefects.shouldNotBeNull()
+            val rereadConfig = rereadAdvisorConfig(loadAdvisorConfig()).vulnerableCode.shouldNotBeNull()
 
-            rereadConfig.token.shouldBeNull()
-        }
-    }
-
-    "generic advisor options" should {
-        "not be serialized as they might contain sensitive information" {
-            rereadAdvisorConfig(loadAdvisorConfig()).options.shouldBeNull()
+            rereadConfig.apiKey.shouldBeNull()
         }
     }
 })
@@ -94,7 +100,7 @@ class AdvisorConfigurationTest : WordSpec({
  * Load the ORT reference configuration and extract the advisor configuration.
  */
 private fun loadAdvisorConfig(): AdvisorConfiguration =
-    OrtConfiguration.load(file = File("src/main/resources/reference.conf")).advisor
+    OrtConfiguration.load(file = File("src/main/resources/$REFERENCE_CONFIG_FILENAME")).advisor
 
 /**
  * Perform a serialization round-trip of the given advisor [config] and return the result. This is used to check

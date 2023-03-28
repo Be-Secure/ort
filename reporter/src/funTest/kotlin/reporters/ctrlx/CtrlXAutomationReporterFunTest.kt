@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,18 +24,17 @@ import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.collections.haveSize
 import io.kotest.matchers.should
 
-import java.io.File
-
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.reporter.ORT_RESULT
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.reporter.reporters.ctrlx.CtrlXAutomationReporter.Companion.REPORT_FILENAME
 import org.ossreviewtoolkit.utils.test.createTestTempDir
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class CtrlXAutomationReporterFunTest : StringSpec({
     "The official sample file can be deserialized" {
-        val fossInfoFile = File("src/funTest/assets/sample.fossinfo.json")
+        val fossInfoFile = getAssetFile("sample.fossinfo.json")
         val fossInfo = fossInfoFile.readValue<FossInfo>()
 
         fossInfo.components shouldNotBeNull {

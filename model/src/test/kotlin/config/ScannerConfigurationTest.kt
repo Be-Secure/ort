@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ import org.ossreviewtoolkit.utils.test.createTestTempFile
 class ScannerConfigurationTest : WordSpec({
     "ScannerConfiguration" should {
         "support a serialization round-trip via an ObjectMapper" {
-            val ortConfig = OrtConfiguration.load(file = File("src/main/resources/reference.conf"))
+            val ortConfig = OrtConfiguration.load(file = File("src/main/resources/$REFERENCE_CONFIG_FILENAME"))
             val rereadOrtConfig = createTestTempFile(suffix = ".yml").run {
                 writeValue(ortConfig)
                 readValue<OrtConfiguration>()

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,25 +20,25 @@
 package org.ossreviewtoolkit.downloader.vcs
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.maps.beEmpty
+import io.kotest.matchers.maps.beEmpty as beEmptyMap
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
-
-import java.io.File
+import io.kotest.matchers.shouldNot
+import io.kotest.matchers.string.beEmpty
 
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.utils.common.unpack
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.getAssetFile
 
 class SubversionWorkingTreeFunTest : StringSpec({
     val svn = Subversion()
     val zipContentDir = createSpecTempDir()
 
     beforeSpec {
-        val zipFile = File("src/funTest/assets/docutils-2018-01-03-svn-trunk.zip")
+        val zipFile = getAssetFile("docutils-2018-01-03-svn-trunk.zip")
         print("Extracting '$zipFile' to '$zipContentDir'... ")
         zipFile.unpack(zipContentDir)
         println("done.")
@@ -47,7 +47,7 @@ class SubversionWorkingTreeFunTest : StringSpec({
     "Detected Subversion version is not empty" {
         val version = svn.getVersion()
         println("Subversion version $version detected.")
-        version shouldNotBe ""
+        version shouldNot beEmpty()
     }
 
     "Subversion detects non-working-trees" {
@@ -69,7 +69,7 @@ class SubversionWorkingTreeFunTest : StringSpec({
             revision = "8207",
             path = ""
         )
-        workingTree.getNested() should beEmpty()
+        workingTree.getNested() should beEmptyMap()
         workingTree.getRootPath() shouldBe zipContentDir
         workingTree.getPathToRoot(zipContentDir.resolve("docutils")) shouldBe "docutils"
     }

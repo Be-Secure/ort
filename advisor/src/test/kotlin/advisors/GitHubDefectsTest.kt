@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,6 +32,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.unmockkAll
 import io.mockk.verify
 
 import java.net.URI
@@ -62,13 +63,17 @@ import org.ossreviewtoolkit.utils.common.enumSetOf
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class GitHubDefectsTest : WordSpec({
+    afterTest {
+        unmockkAll()
+    }
+
     "retrievePackageFindings" should {
         "return an empty result for packages not hosted on GitHub" {
             val vcs = VcsInfo(type = VcsType.GIT, url = "https://www.example.org/repo/test.git", revision = "1")
             val pkg = Package.EMPTY.copy(vcs = vcs, vcsProcessed = vcs)
 
             val advisor = createAdvisor()
-            val results = advisor.retrievePackageFindings(listOf(pkg))
+            val results = advisor.retrievePackageFindings(setOf(pkg))
 
             results.keys should containExactly(pkg)
             results[pkg] shouldNotBeNull {
@@ -85,7 +90,7 @@ class GitHubDefectsTest : WordSpec({
             createGitHubServiceMock().configureResults(emptyList(), releases)
 
             val advisor = createAdvisor()
-            val results = advisor.retrievePackageFindings(listOf(pkg))
+            val results = advisor.retrievePackageFindings(setOf(pkg))
 
             results.keys should containExactly(pkg)
             results[pkg] shouldNotBeNull {
@@ -125,7 +130,7 @@ class GitHubDefectsTest : WordSpec({
             )
         }
 
-        "create an OrtIssue for a package if the release cannot be matched" {
+        "create an Issue for a package if the release cannot be matched" {
             val pkg = createPackage()
             val issues = listOf(createIssue(index = 1, closedTime = time(2, 2)))
 
@@ -300,14 +305,14 @@ class GitHubDefectsTest : WordSpec({
 
     "the GitHubService instance" should {
         "use the configured endpoint URI" {
-            val endpointUri = URI("https://www.example.org/alternative/endpoint")
-            createGitHubServiceMock(endpointUri).configureResults(emptyList(), emptyList())
+            val url = "https://www.example.org/alternative/endpoint"
+            createGitHubServiceMock(url).configureResults(emptyList(), emptyList())
 
-            val advisor = createAdvisor(url = endpointUri.toString())
-            advisor.retrievePackageFindings(listOf(createPackage()))
+            val advisor = createAdvisor(url = url)
+            advisor.retrievePackageFindings(setOf(createPackage()))
 
             verify {
-                GitHubService.create(GITHUB_TOKEN, endpointUri, any())
+                GitHubService.create(GITHUB_TOKEN, url, any())
             }
         }
     }
@@ -339,7 +344,7 @@ class GitHubDefectsTest : WordSpec({
             val advisor = createAdvisor(labelFilter = labelFilter)
             val result = advisor.getSingleResult(pkg)
 
-            result.defects should containExactlyInAnyOrder(createDefect(index = 2))
+            result.defects should containExactly(createDefect(index = 2))
         }
 
         "do regex matches on label names" {
@@ -411,7 +416,7 @@ private val PACKAGE_ID =
  * Create a mock for the [GitHubService] and prepare the static factory method to return this mock, expecting the
  * provided [url].
  */
-private fun createGitHubServiceMock(url: URI = GitHubService.ENDPOINT): GitHubService {
+private fun createGitHubServiceMock(url: String = GitHubService.ENDPOINT): GitHubService {
     val service = mockk<GitHubService>()
 
     mockkObject(GitHubService)
@@ -442,7 +447,7 @@ private fun createAdvisor(
  * Invoke this advisor for the given [package][pkg]. Make sure that a single result is available and return it.
  */
 private suspend fun GitHubDefects.getSingleResult(pkg: Package): AdvisorResult {
-    val results = retrievePackageFindings(listOf(pkg))
+    val results = retrievePackageFindings(setOf(pkg))
 
     results.keys should containExactly(pkg)
     val result = results.getValue(pkg).single()

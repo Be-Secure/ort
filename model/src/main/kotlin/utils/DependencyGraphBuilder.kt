@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import org.ossreviewtoolkit.model.DependencyGraphEdge
 import org.ossreviewtoolkit.model.DependencyGraphNode
 import org.ossreviewtoolkit.model.DependencyReference
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.RootDependencyIndex
@@ -149,7 +149,7 @@ class DependencyGraphBuilder<D>(
      * the [DependencyGraph].
      */
     fun addDependency(scopeName: String, dependency: D): DependencyGraphBuilder<D> =
-        apply { addDependencyToGraph(scopeName, dependency, transitive = false) }
+        apply { addDependencyToGraph(scopeName, dependency, transitive = false, emptySet()) }
 
     /**
      * Add the given [packages] to this builder. They are stored internally and also returned when querying the set of
@@ -236,9 +236,15 @@ class DependencyGraphBuilder<D>(
 
     /**
      * Update the dependency graph by adding the given [dependency], which may be [transitive], for the scope with name
-     * [scopeName]. All the dependencies of this dependency are processed recursively.
+     * [scopeName]. All the dependencies of this dependency are processed recursively. Use the given set of already
+     * [processed] dependencies to detect cycles in dependencies, which would otherwise lead to stack overflow errors.
      */
-    private fun addDependencyToGraph(scopeName: String, dependency: D, transitive: Boolean): DependencyReference {
+    private fun addDependencyToGraph(
+        scopeName: String,
+        dependency: D,
+        transitive: Boolean,
+        processed: Set<D>
+    ): DependencyReference? {
         val id = dependencyHandler.identifierFor(dependency)
         val issues = dependencyHandler.issuesForDependency(dependency).toMutableList()
         val index = updateDependencyMappingAndPackages(id, dependency, issues)
@@ -253,12 +259,13 @@ class DependencyGraphBuilder<D>(
                     scopeName,
                     dependency,
                     issues,
-                    transitive
+                    transitive,
+                    processed
                 )
             }
 
             is DependencyGraphSearchResult.Incompatible ->
-                insertIntoNewFragment(id, index, scopeName, dependency, issues, transitive)
+                insertIntoNewFragment(id, index, scopeName, dependency, issues, transitive, processed)
         }
 
         return updateScopeMapping(scopeName, ref, transitive)
@@ -269,7 +276,7 @@ class DependencyGraphBuilder<D>(
      * to the data managed by this instance, resolve the package, and update the [issues] if necessary. Return the
      * numeric index for this dependency.
      */
-    private fun updateDependencyMappingAndPackages(id: Identifier, dependency: D, issues: MutableList<OrtIssue>): Int {
+    private fun updateDependencyMappingAndPackages(id: Identifier, dependency: D, issues: MutableList<Issue>): Int {
         val dependencyIndex = dependencyIndexMapping[id]
         if (dependencyIndex != null) return dependencyIndex
 
@@ -330,47 +337,53 @@ class DependencyGraphBuilder<D>(
      * Add a new fragment to the dependency graph for the [dependency] with the given [id] and [index], which may be
      * [transitive] and belongs to the scope with the given [scopeName]. This function is called for dependencies that
      * cannot be added to already existing fragments. Therefore, create a new fragment and add the [dependency] to it,
-     * together with its own dependencies. Store the given [issues] for the dependency.
+     * together with its own dependencies. Store the given [issues] for the dependency. Use [processed] to detect
+     * cycles.
      */
     private fun insertIntoNewFragment(
         id: Identifier,
         index: Int,
         scopeName: String,
         dependency: D,
-        issues: List<OrtIssue>,
-        transitive: Boolean
-    ): DependencyReference {
+        issues: List<Issue>,
+        transitive: Boolean,
+        processed: Set<D>
+    ): DependencyReference? {
         val fragmentMapping = mutableMapOf<Int, DependencyReference>()
         val dependencyIndex = RootDependencyIndex(index, referenceMappings.size)
         referenceMappings += fragmentMapping
 
-        return insertIntoGraph(id, dependencyIndex, scopeName, dependency, issues, transitive)
+        return insertIntoGraph(id, dependencyIndex, scopeName, dependency, issues, transitive, processed)
     }
 
     /**
      * Insert the [dependency] with the given [id] and [RootDependencyIndex][index], which belongs to the scope with
      * the given [scopeName] and may be [transitive] into the dependency graph. Insert the dependencies of this
      * [dependency] recursively. Create a new [DependencyReference] for the dependency and initialize it with the list
-     * of [issues].
+     * of [issues]. Use the given [processed] set to figure out cycles in the dependency graph. If such a cycle is
+     * detected, stop processing of further dependencies and return *null*.
      */
     private fun insertIntoGraph(
         id: Identifier,
         index: RootDependencyIndex,
         scopeName: String,
         dependency: D,
-        issues: List<OrtIssue>,
-        transitive: Boolean
-    ): DependencyReference {
-        val transitiveDependencies = dependencyHandler.dependenciesFor(dependency).map {
-            addDependencyToGraph(scopeName, it, transitive = true)
+        issues: List<Issue>,
+        transitive: Boolean,
+        processed: Set<D>
+    ): DependencyReference? {
+        val transitiveDependencies = dependencyHandler.dependenciesFor(dependency).mapNotNull {
+            addDependencyToGraph(scopeName, it, transitive = true, processed)
         }
 
         val fragmentMapping = referenceMappings[index.fragment]
         if (index.root in fragmentMapping) {
             // If this point is reached, the package has already been inserted when processing its dependencies.
             // This means that there is a cyclic dependency. To handle this case correctly, the insert operation has
-            // to be started anew.
-            return addDependencyToGraph(scopeName, dependency, transitive)
+            // to be started anew unless the dependency has already been encountered.
+            if (dependency in processed) return null
+
+            return addDependencyToGraph(scopeName, dependency, transitive, processed + dependency)
         }
 
         val ref = DependencyReference(
@@ -395,7 +408,7 @@ class DependencyGraphBuilder<D>(
      * available, nothing has to be done. Otherwise, create a new one and add it to the set managed by this object. If
      * this fails, record a corresponding message in [issues].
      */
-    private fun updateResolvedPackages(id: Identifier, dependency: D, issues: MutableList<OrtIssue>) {
+    private fun updateResolvedPackages(id: Identifier, dependency: D, issues: MutableList<Issue>) {
         resolvedPackages.compute(id) { _, pkg -> pkg ?: dependencyHandler.createPackage(dependency, issues) }
     }
 
@@ -404,9 +417,9 @@ class DependencyGraphBuilder<D>(
      * The scope mapping records all the direct dependencies of scopes.
      */
     private fun updateScopeMapping(
-        scopeName: String, ref: DependencyReference, transitive: Boolean
-    ): DependencyReference {
-        if (!transitive) {
+        scopeName: String, ref: DependencyReference?, transitive: Boolean
+    ): DependencyReference? {
+        if (!transitive && ref != null) {
             val index = RootDependencyIndex(ref.pkg, ref.fragment)
             scopeMapping.compute(scopeName) { _, ids ->
                 ids?.let { it + index } ?: listOf(index)

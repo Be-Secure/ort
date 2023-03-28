@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,10 +20,12 @@
 package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
 
 import java.util.SortedSet
 
 import org.ossreviewtoolkit.model.utils.toPurl
+import org.ossreviewtoolkit.utils.common.StringSortedSetConverter
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.ort.ProcessedDeclaredLicense
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
@@ -57,16 +59,18 @@ data class Package(
     val cpe: String? = null,
 
     /**
-     * The list of authors declared for this package.
+     * The set of authors declared for this package.
      */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-    val authors: SortedSet<String> = sortedSetOf(),
+    @JsonSerialize(converter = StringSortedSetConverter::class)
+    val authors: Set<String> = emptySet(),
 
     /**
-     * The list of licenses the authors have declared for this package. This does not necessarily correspond to the
-     * licenses as detected by a scanner. Both need to be taken into account for any conclusions.
+     * The set of licenses declared for this package. This does not necessarily correspond to the licenses as detected
+     * by a scanner. Both need to be taken into account for any conclusions.
      */
-    val declaredLicenses: SortedSet<String>,
+    @JsonSerialize(converter = StringSortedSetConverter::class)
+    val declaredLicenses: Set<String>,
 
     /**
      * The declared licenses as [SpdxExpression]. If [declaredLicenses] contains multiple licenses they are
@@ -75,8 +79,8 @@ data class Package(
     val declaredLicensesProcessed: ProcessedDeclaredLicense = DeclaredLicenseProcessor.process(declaredLicenses),
 
     /**
-     * The concluded license as an [SpdxExpression]. It can be used to correct the license of a package in case the
-     * [declaredLicenses] found in the packages metadata or the licenses detected by a scanner do not match reality.
+     * The concluded license as an [SpdxExpression]. It can be used to override the [declared][declaredLicenses] /
+     * [detected][LicenseFinding.license] licenses of a package.
      *
      * ORT itself does not set this field, it needs to be set by the user using a [PackageCuration].
      */
@@ -120,7 +124,7 @@ data class Package(
      * for dependency versions.
      */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
-    val isMetaDataOnly: Boolean = false,
+    val isMetadataOnly: Boolean = false,
 
     /**
      * Indicates whether the source code of the package has been modified compared to the original source code,
@@ -128,7 +132,7 @@ data class Package(
      */
     @JsonInclude(JsonInclude.Include.NON_DEFAULT)
     val isModified: Boolean = false
-) : Comparable<Package> {
+) {
     companion object {
         /**
          * A constant for a [Package] where all properties are empty.
@@ -137,8 +141,8 @@ data class Package(
         val EMPTY = Package(
             id = Identifier.EMPTY,
             purl = "",
-            authors = sortedSetOf(),
-            declaredLicenses = sortedSetOf(),
+            authors = emptySet(),
+            declaredLicenses = emptySet(),
             declaredLicensesProcessed = ProcessedDeclaredLicense.EMPTY,
             concludedLicense = null,
             description = "",
@@ -149,11 +153,6 @@ data class Package(
             vcsProcessed = VcsInfo.EMPTY
         )
     }
-
-    /**
-     * A comparison function to sort packages by their identifier.
-     */
-    override fun compareTo(other: Package) = id.compareTo(other.id)
 
     /**
      * Compares this package with [other] and creates a [PackageCurationData] containing the values from this package
@@ -172,7 +171,7 @@ data class Package(
             binaryArtifact = binaryArtifact.takeIf { it != other.binaryArtifact },
             sourceArtifact = sourceArtifact.takeIf { it != other.sourceArtifact },
             vcs = vcsProcessed.takeIf { it != other.vcsProcessed }?.toCuration(),
-            isMetaDataOnly = isMetaDataOnly.takeIf { it != other.isMetaDataOnly },
+            isMetadataOnly = isMetadataOnly.takeIf { it != other.isMetadataOnly },
             isModified = isModified.takeIf { it != other.isModified }
         )
     }
@@ -188,7 +187,7 @@ data class Package(
     fun toReference(
         linkage: PackageLinkage? = null,
         dependencies: SortedSet<PackageReference>? = null,
-        issues: List<OrtIssue>? = null
+        issues: List<Issue>? = null
     ): PackageReference {
         var ref = PackageReference(id)
 

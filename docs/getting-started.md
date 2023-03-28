@@ -87,7 +87,7 @@ The following package managers are activated:
         Bower, Bundler, Cargo, Composer, DotNet, GoDep, Gradle, Maven, NPM, NuGet, PIP, SBT, Stack, Yarn
 Analyzing project path:
         [mime-types-dir]
-ERROR - Resolving dependencies for 'package.json' failed with: No lockfile found in '[mime-types-dir]'. This potentially results in unstable versions of dependencies. To support this, enable the 'allowDynamicVersions' option in 'ort.conf'.
+ERROR - Resolving dependencies for 'package.json' failed with: No lockfile found in '[mime-types-dir]'. This potentially results in unstable versions of dependencies. To support this, enable the 'allowDynamicVersions' option in 'config.yml'.
 Writing analyzer result to '[analyzer-output-dir]/analyzer-result.yml'.
 ```
 
@@ -214,12 +214,14 @@ analyzer:
         homepage_url: "https://github.com/isaacs/abbrev-js#readme"
         binary_artifact:
           url: ""
-          hash: ""
-          hash_algorithm: ""
+          hash:
+            value: ""
+            algorithm: ""
         source_artifact:
           url: "https://registry.npmjs.org/abbrev/-/abbrev-1.0.9.tgz"
-          hash: "91b4792588a7738c25f35dd6f63752a2f8776135"
-          hash_algorithm: "SHA-1"
+          hash:
+            value: "91b4792588a7738c25f35dd6f63752a2f8776135"
+            algorithm: "SHA-1"
         vcs:
           type: "Git"
           url: "git+ssh://git@github.com/isaacs/abbrev-js.git"
@@ -245,25 +247,15 @@ needs to be downloaded. The _downloader_ tool could be used for this, but it is 
 so the scanner will automatically download the source code if the required VCS metadata could be obtained.
 
 Note that if _downloader_ is unable to download the source code due to say a missing source code location in the package
-metadata then you can use curations as a workaround.
-
-To use curations, create a [curations.yml](config-file-curations-yml.md)
-and pass it to the `--package-curations-file` option of the _analyzer_:
-
-```
-cli/build/install/ort/bin/ort analyze
-  -i [mime-types-dir]
-  -o [analyzer-output-dir]
-  --package-curations-file $ORT_CONFIG_DIR/curations.yml
-```
+metadata then you can use [curations](config-file-curations-yml.md) to fix up the package's metadata.
 
 ORT is designed to integrate lots of different scanners and is not limited to license scanners, technically any tool
 that explores the source code of a software package could be integrated. The actual scanner does not have to run on the
 same machine, for example we will soon integrate the [ClearlyDefined](https://clearlydefined.io/) scanner backend which
 will perform the actual scanning remotely.
 
-For this tutorial we will use `ScanCode`. You do not have to install the tool manually, it will automatically be
-bootstrapped by the `scanner`.
+For this tutorial [ScanCode](https://github.com/nexB/scancode-toolkit) is used as a scanner. Please install it according
+to [these instructions](https://github.com/nexB/scancode-toolkit/#installation) first.
 
 As for the _analyzer_ you can get the command line options for the `scanner` using the `--help` option:
 
@@ -336,18 +328,18 @@ For example, to generate a static HTML report, WebApp report, and an open source
 
 ```bash
 cli/build/install/ort/bin/ort report
-  -f NoticeTemplate,StaticHtml,WebApp
+  -f PlainTextTemplate,StaticHtml,WebApp
   -i [evaluator-output-dir]/evaluation-result.yml
   -o [reporter-output-dir]
 Created 'StaticHtml' report: [reporter-output-dir]/scan-report.html
 Created 'WebApp' report: [reporter-output-dir]/scan-report-web-app.html
-Created 'NoticeTemplate' report: [reporter-output-dir]/NOTICE_default
+Created 'PlainTextTemplate' report: [reporter-output-dir]/NOTICE_DEFAULT
 ```
 
 If you do not want to run the _evaluator_ you can pass the _scanner_ result e.g. `[scanner-output-dir]/scan-result.yml`
 to the `reporter` instead. To learn how you can customize generated notices see
-[notice-templates.md](notice-templates.md). To learn how to customize the how-to-fix texts for scanner and analyzer
-issues see [how-to-fix-text-provider-kts.md](how-to-fix-text-provider-kts.md).
+[plain-text-templates.md](reporters/plain-text-templates.md). To learn how to customize the how-to-fix texts for scanner
+and analyzer issues see [how-to-fix-text-provider-kts.md](how-to-fix-text-provider-kts.md).
 
 ## 8. Curating Package Metadata or License Findings
 

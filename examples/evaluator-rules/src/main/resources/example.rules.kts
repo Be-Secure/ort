@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -108,7 +108,7 @@ fun RuleSet.unhandledLicenseRule() = packageRule("UNHANDLED_LICENSE") {
         error(
             "The license $license is currently not covered by policy rules. " +
                     "The license was ${licenseSource.name.lowercase()} in package " +
-                    "${pkg.id.toCoordinates()}",
+                    "${pkg.metadata.id.toCoordinates()}",
             howToFixDefault()
         )
     }
@@ -122,7 +122,7 @@ fun RuleSet.unmappedDeclaredLicenseRule() = packageRule("UNMAPPED_DECLARED_LICEN
     resolvedLicenseInfo.licenseInfo.declaredLicenseInfo.processed.unmapped.forEach { unmappedLicense ->
         warning(
             "The declared license '$unmappedLicense' could not be mapped to a valid license or parsed as an SPDX " +
-                    "expression. The license was found in package ${pkg.id.toCoordinates()}.",
+                    "expression. The license was found in package ${pkg.metadata.id.toCoordinates()}.",
             howToFixDefault()
         )
     }
@@ -141,9 +141,9 @@ fun RuleSet.copyleftInSourceRule() = packageRule("COPYLEFT_IN_SOURCE") {
 
         val message = if (licenseSource == LicenseSource.DETECTED) {
             "The ScanCode copyleft categorized license $license was ${licenseSource.name.lowercase()} " +
-                    "in package ${pkg.id.toCoordinates()}."
+                    "in package ${pkg.metadata.id.toCoordinates()}."
         } else {
-            "The package ${pkg.id.toCoordinates()} has the ${licenseSource.name.lowercase()} ScanCode copyleft " +
+            "The package ${pkg.metadata.id.toCoordinates()} has the ${licenseSource.name.lowercase()} ScanCode copyleft " +
                     "catalogized license $license."
         }
 
@@ -164,19 +164,39 @@ fun RuleSet.copyleftInSourceLimitedRule() = packageRule("COPYLEFT_LIMITED_IN_SOU
 
         val licenseSourceName = licenseSource.name.lowercase()
         val message = if (licenseSource == LicenseSource.DETECTED) {
-            if (pkg.id.type == "Unmanaged") {
+            if (pkg.metadata.id.type == "Unmanaged") {
                 "The ScanCode copyleft-limited categorized license $license was $licenseSourceName in package " +
-                        "${pkg.id.toCoordinates()}."
+                        "${pkg.metadata.id.toCoordinates()}."
             } else {
                 "The ScanCode copyleft-limited categorized license $license was $licenseSourceName in package " +
-                        "${pkg.id.toCoordinates()}."
+                        "${pkg.metadata.id.toCoordinates()}."
             }
         } else {
-            "The package ${pkg.id.toCoordinates()} has the $licenseSourceName ScanCode copyleft-limited " +
+            "The package ${pkg.metadata.id.toCoordinates()} has the $licenseSourceName ScanCode copyleft-limited " +
                     "categorized license $license."
         }
 
         error(message, howToFixDefault())
+    }
+}
+
+fun RuleSet.dependencyInProjectSourceRule() = projectSourceRule("DEPENDENCY_IN_PROJECT_SOURCE_RULE") {
+    val denyDirPatterns = listOf(
+        "**/node_modules" to setOf("NPM", "Yarn", "PNPM"),
+        "**/vendor" to setOf("GoMod", "GoDep")
+    )
+
+    denyDirPatterns.forEach { (pattern, packageManagers) ->
+        val offendingDirs = projectSourceFindDirectories(pattern)
+
+        if (offendingDirs.isNotEmpty()) {
+            issue(
+                Severity.ERROR,
+                "The directories ${offendingDirs.joinToString()} belong to the package manager(s) " +
+                        "${packageManagers.joinToString()} and must not be committed.",
+                "Please delete the directories: ${offendingDirs.joinToString()}."
+            )
+        }
     }
 }
 
@@ -188,7 +208,7 @@ fun RuleSet.vulnerabilityInPackageRule() = packageRule("VULNERABILITY_IN_PACKAGE
 
     issue(
         Severity.WARNING,
-        "The package ${pkg.id.toCoordinates()} has a vulnerability",
+        "The package ${pkg.metadata.id.toCoordinates()} has a vulnerability",
         howToFixDefault()
     )
 }
@@ -206,7 +226,7 @@ fun RuleSet.highSeverityVulnerabilityInPackageRule() = packageRule("HIGH_SEVERIT
 
     issue(
         Severity.ERROR,
-        "The package ${pkg.id.toCoordinates()} has a vulnerability with $scoringSystem severity > " +
+        "The package ${pkg.metadata.id.toCoordinates()} has a vulnerability with $scoringSystem severity > " +
                 "$maxAcceptedSeverity",
         howToFixDefault()
     )
@@ -264,6 +284,78 @@ fun RuleSet.deprecatedScopeExcludeReasonInOrtYmlRule() = ortResultRule("DEPRECAT
     }
 }
 
+fun RuleSet.missingCiConfigurationRule() = projectSourceRule("MISSING_CI_CONFIGURATION") {
+    require {
+        -AnyOf(
+            projectSourceHasFile(
+                ".appveyor.yml",
+                ".bitbucket-pipelines.yml",
+                ".gitlab-ci.yml",
+                ".travis.yml"
+            ),
+            projectSourceHasDirectory(
+                ".circleci",
+                ".github/workflows"
+            )
+        )
+    }
+
+    error(
+        message = "This project does not have any known CI configuration files.",
+        howToFix = "Please setup a CI. If you already have setup a CI and the error persists, please contact support."
+    )
+}
+
+fun RuleSet.missingContributingFileRule() = projectSourceRule("MISSING_CONTRIBUTING_FILE") {
+    require {
+        -projectSourceHasFile("CONTRIBUTING.md")
+    }
+
+    error("The project's code repository does not contain the file 'CONTRIBUTING.md'.")
+}
+
+fun RuleSet.missingReadmeFileRule() = projectSourceRule("MISSING_README_FILE") {
+    require {
+        -projectSourceHasFile("README.md")
+    }
+
+    error("The project's code repository does not contain the file 'README.md'.")
+}
+
+fun RuleSet.missingReadmeFileLicenseSectionRule() = projectSourceRule("MISSING_README_FILE_LICENSE_SECTION") {
+    require {
+        +projectSourceHasFile("README.md")
+        -projectSourceHasFileWithContent(".*^#{1,2} License$.*", "README.md")
+    }
+
+    error(
+        message = "The file 'README.md' is missing a \"License\" section.",
+        howToFix = "Please add a \"License\" section to the file 'README.md'."
+    )
+}
+
+fun RuleSet.wrongLicenseInLicenseFileRule() = projectSourceRule("WRONG_LICENSE_IN_LICENSE_FILE_RULE") {
+    require {
+        +projectSourceHasFile("LICENSE")
+    }
+
+    val allowedRootLicenses = setOf("Apackage-2.0", "MIT")
+    val detectedRootLicenses = projectSourceGetDetectedLicensesByFilePath("LICENSE").values.flatten().toSet()
+    val wrongLicenses = detectedRootLicenses - allowedRootLicenses
+
+    if (wrongLicenses.isNotEmpty()) {
+        error(
+            message = "The file 'LICENSE' contains the following disallowed licenses ${wrongLicenses.joinToString()}.",
+            howToFix = "Please use only the following allowed licenses: ${allowedRootLicenses.joinToString()}."
+        )
+    } else if (detectedRootLicenses.isEmpty()) {
+        error(
+            message = "The file 'LICENSE' does not contain any license which is not allowed.",
+            howToFix = "Please use one of the following allowed licenses: ${allowedRootLicenses.joinToString()}."
+        )
+    }
+}
+
 /**
  * The set of policy rules.
  */
@@ -282,6 +374,14 @@ val ruleSet = ruleSet(ortResult, licenseInfoResolver, resolutionProvider) {
 
     // Rules which get executed once:
     deprecatedScopeExcludeReasonInOrtYmlRule()
+
+    // Prior to open sourcing use case rules (which get executed once):
+    dependencyInProjectSourceRule()
+    missingCiConfigurationRule()
+    missingContributingFileRule()
+    missingReadmeFileRule()
+    missingReadmeFileLicenseSectionRule()
+    wrongLicenseInLicenseFileRule()
 }
 
 // Populate the list of policy rule violations to return.

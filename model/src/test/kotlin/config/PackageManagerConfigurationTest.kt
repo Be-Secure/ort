@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.model.config
 
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.containExactly
+import io.kotest.matchers.maps.containExactly as containExactlyEntries
 import io.kotest.matchers.should
 
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
@@ -50,7 +51,7 @@ class PackageManagerConfigurationTest : WordSpec({
             val other = PackageManagerConfiguration(options = mapOf("option" to "value2"))
 
             self.merge(other).options shouldNotBeNull {
-                this should io.kotest.matchers.maps.containExactly("option" to "value2")
+                this should containExactlyEntries("option" to "value2")
             }
         }
 
@@ -59,7 +60,7 @@ class PackageManagerConfigurationTest : WordSpec({
             val other = PackageManagerConfiguration(options = mapOf("option2" to "value2"))
 
             self.merge(other).options shouldNotBeNull {
-                this should io.kotest.matchers.maps.containExactly("option1" to "value1", "option2" to "value2")
+                this should containExactlyEntries("option1" to "value1", "option2" to "value2")
             }
         }
     }

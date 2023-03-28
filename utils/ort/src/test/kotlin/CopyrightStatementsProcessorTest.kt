@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,36 +19,38 @@
 
 package org.ossreviewtoolkit.utils.ort
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect
-import com.fasterxml.jackson.annotation.PropertyAccessor
-
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.maps.shouldHaveSize
+import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
 import java.io.File
 
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.utils.test.toYaml
 
-class CopyrightStatementsProcessorTest : WordSpec() {
-    private val processor = CopyrightStatementsProcessor()
+class CopyrightStatementsProcessorTest : WordSpec({
+    "process" should {
+        "return a result with items merged by owner and prefix, sorted by owner and year" {
+            val statements = File("src/test/assets/copyright-statements.txt").readLines()
+            val expectedResult = File("src/test/assets/copyright-statements-expected-output.yml").readText()
 
-    init {
-        "process" should {
-            "return a result with items merged by owner and prefix, sorted by owner and year" {
-                val input = File("src/test/assets/copyright-statements.txt").readLines()
+            val actualResult = CopyrightStatementsProcessor.process(statements.shuffled()).toYaml()
 
-                val result = processor.process(input).toYaml()
+            actualResult shouldBe expectedResult
+        }
 
-                val expectedResult = File("src/test/assets/copyright-statements-expected-output.yml").readText()
-                result shouldBe expectedResult
-            }
+        "group statements with uppercase (C)" {
+            val statements = listOf(
+                "Copyright (C) 2017 The ORT Project Authors",
+                "Copyright (C) 2022 The ORT Project Authors"
+            )
+
+            val actualResult = CopyrightStatementsProcessor.process(statements)
+
+            actualResult.processedStatements shouldHaveSize 1
+            actualResult.processedStatements.keys.first() shouldBe "Copyright (C) 2017, 2022 The ORT Project Authors"
+            actualResult.unprocessedStatements should beEmpty()
         }
     }
-}
-
-private fun CopyrightStatementsProcessor.Result.toYaml(): String =
-    yamlMapper.copy()
-        // Disable getter serialization without changing field serialization.
-        .setVisibility(PropertyAccessor.GETTER, JsonAutoDetect.Visibility.NONE)
-        .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY)
-        .writeValueAsString(this)
+})

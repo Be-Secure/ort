@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 SCANOSS TECNOLOGIAS SL
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,7 +89,9 @@ private fun getLicenseFindings(
     scanResponse: ScanResponse,
     detectedLicenseMappings: Map<String, String>
 ): List<LicenseFinding> {
-    val score = scanResponse.matched.removeSuffix("%").toFloatOrNull()
+    val path = scanResponse.file ?: return emptyList()
+    val score = scanResponse.matched?.removeSuffix("%")?.toFloatOrNull()
+
     return scanResponse.licenses.map { license ->
         val licenseExpression = runCatching { SpdxExpression.parse(license.name) }.getOrNull()
 
@@ -102,7 +104,7 @@ private fun getLicenseFindings(
         LicenseFinding.createAndMap(
             license = validatedLicense,
             location = TextLocation(
-                path = scanResponse.file,
+                path = path,
                 startLine = TextLocation.UNKNOWN_LINE,
                 endLine = TextLocation.UNKNOWN_LINE
             ),
@@ -115,14 +117,17 @@ private fun getLicenseFindings(
 /**
  * Get the copyright findings from the given [scanResponse].
  */
-private fun getCopyrightFindings(scanResponse: ScanResponse): List<CopyrightFinding> =
-    scanResponse.copyrights.map { copyright ->
+private fun getCopyrightFindings(scanResponse: ScanResponse): List<CopyrightFinding> {
+    val path = scanResponse.file ?: return emptyList()
+
+    return scanResponse.copyrights.map { copyright ->
         CopyrightFinding(
             statement = copyright.name,
             location = TextLocation(
-                path = scanResponse.file,
+                path = path,
                 startLine = TextLocation.UNKNOWN_LINE,
                 endLine = TextLocation.UNKNOWN_LINE
             )
         )
     }
+}

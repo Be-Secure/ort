@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,10 +48,9 @@ private const val BULK_REQUEST_SIZE = 100
  * An [AdviceProvider] implementation that obtains security vulnerability information from a
  * [VulnerableCode][https://github.com/nexB/vulnerablecode] instance.
  */
-class VulnerableCode(name: String, vulnerableCodeConfiguration: VulnerableCodeConfiguration) : AdviceProvider(name) {
+class VulnerableCode(name: String, config: VulnerableCodeConfiguration) : AdviceProvider(name) {
     class Factory : AbstractAdviceProviderFactory<VulnerableCode>("VulnerableCode") {
-        override fun create(config: AdvisorConfiguration) =
-            VulnerableCode(providerName, config.forProvider { vulnerableCode })
+        override fun create(config: AdvisorConfiguration) = VulnerableCode(type, config.forProvider { vulnerableCode })
     }
 
     /**
@@ -61,10 +60,12 @@ class VulnerableCode(name: String, vulnerableCodeConfiguration: VulnerableCodeCo
     override val details = AdvisorDetails(providerName, enumSetOf(AdvisorCapability.VULNERABILITIES))
 
     private val service by lazy {
-        VulnerableCodeService.create(vulnerableCodeConfiguration.serverUrl, OkHttpClientHelper.buildClient())
+        VulnerableCodeService.create(
+            config.serverUrl, config.apiKey, OkHttpClientHelper.buildClient()
+        )
     }
 
-    override suspend fun retrievePackageFindings(packages: List<Package>): Map<Package, List<AdvisorResult>> {
+    override suspend fun retrievePackageFindings(packages: Set<Package>): Map<Package, List<AdvisorResult>> {
         val startTime = Instant.now()
 
         return runCatching {
@@ -86,7 +87,7 @@ class VulnerableCode(name: String, vulnerableCodeConfiguration: VulnerableCodeCo
         packages: List<Package>,
         startTime: Instant
     ): Map<Package, List<AdvisorResult>> {
-        val packageMap = packages.associateBy { it.purl }
+        val packageMap = packages.filter { it.purl.isNotEmpty() }.associateBy { it.purl }
         val packageVulnerabilities = service.getPackageVulnerabilities(PackagesWrapper(packageMap.keys))
 
         return packageVulnerabilities.filter { it.unresolvedVulnerabilities.isNotEmpty() }.mapNotNull { pv ->
@@ -102,7 +103,7 @@ class VulnerableCode(name: String, vulnerableCodeConfiguration: VulnerableCodeCo
      * Convert this vulnerability from the VulnerableCode data model to a [Vulnerability].
      */
     private fun VulnerableCodeService.Vulnerability.toModel(): Vulnerability =
-        Vulnerability(id = vulnerabilityId, references = references.flatMap { it.toModel() })
+        Vulnerability(id = preferredCommonId(), references = references.flatMap { it.toModel() })
 
     /**
      * Convert this reference from the VulnerableCode data model to a list of [VulnerabilityReference] objects.
@@ -114,5 +115,19 @@ class VulnerableCode(name: String, vulnerableCodeConfiguration: VulnerableCodeCo
         val sourceUri = URI(url)
         if (scores.isEmpty()) return listOf(VulnerabilityReference(sourceUri, null, null))
         return scores.map { VulnerabilityReference(sourceUri, it.scoringSystem, it.value) }
+    }
+
+    /**
+     * Return a meaningful identifier for this vulnerability that can be used in reports. Obtain this identifier from
+     * the defined aliases if there are any. The data model of VulnerableCode supports multiple aliases while ORT's
+     * [Vulnerability] has just one identifier. To resolve this discrepancy, prefer CVEs over other identifiers. If
+     * there are no aliases referencing CVEs, use an arbitrary alias, assuming that every alias is preferable over
+     * the provider-specific ID of VulnerableCode. Only if no aliases are defined, use the latter as fallback. Note
+     * that it should still be possible via the references to find mentions of aliases that have been dropped.
+     */
+    private fun VulnerableCodeService.Vulnerability.preferredCommonId(): String {
+        if (aliases.isEmpty()) return vulnerabilityId
+
+        return aliases.firstOrNull { it.startsWith("cve", ignoreCase = true) } ?: aliases.first()
     }
 }

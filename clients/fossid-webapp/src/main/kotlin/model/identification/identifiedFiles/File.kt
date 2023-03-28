@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ data class File(
 
     val licenseName: String?,
 
-    val licenses: MutableMap<Int, License >?,
+    val licenses: MutableMap<Int, License>?,
 
     val md5: String?,
 

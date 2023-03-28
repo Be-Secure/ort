@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Sonatype, Inc.
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
+@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
     // Apply core plugins.
     `java-library`
@@ -30,7 +31,7 @@ plugins {
 dependencies {
     api(libs.retrofit)
 
-    implementation(libs.kotlinxSerialization)
+    implementation(libs.bundles.kotlinxSerialization)
     implementation(libs.retrofitConverterKotlinxSerialization)
 }
 

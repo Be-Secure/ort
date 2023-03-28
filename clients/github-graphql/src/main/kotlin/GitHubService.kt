@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,10 +26,10 @@ import com.expediagroup.graphql.client.types.GraphQLClientResponse
 
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
-import io.ktor.client.features.defaultRequest
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
 
-import java.net.URI
+import java.net.URL
 
 import kotlin.time.measureTimedValue
 
@@ -66,14 +66,14 @@ class GitHubService private constructor(
         /**
          * The default endpoint URL for accessing the GitHub GraphQL API.
          */
-        val ENDPOINT = URI("https://api.github.com/graphql")
+        const val ENDPOINT = "https://api.github.com/graphql"
 
         /**
          * Create a new [GitHubService] instance that uses the given [token] to authenticate against the GitHub API.
-         * Optionally, the [url] for the GitHub GraphQL endpoint can be configured, and a HTTP [client] can be
+         * Optionally, the [url] for the GitHub GraphQL endpoint can be configured, and an HTTP [client] can be
          * specified.
          */
-        fun create(token: String, url: URI = ENDPOINT, client: HttpClient? = null): GitHubService {
+        fun create(token: String, url: String = ENDPOINT, client: HttpClient? = null): GitHubService {
             val clientConfig: HttpClientConfig<*>.() -> Unit = {
                 defaultRequest {
                     header("Authorization", "Bearer $token")
@@ -82,7 +82,7 @@ class GitHubService private constructor(
 
             val httpClient = client?.config(clientConfig) ?: HttpClient(clientConfig)
 
-            return GitHubService(GraphQLKtorClient(url.toURL(), httpClient))
+            return GitHubService(GraphQLKtorClient(URL(url), httpClient))
         }
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,12 +37,13 @@ import org.ossreviewtoolkit.model.utils.createLicenseInfoResolver
 class RuleSet(
     val ortResult: OrtResult,
     val licenseInfoResolver: LicenseInfoResolver,
-    val resolutionProvider: ResolutionProvider
+    val resolutionProvider: ResolutionProvider,
+    val projectSourceResolver: SourceTreeResolver
 ) {
     companion object : Logging
 
     /**
-     * The list of all issues created by the rules of this [RuleSet].
+     * The set of all issues created by the rules of this [RuleSet].
      */
     val violations = mutableSetOf<RuleViolation>()
 
@@ -57,17 +58,25 @@ class RuleSet(
     }
 
     /**
+     * A DSL function to configure an [ProjectSourceRule]. The rule is applied once to [ortResult].
+     */
+    fun projectSourceRule(name: String, configure: ProjectSourceRule.() -> Unit) {
+        ProjectSourceRule(this, name).apply {
+            configure()
+            evaluate()
+        }
+    }
+
+    /**
      * A DSL function to configure a [PackageRule]. The rule is applied to each [Package] and [Project] contained in
      * [ortResult].
      */
     fun packageRule(name: String, configure: PackageRule.() -> Unit) {
-        val packages = ortResult.analyzer?.result?.let { analyzerResult ->
-            analyzerResult.projects.map { it.toPackage().toCuratedPackage() } + analyzerResult.packages
-        }.orEmpty()
+        val packages = ortResult.getProjects().map { it.toPackage().toCuratedPackage() } + ortResult.getPackages()
 
         packages.forEach { curatedPackage ->
-            val resolvedLicenseInfo = licenseInfoResolver.resolveLicenseInfo(curatedPackage.pkg.id)
-            PackageRule(this, name, curatedPackage.pkg, curatedPackage.curations, resolvedLicenseInfo).apply {
+            val resolvedLicenseInfo = licenseInfoResolver.resolveLicenseInfo(curatedPackage.metadata.id)
+            PackageRule(this, name, curatedPackage, resolvedLicenseInfo).apply {
                 configure()
                 evaluate()
             }
@@ -76,8 +85,8 @@ class RuleSet(
 
     /**
      * A DSL function to configure a [DependencyRule]. The rule is applied to each [DependencyNode] from the
-     * dependency trees contained in [ortResult]. If the same dependency appears multiple times in the dependency tree,
-     * the rule will be applied on each occurrence.
+     * dependency trees contained in [ortResult]. If the same dependency appears multiple times in the same scope, the
+     * rule will be applied only once.
      */
     fun dependencyRule(name: String, configure: DependencyRule.() -> Unit) {
         fun traverse(
@@ -101,13 +110,12 @@ class RuleSet(
             if (curatedPackage == null) {
                 logger.warn { "Could not find package for dependency ${node.id.toCoordinates()}, skipping rule $name." }
             } else {
-                val resolvedLicenseInfo = licenseInfoResolver.resolveLicenseInfo(curatedPackage.pkg.id)
+                val resolvedLicenseInfo = licenseInfoResolver.resolveLicenseInfo(curatedPackage.metadata.id)
 
                 DependencyRule(
                     this,
                     name,
-                    curatedPackage.pkg,
-                    curatedPackage.curations,
+                    curatedPackage,
                     resolvedLicenseInfo,
                     node,
                     ancestors,
@@ -134,7 +142,7 @@ class RuleSet(
             }
         }
 
-        ortResult.analyzer?.result?.projects?.forEach { project ->
+        ortResult.getProjects().forEach { project ->
             ortResult.dependencyNavigator.scopeNames(project).forEach { scopeName ->
                 val visitedPackages = mutableSetOf<DependencyNode>()
                 ortResult.dependencyNavigator.directDependencies(project, scopeName).forEach { dependency ->
@@ -152,5 +160,8 @@ fun ruleSet(
     ortResult: OrtResult,
     licenseInfoResolver: LicenseInfoResolver = ortResult.createLicenseInfoResolver(),
     resolutionProvider: ResolutionProvider = DefaultResolutionProvider.create(),
+    projectSourceResolver: SourceTreeResolver = SourceTreeResolver.forRemoteRepository(
+        ortResult.repository.vcsProcessed
+    ),
     configure: RuleSet.() -> Unit = { }
-) = RuleSet(ortResult, licenseInfoResolver, resolutionProvider).apply(configure)
+) = RuleSet(ortResult, licenseInfoResolver, resolutionProvider, projectSourceResolver).apply(configure)

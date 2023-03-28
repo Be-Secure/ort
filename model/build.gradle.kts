@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +23,7 @@ plugins {
 }
 
 dependencies {
-    api(project(":clients:clearly-defined"))
+    api(project(":clients:clearly-defined-client"))
     api(project(":utils:ort-utils"))
     api(project(":utils:spdx-utils"))
 
@@ -32,12 +31,10 @@ dependencies {
     api(libs.jacksonDataformatXml)
     api(libs.jacksonDataformatYaml)
 
-    implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation(libs.bundles.exposed)
     implementation(libs.bundles.hoplite)
     implementation(libs.hikari)
     implementation(libs.jacksonDatatypeJsr310)
-    implementation(libs.jacksonModuleJaxbAnnotations)
     implementation(libs.jacksonModuleKotlin)
     implementation(libs.postgres)
     implementation(libs.semver4j)

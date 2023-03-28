@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
- * Copyright (C) 2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -44,7 +43,7 @@ import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.model.writeValue
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
-import org.ossreviewtoolkit.scanner.experimental.ScanStorageException
+import org.ossreviewtoolkit.scanner.ScanStorageException
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
@@ -98,7 +97,7 @@ class Sw360Storage(
                     path.toFile().readValue<ScanResult>()
                 }
         }.recoverCatching {
-            val message = "Could not read scan results for ${id.toCoordinates()} in SW360: ${it.message}"
+            val message = "Could not read scan results for '${id.toCoordinates()}' in SW360: ${it.message}"
 
             logger.info { message }
 
@@ -159,8 +158,7 @@ private fun isAttachmentAScanResult(attachment: SW360SparseAttachment) =
     attachment.attachmentType == SW360AttachmentType.SCAN_RESULT_REPORT
             && attachment.filename == SCAN_RESULTS_FILE_NAME
 
-private fun createReleaseName(id: Identifier) =
-    listOfNotNull(id.namespace, id.name).joinToString("/")
+private fun createReleaseName(id: Identifier) = "${id.namespace}/${id.name}"
 
 private fun createAttachmentOfScanResult(release: SW360Release, cachedScanResult: Path) =
     AttachmentUploadRequest.builder(release)

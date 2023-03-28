@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,8 @@ internal class ImportCopyrightGarbageCommand : CliktCommand(
             emptySet<String>()
         }
 
-        val collator = Collator.getInstance(Locale("en", "US.utf-8", "POSIX"))
+        val locale = Locale.Builder().setLanguage("en").setRegion("US").setVariant("POSIX").build()
+        val collator = Collator.getInstance(locale)
         CopyrightGarbage((entriesToImport + existingCopyrightGarbage).toSortedSet(collator)).let {
             createYamlMapper().writeValue(outputCopyrightGarbageFile, it)
         }

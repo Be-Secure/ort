@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,9 @@
 
 package org.ossreviewtoolkit.evaluator
 
+import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.DependencyNode
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.Package
-import org.ossreviewtoolkit.model.PackageCurationResult
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.licenses.ResolvedLicenseInfo
@@ -34,8 +33,7 @@ import org.ossreviewtoolkit.utils.common.enumSetOf
 class DependencyRule(
     ruleSet: RuleSet,
     name: String,
-    pkg: Package,
-    curations: List<PackageCurationResult>,
+    pkg: CuratedPackage,
     resolvedLicenseInfo: ResolvedLicenseInfo,
 
     /**
@@ -64,16 +62,22 @@ class DependencyRule(
      * The [Project] that contains the [dependency].
      */
     val project: Project
-) : PackageRule(ruleSet, name, pkg, curations, resolvedLicenseInfo) {
+) : PackageRule(ruleSet, name, pkg, resolvedLicenseInfo) {
     override val description =
         "Evaluating rule '$name' for dependency '${dependency.id.toCoordinates()}' " +
                 "(project=${project.id.toCoordinates()}, scope=$scopeName, level=$level)."
 
     override fun issueSource() =
-        "$name - ${pkg.id.toCoordinates()} (dependency of ${project.id.toCoordinates()} in scope $scopeName)"
+        "$name - ${pkg.metadata.id.toCoordinates()} (dependency of ${project.id.toCoordinates()} in scope $scopeName)"
 
     /**
-     * A [RuleMatcher] that checks if the level of the [dependency] inside the dependency tree equals [level].
+     * Return the direct dependencies of the [dependency].
+     */
+    fun directDependencies() = dependency.visitDependencies { it.toList() }
+
+    /**
+     * A [RuleMatcher] that checks if the level of the [dependency] inside the dependency tree equals [level], which
+     * starts with 0 for a direct dependency.
      */
     fun isAtTreeLevel(level: Int) =
         object : RuleMatcher {

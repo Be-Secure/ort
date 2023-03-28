@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ class PackageCurationDataTest : WordSpec({
         comment = "original",
         purl = "original",
         cpe = "original",
-        authors = sortedSetOf("original"),
+        authors = setOf("original"),
         concludedLicense = "original".toSpdx(),
         description = "original",
         homepageUrl = "original",
@@ -47,7 +47,7 @@ class PackageCurationDataTest : WordSpec({
             revision = "original",
             path = "original"
         ),
-        isMetaDataOnly = true,
+        isMetadataOnly = true,
         isModified = true,
         declaredLicenseMapping = mapOf("original" to "original".toSpdx())
     )
@@ -56,7 +56,7 @@ class PackageCurationDataTest : WordSpec({
         comment = "other",
         purl = "other",
         cpe = "other",
-        authors = sortedSetOf("other"),
+        authors = setOf("other"),
         concludedLicense = "other".toSpdx(),
         description = "other",
         homepageUrl = "other",
@@ -74,7 +74,7 @@ class PackageCurationDataTest : WordSpec({
             revision = "other",
             path = "other"
         ),
-        isMetaDataOnly = false,
+        isMetadataOnly = false,
         isModified = false,
         declaredLicenseMapping = mapOf("other" to "other".toSpdx())
     )
@@ -91,7 +91,7 @@ class PackageCurationDataTest : WordSpec({
                 concludedLicense = null,
                 binaryArtifact = null,
                 vcs = null,
-                isMetaDataOnly = null,
+                isMetadataOnly = null,
                 declaredLicenseMapping = emptyMap()
             )
 
@@ -101,7 +101,7 @@ class PackageCurationDataTest : WordSpec({
                 concludedLicense = other.concludedLicense,
                 binaryArtifact = other.binaryArtifact,
                 vcs = other.vcs,
-                isMetaDataOnly = other.isMetaDataOnly,
+                isMetadataOnly = other.isMetadataOnly,
                 declaredLicenseMapping = other.declaredLicenseMapping
             )
         }
@@ -109,7 +109,7 @@ class PackageCurationDataTest : WordSpec({
         "keep existing original data" {
             original.merge(other) shouldBe original.copy(
                 comment = "original\nother",
-                authors = sortedSetOf("original", "other"),
+                authors = setOf("original", "other"),
                 concludedLicense = "original AND other".toSpdx(),
                 declaredLicenseMapping = mapOf(
                     "original" to "original".toSpdx(),

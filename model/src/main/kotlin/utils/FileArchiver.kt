@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019-2021 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,8 +42,8 @@ import org.ossreviewtoolkit.utils.ort.storage.FileStorage
  */
 class FileArchiver(
     /**
-     * A collection of globs to match the paths of files that shall be archived. For details about the glob pattern see
-     * [java.nio.file.FileSystem.getPathMatcher].
+     * A collection of globs to match the paths of files that shall be archived. For details about the glob patterns see
+     * [FileMatcher].
      */
     patterns: Collection<String>,
 
@@ -54,8 +54,8 @@ class FileArchiver(
 ) {
     constructor(
         /**
-         * A collection of globs to match the paths of files that shall be archived. For details about the glob pattern
-         * see [java.nio.file.FileSystem.getPathMatcher].
+         * A collection of globs to match the paths of files that shall be archived. For details about the glob patterns
+         * see [FileMatcher].
          */
         patterns: Collection<String>,
 

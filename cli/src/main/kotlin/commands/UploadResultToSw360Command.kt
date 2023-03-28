@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.cli.commands
 
-import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.flag
@@ -36,7 +35,7 @@ import org.eclipse.sw360.clients.rest.resource.projects.SW360Project
 import org.eclipse.sw360.clients.rest.resource.releases.SW360Release
 import org.eclipse.sw360.clients.utils.SW360ClientException
 
-import org.ossreviewtoolkit.cli.GlobalOptions
+import org.ossreviewtoolkit.cli.OrtCommand
 import org.ossreviewtoolkit.cli.utils.inputGroup
 import org.ossreviewtoolkit.cli.utils.logger
 import org.ossreviewtoolkit.cli.utils.readOrtResult
@@ -45,6 +44,7 @@ import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
+import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.config.Sw360StorageConfiguration
 import org.ossreviewtoolkit.model.utils.toPurl
 import org.ossreviewtoolkit.scanner.storages.Sw360Storage
@@ -54,11 +54,9 @@ import org.ossreviewtoolkit.utils.common.packZip
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 
-class UploadResultToSw360Command : CliktCommand(
+class UploadResultToSw360Command : OrtCommand(
     name = "upload-result-to-sw360",
-    help = "Upload an ORT result to SW360.",
-    epilog = "EXPERIMENTAL: The command is still in development and usage will likely change in the near future. The " +
-            "command expects that a Sw360Storage for the scanner is configured."
+    help = "Upload an ORT result to SW360."
 ) {
     private val ortFile by option(
         "--ort-file", "-i",
@@ -74,12 +72,12 @@ class UploadResultToSw360Command : CliktCommand(
         help = "Download sources of packages and upload them as attachments to SW360 releases."
     ).flag()
 
-    private val globalOptionsForSubcommands by requireObject<GlobalOptions>()
+    private val ortConfig by requireObject<OrtConfiguration>()
 
     override fun run() {
         val ortResult = readOrtResult(ortFile)
 
-        val sw360Config = globalOptionsForSubcommands.config.scanner.storages?.values
+        val sw360Config = ortConfig.scanner.storages?.values
             ?.filterIsInstance<Sw360StorageConfiguration>()?.singleOrNull()
 
         requireNotNull(sw360Config) {
@@ -89,7 +87,7 @@ class UploadResultToSw360Command : CliktCommand(
         val sw360Connection = Sw360Storage.createConnection(sw360Config)
         val sw360ReleaseClient = sw360Connection.releaseAdapter
         val sw360ProjectClient = sw360Connection.projectAdapter
-        val downloader = Downloader(globalOptionsForSubcommands.config.downloader)
+        val downloader = Downloader(ortConfig.downloader)
 
         getProjectWithPackages(ortResult).forEach { (project, pkgList) ->
             val linkedReleases = pkgList.mapNotNull { pkg ->
@@ -165,9 +163,9 @@ class UploadResultToSw360Command : CliktCommand(
 
     private fun createSw360Release(pkg: Package, client: SW360ReleaseClientAdapter): SW360Release? {
         // TODO: This omits operators and exceptions from licenses. We yet need to find a way to pass these to SW360.
-        val licenseShortNames = pkg.declaredLicensesProcessed.spdxExpression?.licenses().orEmpty().toSortedSet()
+        val licenseShortNames = pkg.declaredLicensesProcessed.spdxExpression?.licenses().orEmpty().toSet()
 
-        val unmappedLicenses = pkg.declaredLicensesProcessed.unmapped.toSortedSet()
+        val unmappedLicenses = pkg.declaredLicensesProcessed.unmapped
         if (unmappedLicenses.isNotEmpty()) {
             logger.warn {
                 "The following licenses could not be mapped in order to create a SW360 release: $unmappedLicenses"
@@ -196,7 +194,7 @@ class UploadResultToSw360Command : CliktCommand(
         ortResult.getProjects(omitExcluded = true).associateWith { project ->
             // Upload the uncurated packages because SW360 also is a package curation provider.
             ortResult.dependencyNavigator.projectDependencies(project)
-                .mapNotNull { ortResult.getUncuratedPackageById(it) }
+                .mapNotNull { ortResult.getUncuratedPackageOrProject(it) }
         }
 
     private fun createReleaseName(pkgId: Identifier) =

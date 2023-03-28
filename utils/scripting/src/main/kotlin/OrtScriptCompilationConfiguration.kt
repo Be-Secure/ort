@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
- * Copyright (C) 2010-2020 JetBrains s.r.o. and Kotlin Programming Language contributors
+ * Copyright (C) 2010 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +29,7 @@ import kotlin.script.experimental.api.compilerOptions
 import kotlin.script.experimental.api.defaultImports
 import kotlin.script.experimental.api.hostConfiguration
 import kotlin.script.experimental.api.ide
+import kotlin.script.experimental.api.isStandalone
 import kotlin.script.experimental.host.ScriptingHostConfiguration
 import kotlin.script.experimental.jvm.compilationCache
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
@@ -42,10 +42,6 @@ import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 
 class OrtScriptCompilationConfiguration : ScriptCompilationConfiguration({
-    ide {
-        acceptedLocations(ScriptAcceptedLocation.Everywhere)
-    }
-
     compilerOptions("-jvm-target", Environment().javaVersion.substringBefore('.'))
 
     defaultImports(
@@ -54,14 +50,10 @@ class OrtScriptCompilationConfiguration : ScriptCompilationConfiguration({
         "java.util.*"
     )
 
-    jvm {
-        dependenciesFromCurrentContext(wholeClasspath = true)
-    }
-
     hostConfiguration(
         ScriptingHostConfiguration {
             jvm {
-                val scriptCacheDir = ortDataDirectory.resolve("cache/scripts").apply { safeMkdirs() }
+                val scriptCacheDir = ortDataDirectory.resolve("cache/scripts").safeMkdirs()
 
                 compilationCache(
                     CompiledScriptJarsCache { script, configuration ->
@@ -72,10 +64,19 @@ class OrtScriptCompilationConfiguration : ScriptCompilationConfiguration({
             }
         }
     )
+
+    ide {
+        acceptedLocations(ScriptAcceptedLocation.Everywhere)
+    }
+
+    isStandalone(false)
+
+    jvm {
+        dependenciesFromCurrentContext(wholeClasspath = true)
+    }
 })
 
-// Use MD5 for speed.
-private val digest = MessageDigest.getInstance("MD5")
+private val digest = MessageDigest.getInstance("SHA-1")
 
 private fun generateUniqueName(script: SourceCode, configuration: ScriptCompilationConfiguration): String {
     digest.reset()

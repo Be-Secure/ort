@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ data class DependencyTreeNode(
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val scopeExcludes: List<ScopeExclude> = emptyList(),
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val issues: List<EvaluatedOrtIssue> = emptyList(),
+    val issues: List<EvaluatedIssue> = emptyList(),
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val children: List<DependencyTreeNode>
 )

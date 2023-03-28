@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,6 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
-import java.io.File
-
 import org.ossreviewtoolkit.analyzer.Analyzer
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Identifier
@@ -39,12 +37,14 @@ import org.ossreviewtoolkit.model.ProjectAnalyzerResult
 import org.ossreviewtoolkit.model.Scope
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
 import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.patchExpectedResult
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
+import org.ossreviewtoolkit.utils.test.toYaml
 
 class SpdxDocumentFileFunTest : WordSpec({
     "resolveDependencies()" should {
@@ -103,8 +103,8 @@ class SpdxDocumentFileFunTest : WordSpec({
                     id = curlId,
                     cpe = "cpe:2.3:a:http:curl:7.70.0:*:*:*:*:*:*:*",
                     definitionFilePath = vcsDir.getPathToRoot(curlPackageFile),
-                    authors = sortedSetOf("Daniel Stenberg (daniel@haxx.se)"),
-                    declaredLicenses = sortedSetOf("curl"),
+                    authors = setOf("Daniel Stenberg (daniel@haxx.se)"),
+                    declaredLicenses = setOf("curl"),
                     vcs = VcsInfo(
                         type = VcsType.GIT,
                         url = normalizeVcsUrl(vcsUrl),
@@ -116,7 +116,7 @@ class SpdxDocumentFileFunTest : WordSpec({
                         Scope("default")
                     )
                 ),
-                sortedSetOf()
+                emptySet()
             )
 
             actualResult[opensslId] shouldBe ProjectAnalyzerResult(
@@ -124,8 +124,8 @@ class SpdxDocumentFileFunTest : WordSpec({
                     id = opensslId,
                     cpe = "cpe:2.3:a:a-name:openssl:1.1.1g:*:*:*:*:*:*:*",
                     definitionFilePath = vcsDir.getPathToRoot(opensslPackageFile),
-                    authors = sortedSetOf("OpenSSL Development Team"),
-                    declaredLicenses = sortedSetOf("Apache-2.0"),
+                    authors = setOf("OpenSSL Development Team"),
+                    declaredLicenses = setOf("Apache-2.0"),
                     vcs = VcsInfo(
                         type = VcsType.GIT,
                         url = normalizeVcsUrl(vcsUrl),
@@ -137,7 +137,7 @@ class SpdxDocumentFileFunTest : WordSpec({
                         Scope("default")
                     )
                 ),
-                sortedSetOf()
+                emptySet()
             )
 
             actualResult[zlibId] shouldBe ProjectAnalyzerResult(
@@ -145,8 +145,8 @@ class SpdxDocumentFileFunTest : WordSpec({
                     id = zlibId,
                     cpe = "cpe:/a:compress:zlib:1.2.11:::en-us",
                     definitionFilePath = vcsDir.getPathToRoot(zlibPackageFile),
-                    authors = sortedSetOf("Jean-loup Gailly", "Mark Adler"),
-                    declaredLicenses = sortedSetOf("Zlib"),
+                    authors = setOf("Jean-loup Gailly", "Mark Adler"),
+                    declaredLicenses = setOf("Zlib"),
                     vcs = VcsInfo(
                         type = VcsType.GIT,
                         url = normalizeVcsUrl(vcsUrl),
@@ -158,7 +158,7 @@ class SpdxDocumentFileFunTest : WordSpec({
                         Scope("default")
                     )
                 ),
-                sortedSetOf()
+                emptySet()
             )
         }
 
@@ -202,7 +202,7 @@ class SpdxDocumentFileFunTest : WordSpec({
                 revision = vcsRevision
             )
 
-            val analyzer = Analyzer(DEFAULT_ANALYZER_CONFIGURATION)
+            val analyzer = Analyzer(AnalyzerConfiguration(allowDynamicVersions = true))
             val managedFiles = analyzer.findManagedFiles(testProjectDir)
 
             val analyzerRun = analyzer.analyze(managedFiles).analyzer.shouldNotBeNull()
@@ -262,7 +262,7 @@ class SpdxDocumentFileFunTest : WordSpec({
     }
 })
 
-private val projectDir = File("src/funTest/assets/projects/synthetic/spdx").absoluteFile
+private val projectDir = getAssetFile("projects/synthetic/spdx")
 private val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
 private val vcsUrl = vcsDir.getRemoteUrl()
 private val vcsRevision = vcsDir.getRevision()
@@ -271,6 +271,6 @@ private fun createSpdxDocumentFile() =
     SpdxDocumentFile(
         "SpdxDocumentFile",
         USER_DIR,
-        DEFAULT_ANALYZER_CONFIGURATION,
-        DEFAULT_REPOSITORY_CONFIGURATION
+        AnalyzerConfiguration(),
+        RepositoryConfiguration()
     )

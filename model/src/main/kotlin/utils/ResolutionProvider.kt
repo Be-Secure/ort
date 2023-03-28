@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +19,7 @@
 
 package org.ossreviewtoolkit.model.utils
 
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.RuleViolation
 import org.ossreviewtoolkit.model.Vulnerability
@@ -30,13 +29,13 @@ import org.ossreviewtoolkit.model.config.RuleViolationResolution
 import org.ossreviewtoolkit.model.config.VulnerabilityResolution
 
 /**
- * An interface to provide resolutions for [OrtIssue]s, [RuleViolation]s and [Vulnerability]s .
+ * An interface to provide resolutions for [Issue]s, [RuleViolation]s and [Vulnerability]s .
  */
 interface ResolutionProvider {
     /**
      * Get all issue resolutions that match [issue].
      */
-    fun getIssueResolutionsFor(issue: OrtIssue): List<IssueResolution>
+    fun getIssueResolutionsFor(issue: Issue): List<IssueResolution>
 
     /**
      * Get all rule violation resolutions that match [violation].
@@ -49,7 +48,7 @@ interface ResolutionProvider {
     fun getVulnerabilityResolutionsFor(vulnerability: Vulnerability): List<VulnerabilityResolution>
 
     /**
-     * Get a [Resolutions] object that contains all resolutions which apply to [OrtIssue]s or [RuleViolation]s contained
+     * Get a [Resolutions] object that contains all resolutions which apply to [Issue]s or [RuleViolation]s contained
      * in [ortResult].
      */
     fun getResolutionsFor(ortResult: OrtResult): Resolutions
@@ -57,7 +56,7 @@ interface ResolutionProvider {
     /**
      * Return true if there is at least one issue resolution that matches [issue].
      */
-    fun isResolved(issue: OrtIssue): Boolean = getIssueResolutionsFor(issue).isNotEmpty()
+    fun isResolved(issue: Issue): Boolean = getIssueResolutionsFor(issue).isNotEmpty()
 
     /**
      * Return true if there is at least one rule violation resolution that matches [violation].

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,18 +45,18 @@ internal object GitLabLicenseModelMapper : Logging {
     }
 }
 
-private fun Collection<Package>.toLicenses(): List<License> {
+private fun Collection<Package>.toLicenses(): Set<License> {
     val decomposedLicenses = flatMapTo(mutableSetOf()) { pkg ->
-        pkg.declaredLicensesProcessed.spdxExpression?.decompose().orEmpty()
+        pkg.declaredLicensesProcessed.decompose()
     }
 
-    return decomposedLicenses.map { singleLicenseExpression ->
+    return decomposedLicenses.mapTo(mutableSetOf()) { singleLicenseExpression ->
         License(
             id = singleLicenseExpression.simpleLicense(),
             name = singleLicenseExpression.toLicenseName(),
             url = singleLicenseExpression.getLicenseUrl().orEmpty()
         )
-    }.sortedBy { it.id }
+    }
 }
 
 private fun Map<Package, List<String>>.toDependencies(): List<Dependency> =
@@ -67,7 +67,7 @@ private fun Map<Package, List<String>>.toDependencies(): List<Dependency> =
 private fun OrtResult.getTargetPackagesWithDefinitionFiles(skipExcluded: Boolean): Map<Package, List<String>> {
     val result = mutableMapOf<Identifier, MutableList<String>>()
 
-    val packages = getPackages().associate { it.pkg.id to it.pkg }
+    val packages = getPackages().associate { it.metadata.id to it.metadata }
 
     getProjects(omitExcluded = skipExcluded).forEach { project ->
         val definitionFilePath = project.definitionFilePath
@@ -85,7 +85,7 @@ private fun Package.toDependency(definitionFilePaths: Collection<String>): Depen
     Dependency(
         name = id.name,
         version = id.version,
-        licenses = declaredLicensesProcessed.spdxExpression?.decompose().orEmpty().map { it.toString() },
+        licenses = declaredLicensesProcessed.decompose().mapTo(mutableSetOf()) { it.toString() },
         path = definitionFilePaths.sorted().joinToString(","),
         packageManager = id.toPackageManagerName()
     )
@@ -94,7 +94,7 @@ private fun SpdxSingleLicenseExpression.toLicenseName(): String {
     // TODO: Get the full name also for non-SPDX / ScanCode licenses.
     val spdxLicenseId = when (this) {
         is SpdxLicenseWithExceptionExpression -> license.simpleLicense()
-        is SpdxLicenseIdExpression -> this.simpleLicense()
+        is SpdxLicenseIdExpression -> simpleLicense()
         else -> ""
     }
 

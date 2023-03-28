@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@
 
 package org.ossreviewtoolkit.model.config
 
-import org.ossreviewtoolkit.model.OrtIssue
-import org.ossreviewtoolkit.model.utils.sanitizeMessage
+import org.ossreviewtoolkit.model.Issue
+import org.ossreviewtoolkit.utils.common.collapseWhitespace
 
 /**
- * Defines the resolution of an [OrtIssue]. This can be used to silence false positives, or issues that have been
+ * Defines the resolution of an [Issue]. This can be used to silence false positives, or issues that have been
  * identified as not being relevant.
  */
 data class IssueResolution(
@@ -43,10 +43,10 @@ data class IssueResolution(
      */
     val comment: String
 ) {
-    private val regex = Regex(message.sanitizeMessage(), RegexOption.DOT_MATCHES_ALL)
+    private val regex = Regex(message.collapseWhitespace(), RegexOption.DOT_MATCHES_ALL)
 
     /**
      * True if [message] matches the message of [issue].
      */
-    fun matches(issue: OrtIssue) = regex.matches(issue.message.sanitizeMessage())
+    fun matches(issue: Issue) = regex.matches(issue.message.collapseWhitespace())
 }

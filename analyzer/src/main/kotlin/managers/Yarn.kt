@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,9 +21,9 @@ package org.ossreviewtoolkit.analyzer.managers
 
 import com.fasterxml.jackson.databind.JsonNode
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
+
+import kotlin.time.Duration.Companion.days
 
 import org.apache.logging.log4j.kotlin.Logging
 
@@ -33,7 +33,19 @@ import org.ossreviewtoolkit.analyzer.managers.utils.mapDefinitionFilesForYarn
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.jsonMapper
+import org.ossreviewtoolkit.utils.common.DiskCache
 import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.mebibytes
+import org.ossreviewtoolkit.utils.ort.ortDataDirectory
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
+
+private val yarnInfoCache = DiskCache(
+    directory = ortDataDirectory.resolve("cache/analyzer/yarn/info"),
+    maxCacheSizeInBytes = 100.mebibytes,
+    maxCacheEntryAgeInSeconds = 7.days.inWholeSeconds
+)
 
 /**
  * The [Yarn](https://classic.yarnpkg.com/) package manager for JavaScript.
@@ -53,14 +65,14 @@ class Yarn(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = Yarn(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = Yarn(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     override fun hasLockFile(projectDir: File) = hasYarnLockFile(projectDir)
 
     override fun command(workingDir: File?) = if (Os.isWindows) "yarn.cmd" else "yarn"
 
-    override fun getVersionRequirement(): Requirement = Requirement.buildNPM("1.3.* - 1.22.*")
+    override fun getVersionRequirement(): RangesList = RangesListFactory.create("1.3.* - 1.22.*")
 
     override fun mapDefinitionFiles(definitionFiles: List<File>) = mapDefinitionFilesForYarn(definitionFiles).toList()
 
@@ -72,9 +84,16 @@ class Yarn(
     override fun runInstall(workingDir: File) = run(workingDir, "install", "--ignore-scripts", "--ignore-engines")
 
     override fun getRemotePackageDetails(workingDir: File, packageName: String): JsonNode {
+        yarnInfoCache.read(packageName)?.let { return jsonMapper.readTree(it) }
+
         val process = run(workingDir, "info", "--json", packageName)
-        return jsonMapper.readTree(process.stdout)["data"] ?: jsonMapper.readTree(process.stderr)["data"].also {
-            logger.warn { "Error running '${process.commandLine}' in directory $workingDir: $it" }
+
+        return jsonMapper.readTree(process.stdout)["data"]?.also {
+            yarnInfoCache.write(packageName, it.toString())
+        } ?: run {
+            jsonMapper.readTree(process.stderr)["data"].also {
+                logger.warn { "Error running '${process.commandLine}' in directory $workingDir: $it" }
+            }
         }
     }
 }

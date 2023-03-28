@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +31,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 
 import java.io.Writer
 
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Repository
 import org.ossreviewtoolkit.model.RuleViolation
@@ -47,6 +46,7 @@ import org.ossreviewtoolkit.model.config.VulnerabilityResolution
 import org.ossreviewtoolkit.model.mapperConfig
 import org.ossreviewtoolkit.reporter.Reporter
 import org.ossreviewtoolkit.reporter.ReporterInput
+import org.ossreviewtoolkit.reporter.Statistics
 import org.ossreviewtoolkit.reporter.reporters.WebAppReporter
 
 /**
@@ -54,7 +54,7 @@ import org.ossreviewtoolkit.reporter.reporters.WebAppReporter
  * information contained in the [ReporterInput] is applied to the [OrtResult]:
  *
  * * [PathExclude]s and [ScopeExclude]s from the [RepositoryConfiguration] are applied.
- * * [IssueResolution]s from the [ReporterInput.resolutionProvider] are matched against all [OrtIssue]s contained in the
+ * * [IssueResolution]s from the [ReporterInput.resolutionProvider] are matched against all [Issue]s contained in the
  *   result.
  * * [RuleViolationResolution]s from the [ReporterInput.resolutionProvider] are matched against all [RuleViolation]s.
  *
@@ -63,7 +63,7 @@ import org.ossreviewtoolkit.reporter.reporters.WebAppReporter
  * * [LicenseFindingCuration]s are not yet applied to the model.
  *
  * The model also contains useful containers to easily access some content of the [OrtResult], for example a list of
- * all [OrtIssue]s in their [evaluated form][EvaluatedOrtIssue] which contains back-references to its source.
+ * all [Issue]s in their [evaluated form][EvaluatedIssue] which contains back-references to its source.
  *
  * The model can be serialized to with the helper functions [toJson] and [toYaml]. It uses a special [JsonMapper] that
  * de-duplicates objects in the result. For this it uses Jackson's [JsonIdentityInfo] to automatically generate [Int]
@@ -87,8 +87,8 @@ import org.ossreviewtoolkit.reporter.reporters.WebAppReporter
  * * When modifying the model make sure that the objects are serialized at the right place. By default, Jackson
  *   serializes an Object with [ObjectIdInfo] the first time the serializer sees the object. If this is not desired
  *   because the object shall be serialized as the generated ID, the [JsonIdentityReference] annotation can be used to
- *   enforce this. For example, the list of [EvaluatedOrtIssue]s is serialized before the list of [EvaluatedPackage]s.
- *   Therefore [EvaluatedOrtIssue.pkg] is annotated with [JsonIdentityReference].
+ *   enforce this. For example, the list of [EvaluatedIssue]s is serialized before the list of [EvaluatedPackage]s.
+ *   Therefore [EvaluatedIssue.pkg] is annotated with [JsonIdentityReference].
  */
 data class EvaluatedModel(
     val pathExcludes: List<PathExclude>,
@@ -97,7 +97,7 @@ data class EvaluatedModel(
     val licenses: List<LicenseId>,
     val scopes: List<EvaluatedScope>,
     val issueResolutions: List<IssueResolution>,
-    val issues: List<EvaluatedOrtIssue>,
+    val issues: List<EvaluatedIssue>,
     val scanResults: List<EvaluatedScanResult>,
     val packages: List<EvaluatedPackage>,
     val paths: List<EvaluatedPackagePath>,
@@ -119,12 +119,12 @@ data class EvaluatedModel(
 
     val labels: Map<String, String>,
 
-    val metaData: MetaData
+    val metadata: Metadata
 ) {
     companion object {
         private val INT_ID_TYPES = listOf(
             CopyrightStatement::class.java,
-            EvaluatedOrtIssue::class.java,
+            EvaluatedIssue::class.java,
             EvaluatedPackage::class.java,
             EvaluatedPackagePath::class.java,
             EvaluatedRuleViolation::class.java,
@@ -175,7 +175,7 @@ data class EvaluatedModel(
         val tree = JSON_MAPPER.valueToTree<ObjectNode>(this)
         tree.forEach { node ->
             if (node is ArrayNode) {
-                if (!node.isEmpty && node[0].has("_id")) {
+                if (!node.isEmpty && node.first().has("_id")) {
                     val sortedChildren = node.elements().asSequence().sortedBy { it["_id"].intValue() }.toList()
                     node.removeAll()
                     node.addAll(sortedChildren)

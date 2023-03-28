@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 HERE Europe B.V.
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ internal class VerifySourceArtifactCurationsCommand : CliktCommand(
         val failed = curations.filterNot { curation ->
             curation.data.sourceArtifact?.let { sourceArtifact ->
                 println("\n-----")
-                println("Checking source artifact for ${curation.id.toCoordinates()}.")
+                println("Checking source artifact for '${curation.id.toCoordinates()}'.")
                 println("Downloading ${sourceArtifact.url}.")
 
                 val tempDir = createOrtTempDir()

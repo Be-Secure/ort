@@ -27,18 +27,33 @@ Exclusions apply to paths (files/directories) or scopes. Examples of currently s
 
 ### Excludes Basics
 
-ORT's philosophy is to analyze and scan everything it can find to build a complete picture of a repository and its
-dependencies.
+ORT's default philosophy is to analyze and scan everything it can find to build a complete picture of a repository and
+its dependencies.
 
 However, the users may not be interested in the results for components that are not included in their released
 artifacts, for example build files, documentation, examples or test code. To support such use cases, ORT provides a
 mechanism to mark files, directories or scopes included in the repository as excluded.
 
-Note that the excluded parts are analyzed and scanned, but are treated differently in the reports ORT generates:
+Note that by default the excluded parts are analyzed and scanned, but are treated differently in the reports ORT
+generates:
 
 * The issue summary does not show issues in the excluded parts.
 * The excluded parts are grayed out.
 * The reason for the exclusion is shown next to the result.
+
+This is a rather safe option, since the reports still display elements marked as excluded and thus allow the user to
+verify the correctness of the declared exclusions. If it is clear that the excluded projects or scopes are irrelevant 
+from a compliance point of view, ORT can be configured to skip them completely during the analysis phase. The affected
+elements are then not processed any further and do not occur in generated reports. Especially for larger projects with
+many excluded elements, this can significantly reduce resource usage and analysis time. To enable this mode, add the
+following declaration to the `.ort.yml` file:
+
+```yaml
+analyzer:
+  skip_excluded: true
+excludes:
+  ...
+```
 
 To be able to show why a part is excluded, each exclude must include an explanation. The explanation consists of:
 
@@ -61,8 +76,8 @@ excludes:
 
 Where the list of available options for `reason` is defined in
 [PathExcludeReason.kt](../model/src/main/kotlin/config/PathExcludeReason.kt).
-For how to write a glob pattern, please see this
-[tutorial](https://docs.oracle.com/javase/tutorial/essential/io/fileOps.html#glob).
+For how to write a glob pattern, please see the
+[AntPathMatcher documentation](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/util/AntPathMatcher.html).
 
 The path exclude above has the following effects:
 
@@ -144,7 +159,7 @@ e.g.:
 ```yaml
 curations:
   license_findings:
-  - path: "src/**.cpp"
+  - path: "src/**/*.cpp"
     start_lines: "3"
     line_count: 11
     detected_license: "GPL-2.0-only"
@@ -154,8 +169,8 @@ curations:
  ```
 
 To correct identified licenses in a dependency you can use a package configuration to overwrite scanner findings.
-Note that this feature requires `enableRepositoryPackageConfigurations` to be enabled in the `ort.conf` see
-[reference.conf](../model/src/main/resources/reference.conf).
+Note that this feature requires `enableRepositoryPackageConfigurations` to be enabled in the
+[config.yml](../README.md#ort-configuration-file).
 ```yaml
 package_configurations:
 - id: 'Maven:com.example:package:1.2.3'
@@ -180,8 +195,8 @@ The list of available options for `reason` are defined in
 Package curations can be added if you want to correct metadata of third-party dependencies.
 
 The following example corrects the source-artifact URL of the package with the id `Maven:com.example:dummy:0.0.1`.
-Note that this feature requires `enableRepositoryPackageCurations` to be enabled in the `ort.conf`, see
-[reference.conf](../model/src/main/resources/reference.conf).
+Note that this feature requires `enableRepositoryPackageCurations` to be enabled in the
+[config.yml](../README.md#ort-configuration-file).
 
 e.g.:
 ```yaml

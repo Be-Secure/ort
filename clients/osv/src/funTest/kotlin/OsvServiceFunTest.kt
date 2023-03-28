@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 EPAM Systems, Inc.
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,20 +17,21 @@
  * License-Filename: LICENSE
  */
 
-import io.kotest.assertions.json.ArrayOrder
-import io.kotest.assertions.json.compareJsonOptions
-import io.kotest.assertions.json.shouldEqualJson
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.result.shouldBeSuccess
 import io.kotest.matchers.shouldBe
 
-import kotlinx.serialization.encodeToString
+import java.time.Instant
+
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.JsonObject
 
 import org.ossreviewtoolkit.clients.osv.OsvApiClient
 import org.ossreviewtoolkit.clients.osv.OsvService
 import org.ossreviewtoolkit.clients.osv.Package
 import org.ossreviewtoolkit.clients.osv.VulnerabilitiesForPackageRequest
+import org.ossreviewtoolkit.clients.osv.Vulnerability
 import org.ossreviewtoolkit.utils.test.getAssetAsString
 
 private val VULNERABILITY_FOR_PACKAGE_BY_COMMIT_REQUEST = VulnerabilitiesForPackageRequest(
@@ -47,14 +48,27 @@ private val VULNERABILITY_FOR_PACKAGE_BY_INVALID_COMMIT_REQUEST = Vulnerabilitie
     commit = "6879efc2c1596d11a6a6ad296f80063b558d5e0c"
 )
 
+private fun Vulnerability.patchIgnorableFields() = copy(
+    modified = Instant.EPOCH,
+    databaseSpecific = emptyJsonObject.takeIf { databaseSpecific != null },
+    affected = affected.mapTo(mutableSetOf()) { affected ->
+        affected.copy(ecosystemSpecific = emptyJsonObject.takeIf { affected.ecosystemSpecific != null })
+    }
+)
+
+private val emptyJsonObject = JsonObject(emptyMap())
+
+private fun List<Vulnerability>.patchIgnorableFields() = map { it.patchIgnorableFields() }
+
 class OsvServiceFunTest : StringSpec({
     "getVulnerabilitiesForPackage() returns the expected vulnerability when queried by commit" {
         val expectedResult = getAssetAsString("vulnerabilities-by-commit-expected-result.json")
 
         val result = OsvService().getVulnerabilitiesForPackage(VULNERABILITY_FOR_PACKAGE_BY_COMMIT_REQUEST)
 
-        result.shouldBeSuccess {
-            OsvApiClient.JSON.encodeToString(it) shouldEqualJson expectedResult
+        result.shouldBeSuccess { actualData ->
+            val expectedData = OsvApiClient.JSON.decodeFromString<List<Vulnerability>>(expectedResult)
+            actualData.patchIgnorableFields() shouldContainExactlyInAnyOrder expectedData.patchIgnorableFields()
         }
     }
 
@@ -63,8 +77,9 @@ class OsvServiceFunTest : StringSpec({
 
         val result = OsvService().getVulnerabilitiesForPackage(VULNERABILITY_FOR_PACKAGE_BY_NAME_AND_VERSION)
 
-        result.shouldBeSuccess {
-            OsvApiClient.JSON.encodeToString(it) shouldEqualJson expectedResult
+        result.shouldBeSuccess { actualData ->
+            val expectedData = OsvApiClient.JSON.decodeFromString<List<Vulnerability>>(expectedResult)
+            actualData.patchIgnorableFields() shouldContainExactlyInAnyOrder expectedData.patchIgnorableFields()
         }
     }
 
@@ -84,6 +99,7 @@ class OsvServiceFunTest : StringSpec({
                 listOf(
                     "GHSA-462w-v97r-4m45",
                     "GHSA-8r7q-cvjq-x353",
+                    "GHSA-fqh9-2qgg-h84h",
                     "GHSA-g3rq-g295-4j3m",
                     "GHSA-hj2j-77xm-mc5v",
                     "PYSEC-2014-8",
@@ -101,11 +117,9 @@ class OsvServiceFunTest : StringSpec({
 
         val result = OsvService().getVulnerabilityForId("GHSA-xvch-5gv4-984h")
 
-        result.shouldBeSuccess {
-            OsvApiClient.JSON.encodeToString(it).shouldEqualJson(
-                expectedResult,
-                compareJsonOptions { arrayOrder = ArrayOrder.Lenient }
-            )
+        result.shouldBeSuccess { actualData ->
+            val expectedData = OsvApiClient.JSON.decodeFromString<Vulnerability>(expectedResult)
+            actualData.patchIgnorableFields() shouldBe expectedData.patchIgnorableFields()
         }
     }
 

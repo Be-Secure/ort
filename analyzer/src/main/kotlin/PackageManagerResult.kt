@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,5 +48,5 @@ data class PackageManagerResult(
      * produce a shared [DependencyGraph] typically do not collect packages on a project-level, but globally. Such
      * packages can be stored in this property.
      */
-    val sharedPackages: Set<Package> = sortedSetOf()
+    val sharedPackages: Set<Package> = emptySet()
 )

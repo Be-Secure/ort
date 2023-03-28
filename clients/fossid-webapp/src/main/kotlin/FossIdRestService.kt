@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,8 +35,9 @@ import com.fasterxml.jackson.databind.deser.std.StdDeserializer
 import com.fasterxml.jackson.module.kotlin.jsonMapper
 import com.fasterxml.jackson.module.kotlin.kotlinModule
 
-import java.time.Duration
+import java.util.concurrent.TimeUnit
 
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 
@@ -48,6 +49,8 @@ import org.ossreviewtoolkit.clients.fossid.model.identification.identifiedFiles.
 import org.ossreviewtoolkit.clients.fossid.model.identification.ignored.IgnoredFile
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.MarkedAsIdentifiedFile
 import org.ossreviewtoolkit.clients.fossid.model.result.FossIdScanResult
+import org.ossreviewtoolkit.clients.fossid.model.result.MatchedLines
+import org.ossreviewtoolkit.clients.fossid.model.result.Snippet
 import org.ossreviewtoolkit.clients.fossid.model.rules.IgnoreRule
 import org.ossreviewtoolkit.clients.fossid.model.status.DownloadStatus
 import org.ossreviewtoolkit.clients.fossid.model.status.ScanDescription
@@ -58,7 +61,10 @@ import retrofit2.Retrofit
 import retrofit2.converter.jackson.JacksonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.POST
+
+private const val READ_TIMEOUT_HEADER = "READ_TIMEOUT"
 
 interface FossIdRestService {
     companion object : Logging {
@@ -156,19 +162,11 @@ interface FossIdRestService {
          * Create the [FossIdServiceWithVersion] to interact with the FossID instance running at the given [url],
          * optionally using a pre-built OkHttp [client].
          */
-        fun createService(url: String, client: OkHttpClient? = null): FossIdServiceWithVersion {
+        fun create(url: String, client: OkHttpClient? = null): FossIdServiceWithVersion {
             logger.info { "The FossID server URL is $url." }
 
-            val minReadTimeout = Duration.ofSeconds(60)
             val retrofit = Retrofit.Builder()
-                .apply {
-                    client(
-                        client?.run {
-                            takeUnless { readTimeoutMillis < minReadTimeout.toMillis() }
-                                ?: newBuilder().readTimeout(minReadTimeout).build()
-                        } ?: OkHttpClient.Builder().readTimeout(minReadTimeout).build()
-                    )
-                }
+                .client((client?.newBuilder() ?: OkHttpClient.Builder()).addInterceptor(TimeoutInterceptor).build())
                 .baseUrl(url)
                 .addConverterFactory(JacksonConverterFactory.create(JSON_MAPPER))
                 .build()
@@ -185,8 +183,26 @@ interface FossIdRestService {
         }
     }
 
+    /**
+     * An interceptor to set the timeout of the requests based on the call headers. If no timeout header is present,
+     * default timeout of the client is used.
+     */
+    object TimeoutInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+            val request = chain.request()
+            val newReadTimeout = request.header(READ_TIMEOUT_HEADER)
+
+            val readTimeout = newReadTimeout?.toIntOrNull() ?: chain.readTimeoutMillis()
+
+            return chain.withReadTimeout(readTimeout, TimeUnit.MILLISECONDS).proceed(request)
+        }
+    }
+
     @POST("api.php")
     suspend fun getProject(@Body body: PostRequestBody): EntityResponseBody<Project>
+
+    @POST("api.php")
+    suspend fun getScan(@Body body: PostRequestBody): EntityResponseBody<Scan>
 
     @POST("api.php")
     suspend fun listScansForProject(@Body body: PostRequestBody): PolymorphicResponseBody<Scan>
@@ -201,6 +217,7 @@ interface FossIdRestService {
     suspend fun runScan(@Body body: PostRequestBody): EntityResponseBody<Nothing>
 
     @POST("api.php")
+    @Headers("$READ_TIMEOUT_HEADER:${5 * 60 * 1000}")
     suspend fun deleteScan(@Body body: PostRequestBody): EntityResponseBody<PolymorphicInt>
 
     @POST("api.php")
@@ -219,6 +236,13 @@ interface FossIdRestService {
     suspend fun listScanResults(@Body body: PostRequestBody): PolymorphicResponseBody<FossIdScanResult>
 
     @POST("api.php")
+    suspend fun listSnippets(@Body body: PostRequestBody): PolymorphicResponseBody<Snippet>
+
+    @POST("api.php")
+    suspend fun listMatchedLines(@Body body: PostRequestBody): EntityResponseBody<MatchedLines>
+
+    @POST("api.php")
+    @Headers("$READ_TIMEOUT_HEADER:${60 * 1000}")
     suspend fun listIdentifiedFiles(@Body body: PostRequestBody): PolymorphicResponseBody<IdentifiedFile>
 
     @POST("api.php")

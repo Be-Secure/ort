@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2020-2021 Bosch.IO GmbH
- * Copyright (C) 2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +41,7 @@ import org.ossreviewtoolkit.utils.ort.createOrtTempDir
  * [3]: https://github.com/asciidoctor/asciidoctorj
  * [4]: https://docs.asciidoctor.org/asciidoctor/latest/convert/available
  */
-abstract class AsciiDocTemplateReporter(private val backend: String, override val reporterName: String) : Reporter {
+open class AsciiDocTemplateReporter(private val backend: String, override val type: String) : Reporter {
     companion object {
         private const val ASCII_DOC_FILE_PREFIX = "AsciiDoc_"
         private const val ASCII_DOC_FILE_EXTENSION = "adoc"
@@ -54,22 +53,23 @@ abstract class AsciiDocTemplateReporter(private val backend: String, override va
     }
 
     private val templateProcessor = FreemarkerTemplateProcessor(
+        ASCII_DOC_TEMPLATE_DIRECTORY,
         ASCII_DOC_FILE_PREFIX,
-        ASCII_DOC_FILE_EXTENSION,
-        ASCII_DOC_TEMPLATE_DIRECTORY
+        ASCII_DOC_FILE_EXTENSION
     )
+
     private val asciidoctor by lazy { Asciidoctor.Factory.create() }
 
-    protected open fun processTemplateOptions(options: MutableMap<String, String>): Attributes =
+    protected open fun processTemplateOptions(outputDir: File, options: MutableMap<String, String>): Attributes =
         Attributes.builder().build()
 
     final override fun generateReport(input: ReporterInput, outputDir: File, options: Map<String, String>): List<File> {
         val asciiDocOutputDir = createOrtTempDir("asciidoc")
 
         val templateOptions = options.toMutableMap()
-        val asciidoctorAttributes = processTemplateOptions(templateOptions)
+        val asciidoctorAttributes = processTemplateOptions(asciiDocOutputDir, templateOptions)
         val asciiDocFiles = generateAsciiDocFiles(input, asciiDocOutputDir, templateOptions)
-        val reports = processAsciiDocFiles(outputDir, asciiDocFiles, asciidoctorAttributes)
+        val reports = processAsciiDocFiles(input, outputDir, asciiDocFiles, asciidoctorAttributes)
 
         asciiDocOutputDir.safeDeleteRecursively()
 
@@ -107,6 +107,7 @@ abstract class AsciiDocTemplateReporter(private val backend: String, override va
      * [asciidoctorAttributes].
      */
     protected open fun processAsciiDocFiles(
+        input: ReporterInput,
         outputDir: File,
         asciiDocFiles: List<File>,
         asciidoctorAttributes: Attributes

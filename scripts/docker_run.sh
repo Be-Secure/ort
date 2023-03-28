@@ -1,12 +1,12 @@
 #!/bin/sh
 #
-# Copyright (C) 2022 Bosch.IO GmbH
+# Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,7 +18,7 @@
 # License-Filename: LICENSE
 
 # Usage:
-# 
+#
 # The first argument to this script is passed as-is to `docker run`. If multiple arguments shall be passed, they must
 # be quoted, like `scripts/docker_run.sh "-it --entrypoint /bin/sh"`.
 #

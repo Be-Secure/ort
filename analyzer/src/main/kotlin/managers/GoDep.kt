@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,9 @@ import java.io.File
 import java.io.IOException
 import java.net.URI
 
+import kotlin.io.path.copyToRecursively
+import kotlin.io.path.createDirectories
+
 import org.apache.logging.log4j.kotlin.Logging
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
@@ -33,7 +36,7 @@ import org.ossreviewtoolkit.analyzer.managers.utils.normalizeModuleVersion
 import org.ossreviewtoolkit.downloader.VcsHost
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.OrtIssue
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.PackageReference
@@ -50,7 +53,6 @@ import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.ProcessCapture
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.realFile
-import org.ossreviewtoolkit.utils.common.safeCopyRecursively
 import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.common.toUri
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
@@ -87,7 +89,7 @@ class GoDep(
             analysisRoot: File,
             analyzerConfig: AnalyzerConfiguration,
             repoConfig: RepositoryConfiguration
-        ) = GoDep(managerName, analysisRoot, analyzerConfig, repoConfig)
+        ) = GoDep(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
     override fun command(workingDir: File?) = "dep"
@@ -109,7 +111,7 @@ class GoDep(
         }
 
         val projects = parseProjects(workingDir, gopath)
-        val packages = sortedSetOf<Package>()
+        val packages = mutableSetOf<Package>()
         val packageRefs = mutableListOf<PackageReference>()
 
         for (project in projects) {
@@ -118,7 +120,7 @@ class GoDep(
             val revision = project.getValue("revision")
             val version = project.getValue("version")
 
-            val issues = mutableListOf<OrtIssue>()
+            val issues = mutableListOf<Issue>()
 
             val vcsProcessed = try {
                 resolveVcsInfo(name, revision, gopath)
@@ -135,8 +137,8 @@ class GoDep(
 
             val pkg = Package(
                 id = Identifier("Go", "", name, normalizeModuleVersion(version)),
-                authors = sortedSetOf(),
-                declaredLicenses = sortedSetOf(),
+                authors = emptySet(),
+                declaredLicenses = emptySet(),
                 description = "",
                 homepageUrl = "",
                 binaryArtifact = RemoteArtifact.EMPTY,
@@ -159,7 +161,7 @@ class GoDep(
                 .filterNot { it.isEmpty() }
                 .joinToString(separator = "/")
                 .lowercase()
-        }.getOrDefault(projectDir.name)
+        }.getOrDefault(getFallbackProjectName(analysisRoot, definitionFile))
 
         // TODO Keeping this between scans would speed things up considerably.
         gopath.safeDeleteRecursively(force = true)
@@ -174,8 +176,8 @@ class GoDep(
                         version = projectVcs.revision
                     ),
                     definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
-                    authors = sortedSetOf(),
-                    declaredLicenses = sortedSetOf(),
+                    authors = emptySet(),
+                    declaredLicenses = emptySet(),
                     vcs = VcsInfo.EMPTY,
                     vcsProcessed = projectVcs,
                     homepageUrl = "",
@@ -213,7 +215,10 @@ class GoDep(
 
         logger.debug { "Copying $projectDir to temporary directory $destination" }
 
-        projectDir.safeCopyRecursively(destination)
+        projectDir.toPath().copyToRecursively(
+            destination.toPath().apply { parent?.createDirectories() },
+            followLinks = false
+        )
 
         val dotGit = File(destination, ".git")
         if (dotGit.isFile) {
@@ -227,11 +232,10 @@ class GoDep(
 
     private fun parseProjects(workingDir: File, gopath: File): List<Map<String, String>> {
         val lockfile = workingDir.resolve("Gopkg.lock")
-        if (!lockfile.isFile) {
-            require(analyzerConfig.allowDynamicVersions) {
-                "No lockfile found in ${workingDir.invariantSeparatorsPath}, dependency versions are unstable."
-            }
 
+        requireLockfile(workingDir) { lockfile.isFile }
+
+        if (!lockfile.isFile) {
             logger.debug { "Running 'dep ensure' to generate missing lockfile in $workingDir" }
 
             run("ensure", workingDir = workingDir, environment = mapOf("GOPATH" to gopath.path))

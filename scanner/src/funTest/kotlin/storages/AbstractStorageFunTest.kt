@@ -1,7 +1,5 @@
 /*
- * Copyright (C) 2017-2021 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,8 +19,6 @@
 
 package org.ossreviewtoolkit.scanner.storages
 
-import com.vdurmont.semver4j.Semver
-
 import io.kotest.core.listeners.TestListener
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
@@ -39,8 +35,8 @@ import java.time.Instant
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseFinding
-import org.ossreviewtoolkit.model.OrtIssue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.RemoteArtifact
 import org.ossreviewtoolkit.model.RepositoryProvenance
@@ -54,6 +50,8 @@ import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
 import org.ossreviewtoolkit.scanner.ScannerCriteria
 
+import org.semver4j.Semver
+
 private val DUMMY_TEXT_LOCATION = TextLocation("fakepath", 13, 21)
 
 abstract class AbstractStorageFunTest(vararg listeners: TestListener) : WordSpec() {
@@ -63,9 +61,9 @@ abstract class AbstractStorageFunTest(vararg listeners: TestListener) : WordSpec
     private val sourceArtifact1 = RemoteArtifact("url1", Hash.create("0123456789abcdef0123456789abcdef01234567"))
     private val sourceArtifact2 = RemoteArtifact("url2", Hash.create("0123456789abcdef0123456789abcdef01234567"))
 
-    private val vcs1 = VcsInfo(VcsType("type"), "url1", "revision", "path")
-    private val vcs2 = VcsInfo(VcsType("type"), "url2", "revision", "path")
-    private val vcsWithoutRevision = VcsInfo(VcsType("type"), "url", "")
+    private val vcs1 = VcsInfo(VcsType.forName("type"), "url1", "revision", "path")
+    private val vcs2 = VcsInfo(VcsType.forName("type"), "url2", "revision", "path")
+    private val vcsWithoutRevision = VcsInfo(VcsType.forName("type"), "url", "")
 
     private val pkg1 = Package.EMPTY.copy(
         id = id1,
@@ -101,7 +99,7 @@ abstract class AbstractStorageFunTest(vararg listeners: TestListener) : WordSpec
 
     private val scannerCriteriaForDetails1 = ScannerCriteria.forDetails(scannerDetails1, Semver.VersionDiff.PATCH)
 
-    private val scanSummaryWithFiles = ScanSummary(
+    private val scanSummaryWithFiles = ScanSummary.EMPTY.copy(
         startTime = Instant.EPOCH + Duration.ofMinutes(1),
         endTime = Instant.EPOCH + Duration.ofMinutes(2),
         packageVerificationCode = "packageVerificationCode",
@@ -109,10 +107,9 @@ abstract class AbstractStorageFunTest(vararg listeners: TestListener) : WordSpec
             LicenseFinding("license-1.1", DUMMY_TEXT_LOCATION),
             LicenseFinding("license-1.2", DUMMY_TEXT_LOCATION)
         ),
-        copyrightFindings = sortedSetOf(),
         issues = mutableListOf(
-            OrtIssue(source = "source-1", message = "error-1"),
-            OrtIssue(source = "source-2", message = "error-2")
+            Issue(source = "source-1", message = "error-1"),
+            Issue(source = "source-2", message = "error-2")
         )
     )
 

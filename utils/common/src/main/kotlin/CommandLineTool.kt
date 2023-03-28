@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@
 
 package org.ossreviewtoolkit.utils.common
 
-import com.vdurmont.semver4j.Requirement
-
 import java.io.File
 
 import org.apache.logging.log4j.kotlin.Logging
+
+import org.semver4j.RangesList
+import org.semver4j.RangesListFactory
+import org.semver4j.Semver
 
 /**
  * An interface to implement by classes that are backed by a command line tool.
@@ -33,7 +35,7 @@ interface CommandLineTool {
         /**
          * A convenience property to require any version.
          */
-        val ANY_VERSION: Requirement = Requirement.buildNPM("*")
+        val ANY_VERSION: RangesList = RangesListFactory.create("*")
     }
 
     /**
@@ -65,9 +67,9 @@ interface CommandLineTool {
     /**
      * Run the command in the [workingDir] directory with arguments as specified by [args] and the given [environment].
      */
-    fun run(vararg args: String, workingDir: File? = null, environment: Map<String, String> = emptyMap()) =
+    fun run(vararg args: CharSequence, workingDir: File? = null, environment: Map<String, String> = emptyMap()) =
         ProcessCapture(
-            *command(workingDir).split(' ').toTypedArray(),
+            *command(workingDir).splitOnWhitespace().toTypedArray(),
             *args,
             workingDir = workingDir,
             environment = environment
@@ -76,14 +78,14 @@ interface CommandLineTool {
     /**
      * Run the command in the [workingDir] directory with arguments as specified by [args].
      */
-    fun run(workingDir: File?, vararg args: String) =
-        ProcessCapture(workingDir, *command(workingDir).split(' ').toTypedArray(), *args).requireSuccess()
+    fun run(workingDir: File?, vararg args: CharSequence) =
+        ProcessCapture(workingDir, *command(workingDir).splitOnWhitespace().toTypedArray(), *args).requireSuccess()
 
     /**
      * Get the version of the command by parsing its output.
      */
     fun getVersion(workingDir: File? = null): String {
-        val version = run(workingDir, *getVersionArguments().split(' ').toTypedArray())
+        val version = run(workingDir, *getVersionArguments().splitOnWhitespace().toTypedArray())
 
         // Some tools actually report the version to stderr, so try that as a fallback.
         val versionString = sequenceOf(version.stdout, version.stderr).map {
@@ -99,10 +101,10 @@ interface CommandLineTool {
      * Run a [command] to check its version against the [required version][getVersionRequirement].
      */
     fun checkVersion(workingDir: File? = null) {
-        val actualVersion = getVersion(workingDir)
+        val actualVersion = Semver.coerce(getVersion(workingDir))
         val requiredVersion = getVersionRequirement()
 
-        if (!requiredVersion.isSatisfiedBy(actualVersion)) {
+        if (!actualVersion.satisfies(requiredVersion)) {
             logger.warn {
                 "The command is required in version $requiredVersion, but you are using version $actualVersion. This " +
                         "could lead to problems."

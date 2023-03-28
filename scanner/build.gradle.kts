@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,9 +44,9 @@ repositories {
 dependencies {
     api(project(":model"))
 
-    implementation(project(":clients:clearly-defined"))
-    implementation(project(":clients:fossid-webapp"))
-    implementation(project(":clients:scanoss"))
+    implementation(project(":clients:clearly-defined-client"))
+    implementation(project(":clients:fossid-webapp-client"))
+    implementation(project(":clients:scanoss-client"))
     implementation(project(":downloader"))
     implementation(project(":utils:ort-utils"))
 
@@ -60,30 +59,18 @@ dependencies {
     implementation(libs.scanoss)
     implementation(libs.sw360Client)
 
-    testImplementation(libs.kotlinxSerialization)
+    testImplementation(libs.bundles.kotlinxSerialization)
     testImplementation(libs.mockk)
     testImplementation(libs.retrofitConverterKotlinxSerialization)
     testImplementation(libs.wiremock)
 }
 
-buildConfig {
-    packageName("org.ossreviewtoolkit.scanner")
-
-    buildConfigField("String", "ASKALONO_VERSION", "\"$askalonoVersion\"")
-    buildConfigField("String", "BOYTER_LC_VERSION", "\"$boyterLcVersion\"")
-    buildConfigField("String", "LICENSEE_VERSION", "\"$licenseeVersion\"")
-    buildConfigField("String", "SCANCODE_VERSION", "\"$scancodeVersion\"")
-    buildConfigField("String", "SCANOSS_VERSION", "\"${libs.versions.scanoss.get()}\"")
-}
-
-tasks.withType<KotlinCompile>().configureEach {
+tasks.named<KotlinCompile>("compileTestKotlin").configure {
     val customCompilerArgs = listOf(
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
     )
 
-    if ("test" in name.toLowerCase()) {
-        kotlinOptions {
-            freeCompilerArgs = freeCompilerArgs + customCompilerArgs
-        }
+    kotlinOptions {
+        freeCompilerArgs = freeCompilerArgs + customCompilerArgs
     }
 }

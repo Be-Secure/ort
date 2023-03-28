@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,8 @@ import java.io.File
 import org.ossreviewtoolkit.analyzer.managers.Npm
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.PackageLinkage
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.test.USER_DIR
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
@@ -65,8 +65,8 @@ class NpmDependencyHandlerTest : StringSpec({
     }
 
     "a package can be created for a module" {
-        val pkgJsonFile = File("src/test/assets/test-package.json")
-        val module = createModuleInfo(createIdentifier("packageTest"), packageFile = pkgJsonFile)
+        val definitionFile = File("src/test/assets/test-package.json")
+        val module = createModuleInfo(createIdentifier("packageTest"), definitionFile)
 
         val handler = createHandler()
 
@@ -102,4 +102,4 @@ private fun createModuleInfo(
  * Creates an [NpmDependencyHandler] instance to be used by test cases.
  */
 private fun createHandler() =
-    NpmDependencyHandler(Npm("NPM", USER_DIR, DEFAULT_ANALYZER_CONFIGURATION, DEFAULT_REPOSITORY_CONFIGURATION))
+    NpmDependencyHandler(Npm("NPM", USER_DIR, AnalyzerConfiguration(), RepositoryConfiguration()))

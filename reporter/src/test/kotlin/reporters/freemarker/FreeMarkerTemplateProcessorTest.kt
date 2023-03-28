@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 HERE Europe B.V.
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,6 @@ import io.mockk.mockk
 import java.time.Instant
 import java.util.SortedMap
 
-import org.ossreviewtoolkit.model.AccessStatistics
 import org.ossreviewtoolkit.model.AdvisorCapability
 import org.ossreviewtoolkit.model.AdvisorDetails
 import org.ossreviewtoolkit.model.AdvisorRecord
@@ -45,18 +44,16 @@ import org.ossreviewtoolkit.model.AdvisorSummary
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
 import org.ossreviewtoolkit.model.CopyrightFinding
-import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.Defect
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.LicenseSource
-import org.ossreviewtoolkit.model.OrtIssue
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.Repository
 import org.ossreviewtoolkit.model.RepositoryProvenance
-import org.ossreviewtoolkit.model.ScanRecord
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
@@ -70,7 +67,6 @@ import org.ossreviewtoolkit.model.config.AdvisorConfiguration
 import org.ossreviewtoolkit.model.config.LicenseChoices
 import org.ossreviewtoolkit.model.config.PackageLicenseChoice
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.model.config.ScannerConfiguration
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 import org.ossreviewtoolkit.model.licenses.ResolvedLicense
 import org.ossreviewtoolkit.model.licenses.ResolvedLicenseInfo
@@ -82,7 +78,6 @@ import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
 import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
 import org.ossreviewtoolkit.utils.spdx.toSpdx
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
 
 private fun scanResults(
     vcsInfo: VcsInfo,
@@ -95,10 +90,7 @@ private fun scanResults(
         ScanResult(
             provenance = RepositoryProvenance(vcsInfo = vcsInfo, resolvedRevision = vcsInfo.revision),
             scanner = ScannerDetails(name = "scanner", version = "1.0", configuration = ""),
-            summary = ScanSummary(
-                startTime = Instant.EPOCH,
-                endTime = Instant.EPOCH,
-                packageVerificationCode = "",
+            summary = ScanSummary.EMPTY.copy(
                 licenseFindings = licenseFindings,
                 copyrightFindings = copyrightFindings,
             )
@@ -128,11 +120,9 @@ private val ORT_RESULT = OrtResult(
         config = RepositoryConfiguration(),
         nestedRepositories = mapOf("nested-vcs-dir" to NESTED_VCS_INFO)
     ),
-    analyzer = AnalyzerRun(
-        environment = Environment(),
-        config = DEFAULT_ANALYZER_CONFIGURATION,
+    analyzer = AnalyzerRun.EMPTY.copy(
         result = AnalyzerResult.EMPTY.copy(
-            projects = sortedSetOf(
+            projects = setOf(
                 Project.EMPTY.copy(
                     id = idRootProject,
                     definitionFilePath = "package.json",
@@ -151,33 +141,28 @@ private val ORT_RESULT = OrtResult(
             )
         )
     ),
-    scanner = ScannerRun(
-        environment = Environment(),
-        config = ScannerConfiguration(),
-        results = ScanRecord(
-            scanResults = sortedMapOf(
-                idRootProject to scanResults(
-                    vcsInfo = PROJECT_VCS_INFO,
-                    findingsPaths = listOf(
-                        "src/main.js",
-                        "sub-dir/src/main.cpp",
-                        "nested-vcs-dir/src/main.cpp"
-                    )
-                ),
-                idSubProject to scanResults(
-                    vcsInfo = PROJECT_VCS_INFO,
-                    findingsPaths = listOf(
-                        "sub-dir/src/main.cpp"
-                    )
-                ),
-                idNestedProject to scanResults(
-                    vcsInfo = NESTED_VCS_INFO,
-                    findingsPaths = listOf(
-                        "src/main.cpp"
-                    )
+    scanner = ScannerRun.EMPTY.copy(
+        scanResults = sortedMapOf(
+            idRootProject to scanResults(
+                vcsInfo = PROJECT_VCS_INFO,
+                findingsPaths = listOf(
+                    "src/main.js",
+                    "sub-dir/src/main.cpp",
+                    "nested-vcs-dir/src/main.cpp"
                 )
             ),
-            storageStats = AccessStatistics()
+            idSubProject to scanResults(
+                vcsInfo = PROJECT_VCS_INFO,
+                findingsPaths = listOf(
+                    "sub-dir/src/main.cpp"
+                )
+            ),
+            idNestedProject to scanResults(
+                vcsInfo = NESTED_VCS_INFO,
+                findingsPaths = listOf(
+                    "src/main.cpp"
+                )
+            )
         )
     )
 )
@@ -253,7 +238,7 @@ private fun advisorRun(results: SortedMap<Identifier, List<AdvisorResult>>): Adv
  */
 private fun advisorResult(
     details: AdvisorDetails = ADVISOR_DETAILS,
-    issues: List<OrtIssue> = emptyList(),
+    issues: List<Issue> = emptyList(),
     vulnerabilities: List<Vulnerability> = emptyList(),
     defects: List<Defect> = emptyList()
 ): AdvisorResult =
@@ -431,7 +416,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
             val result = FreemarkerTemplateProcessor.TemplateHelper(input).mergeLicenses(listOf(pkg))
 
             result should haveSize(1)
-            with(result[0]) {
+            with(result.first()) {
                 license.toString() shouldBe "MIT"
                 originalExpressions.map { it.expression.toString() } shouldContainExactlyInAnyOrder listOf(
                     "GPL-2.0-only OR MIT OR Apache-2.0"
@@ -449,7 +434,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
         }
 
         "return true if there are issues for an advisor with the provided capability" {
-            val issue = OrtIssue(source = ADVISOR_DETAILS.name, message = "An error occurred")
+            val issue = Issue(source = ADVISOR_DETAILS.name, message = "An error occurred")
             val advisorResult = advisorResult(issues = listOf(issue))
 
             val advisorRun = advisorRun(sortedMapOf(idSubProject to listOf(advisorResult)))
@@ -466,7 +451,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
             val advisorResult1 = advisorResult(vulnerabilities = listOf(vulnerability))
 
             val details2 = AdvisorDetails("anotherAdvisor", enumSetOf(AdvisorCapability.DEFECTS))
-            val issue = OrtIssue(source = details2.name, message = "Error when loading defects")
+            val issue = Issue(source = details2.name, message = "Error when loading defects")
             val advisorResult2 = advisorResult(details = details2, issues = listOf(issue))
 
             val advisorRun = advisorRun(
@@ -482,7 +467,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
 
         "ignore issues with a lower severity" {
             val issue =
-                OrtIssue(source = ADVISOR_DETAILS.name, message = "A warning occurred", severity = Severity.WARNING)
+                Issue(source = ADVISOR_DETAILS.name, message = "A warning occurred", severity = Severity.WARNING)
             val advisorResult = advisorResult(issues = listOf(issue))
 
             val advisorRun = advisorRun(sortedMapOf(idSubProject to listOf(advisorResult)))
@@ -497,7 +482,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
 
     "advisorResultsWithIssues" should {
         "return the correct results" {
-            val issue = OrtIssue(source = ADVISOR_DETAILS.name, message = "An error occurred")
+            val issue = Issue(source = ADVISOR_DETAILS.name, message = "An error occurred")
             val advisorResult = advisorResult(issues = listOf(issue))
 
             val advisorRun = advisorRun(
@@ -519,7 +504,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
 
         "ignore advisor results with other capabilities" {
             val details2 = AdvisorDetails("anotherAdvisor", enumSetOf(AdvisorCapability.DEFECTS))
-            val issue = OrtIssue(source = details2.name, message = "Error when loading defects")
+            val issue = Issue(source = details2.name, message = "Error when loading defects")
 
             val vulnerability = mockk<Vulnerability>()
             val advisorResult1 = advisorResult(vulnerabilities = listOf(vulnerability), issues = listOf(issue))
@@ -541,7 +526,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
 
         "ignore issues with a lower severity" {
             val issue =
-                OrtIssue(source = ADVISOR_DETAILS.name, message = "A warning occurred", severity = Severity.WARNING)
+                Issue(source = ADVISOR_DETAILS.name, message = "A warning occurred", severity = Severity.WARNING)
             val advisorResult = advisorResult(issues = listOf(issue))
 
             val advisorRun = advisorRun(sortedMapOf(idSubProject to listOf(advisorResult)))
@@ -637,7 +622,7 @@ class FreeMarkerTemplateProcessorTest : WordSpec({
                 id = id,
                 cpe = "cpe:2.3:a:test:${id.name}:${id.version}:-:-:-:-:-:-:-"
             )
-            val analyzerResult = ORT_RESULT.analyzer!!.result.copy(packages = sortedSetOf(CuratedPackage(pkg)))
+            val analyzerResult = ORT_RESULT.analyzer!!.result.copy(packages = setOf(pkg))
             val analyzerRun = ORT_RESULT.analyzer!!.copy(result = analyzerResult)
 
             val input = ReporterInput(ORT_RESULT.copy(analyzer = analyzerRun))

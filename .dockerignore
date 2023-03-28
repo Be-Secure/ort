@@ -2,13 +2,16 @@
 # the Docker files are changed during development.
 .dockerignore
 Dockerfile
+docker/legacy/Dockerfile
+scripts/docker_*.sh
 
 # Ignore the Jenkinsfile to avoid that all layers are invalidated if the
 # Jenkinsfile is changed during development.
 integrations/jenkins/Jenkinsfile
 
-# Ignore the Git directory.
+# Ignore Git entries.
 .git/
+.gitignore
 
 # Ignore IntelliJ IDEA files.
 .idea/
@@ -30,3 +33,6 @@ logos/
 
 # Ignore macOS-specific files.
 .DS_Store
+
+# Ignore CI linters.
+.hadolint.yaml

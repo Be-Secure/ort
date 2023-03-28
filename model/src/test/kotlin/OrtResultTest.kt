@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,7 +32,6 @@ import io.kotest.matchers.types.beInstanceOf
 
 import java.lang.IllegalArgumentException
 
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.IssueResolution
 import org.ossreviewtoolkit.model.config.IssueResolutionReason
@@ -43,7 +41,6 @@ import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.config.Resolutions
 import org.ossreviewtoolkit.model.config.RuleViolationResolution
 import org.ossreviewtoolkit.model.config.RuleViolationResolutionReason
-import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.test.readOrtResult
 
 class OrtResultTest : WordSpec({
@@ -66,10 +63,7 @@ class OrtResultTest : WordSpec({
 
     "collectProjectsAndPackages" should {
         "be able to get all ids except for ones for sub-projects" {
-            val ortResult = readOrtResult(
-                "../analyzer/src/funTest/assets/projects/synthetic/gradle-all-dependencies-expected-result.yml"
-            )
-
+            val ortResult = readOrtResult("src/test/assets/gradle-all-dependencies-expected-result.yml")
             val ids = ortResult.collectProjectsAndPackages()
             val idsWithoutSubProjects = ortResult.collectProjectsAndPackages(includeSubProjects = false)
             val actualIds = ids - idsWithoutSubProjects
@@ -111,10 +105,8 @@ class OrtResultTest : WordSpec({
                         "path/2" to nestedVcs2
                     )
                 ),
-                AnalyzerRun(
-                    environment = Environment(),
-                    config = AnalyzerConfiguration(allowDynamicVersions = true),
-                    result = AnalyzerResult.EMPTY.copy(projects = sortedSetOf(project1, project2, project3))
+                AnalyzerRun.EMPTY.copy(
+                    result = AnalyzerResult.EMPTY.copy(projects = setOf(project1, project2, project3))
                 )
             )
 
@@ -140,10 +132,8 @@ class OrtResultTest : WordSpec({
                         "path/1" to nestedVcs1
                     )
                 ),
-                AnalyzerRun(
-                    environment = Environment(),
-                    config = AnalyzerConfiguration(allowDynamicVersions = true),
-                    result = AnalyzerResult.EMPTY.copy(projects = sortedSetOf(project))
+                AnalyzerRun.EMPTY.copy(
+                    result = AnalyzerResult.EMPTY.copy(projects = setOf(project))
                 )
             )
 
@@ -171,17 +161,15 @@ class OrtResultTest : WordSpec({
                         )
                     )
                 ),
-                analyzer = AnalyzerRun(
-                    environment = Environment(),
-                    config = AnalyzerConfiguration(),
+                analyzer = AnalyzerRun.EMPTY.copy(
                     result = AnalyzerResult(
-                        projects = sortedSetOf(),
-                        packages = sortedSetOf(),
-                        issues = sortedMapOf(
+                        projects = emptySet(),
+                        packages = emptySet(),
+                        issues = mapOf(
                             Identifier("Maven:org.oss-review-toolkit:example:1.0") to
                                     listOf(
-                                        OrtIssue(message = "Issue message to resolve", source = ""),
-                                        OrtIssue(message = "Non-resolved issue", source = "")
+                                        Issue(message = "Issue message to resolve", source = ""),
+                                        Issue(message = "Non-resolved issue", source = "")
                                     )
                         )
                     )
@@ -191,28 +179,26 @@ class OrtResultTest : WordSpec({
             val openIssues = ortResult.getOpenIssues(Severity.WARNING)
 
             openIssues should haveSize(1)
-            with(openIssues[0]) {
+            with(openIssues.first()) {
                 message shouldBe "Non-resolved issue"
             }
         }
 
         "omit issues with violation below threshold" {
             val ortResult = OrtResult.EMPTY.copy(
-                analyzer = AnalyzerRun(
-                    environment = Environment(),
-                    config = AnalyzerConfiguration(),
+                analyzer = AnalyzerRun.EMPTY.copy(
                     result = AnalyzerResult(
-                        projects = sortedSetOf(),
-                        packages = sortedSetOf(),
-                        issues = sortedMapOf(
+                        projects = emptySet(),
+                        packages = emptySet(),
+                        issues = mapOf(
                             Identifier("Maven:org.oss-review-toolkit:example:1.0") to
                                     listOf(
-                                        OrtIssue(
+                                        Issue(
                                             message = "Issue with severity 'warning'",
                                             source = "",
                                             severity = Severity.WARNING
                                         ),
-                                        OrtIssue(
+                                        Issue(
                                             message = "Issue with severity 'hint'.",
                                             source = "",
                                             severity = Severity.HINT
@@ -226,7 +212,7 @@ class OrtResultTest : WordSpec({
             val openIssues = ortResult.getOpenIssues(Severity.WARNING)
 
             openIssues should haveSize(1)
-            with(openIssues[0]) {
+            with(openIssues.first()) {
                 message shouldBe "Issue with severity 'warning'"
             }
         }
@@ -245,23 +231,21 @@ class OrtResultTest : WordSpec({
                         )
                     )
                 ),
-                analyzer = AnalyzerRun(
-                    environment = Environment(),
-                    config = AnalyzerConfiguration(),
+                analyzer = AnalyzerRun.EMPTY.copy(
                     result = AnalyzerResult(
-                        projects = sortedSetOf(
+                        projects = setOf(
                             Project.EMPTY.copy(
                                 id = Identifier("Maven:org.oss-review-toolkit:excluded:1.0"),
                                 definitionFilePath = "excluded/pom.xml",
-                                declaredLicenses = sortedSetOf()
+                                declaredLicenses = emptySet()
                             )
                         ),
-                        packages = sortedSetOf(),
-                        issues = sortedMapOf(
+                        packages = emptySet(),
+                        issues = mapOf(
                             Identifier("Maven:org.oss-review-toolkit:excluded:1.0") to
-                                    listOf(OrtIssue(message = "Excluded issue", source = "")),
+                                    listOf(Issue(message = "Excluded issue", source = "")),
                             Identifier("Maven:org.oss-review-toolkit:included:1.0") to
-                                    listOf(OrtIssue(message = "Included issue", source = ""))
+                                    listOf(Issue(message = "Included issue", source = ""))
                         )
                     )
                 )
@@ -270,7 +254,7 @@ class OrtResultTest : WordSpec({
             val openIssues = ortResult.getOpenIssues()
 
             openIssues should haveSize(1)
-            with(openIssues[0]) {
+            with(openIssues.first()) {
                 message shouldBe "Included issue"
             }
         }
@@ -308,7 +292,7 @@ class OrtResultTest : WordSpec({
                         )
                     )
                 ),
-                evaluator = EvaluatorRun(
+                evaluator = EvaluatorRun.EMPTY.copy(
                     violations = listOf(
                         RuleViolation(
                             rule = "rule id",
@@ -342,7 +326,7 @@ class OrtResultTest : WordSpec({
                         )
                     )
                 ),
-                evaluator = EvaluatorRun(
+                evaluator = EvaluatorRun.EMPTY.copy(
                     violations = listOf(
                         RuleViolation(
                             rule = "Resolved rule violation",

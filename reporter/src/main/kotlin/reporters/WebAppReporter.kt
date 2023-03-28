@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ class WebAppReporter : Reporter {
         const val OPTION_DEDUPLICATE_DEPENDENCY_TREE = "deduplicateDependencyTree"
     }
 
-    override val reporterName = "WebApp"
+    override val type = "WebApp"
 
     private val reportFilename = "scan-report-web-app.html"
 

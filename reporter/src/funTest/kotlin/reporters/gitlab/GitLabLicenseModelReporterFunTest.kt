@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,11 +23,8 @@ import io.kotest.core.TestConfiguration
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.shouldBe
 
-import java.io.File
-
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
-import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
@@ -44,8 +41,8 @@ import org.ossreviewtoolkit.model.config.ScopeExclude
 import org.ossreviewtoolkit.model.config.ScopeExcludeReason
 import org.ossreviewtoolkit.reporter.ReporterInput
 import org.ossreviewtoolkit.utils.common.normalizeLineBreaks
-import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.test.createTestTempDir
+import org.ossreviewtoolkit.utils.test.getAssetAsString
 
 class GitLabLicenseModelReporterFunTest : WordSpec({
     "GitLabLicenseModelReporter" should {
@@ -54,7 +51,7 @@ class GitLabLicenseModelReporterFunTest : WordSpec({
 
             val jsonLicenseModel = generateReport(ortResult = ortResult, skipExcluded = true) + "\n"
 
-            jsonLicenseModel shouldBe expectedOutput("gitlab-license-model-test-skip-excluded-expected-output.json")
+            jsonLicenseModel shouldBe getAssetAsString("gitlab-license-model-test-skip-excluded-expected-output.json")
         }
 
         "create the expected JSON license model containing all packages referenced by any project " {
@@ -62,12 +59,10 @@ class GitLabLicenseModelReporterFunTest : WordSpec({
 
             val jsonLicenseModel = generateReport(ortResult = ortResult, skipExcluded = false) + "\n"
 
-            jsonLicenseModel shouldBe expectedOutput("gitlab-license-model-test-expected-output.json")
+            jsonLicenseModel shouldBe getAssetAsString("gitlab-license-model-test-expected-output.json")
         }
     }
 })
-
-private fun expectedOutput(assetName: String): String = File("src/funTest/assets/$assetName").readText()
 
 private fun TestConfiguration.generateReport(ortResult: OrtResult, skipExcluded: Boolean): String =
     GitLabLicenseModelReporter().generateReport(
@@ -90,11 +85,10 @@ private fun createOrtResult(): OrtResult {
                 )
             )
         ),
-        analyzer = AnalyzerRun(
-            environment = Environment(),
+        analyzer = AnalyzerRun.EMPTY.copy(
             config = AnalyzerConfiguration(allowDynamicVersions = true),
             result = AnalyzerResult(
-                projects = sortedSetOf(
+                projects = setOf(
                     Project.EMPTY.copy(
                         id = Identifier("Gradle:some-group:some-gradle-project:0.0.1"),
                         definitionFilePath = "some/path/build.gradle",
@@ -131,27 +125,27 @@ private fun createOrtResult(): OrtResult {
                         )
                     )
                 ),
-                packages = sortedSetOf(
-                    curatedPackage(
+                packages = setOf(
+                    createPackage(
                         id = Identifier("Maven:some-group:first-package:0.0.1"),
-                        declaredLicenses = listOf(
+                        declaredLicenses = setOf(
                             "GPL-2.0-or-later WITH Classpath-exception-2.0 AND MIT",
                             "BSD-2-Clause",
                             "Some unmappable license string",
                             "LicenseRef-scancode-asmus"
                         )
                     ),
-                    curatedPackage(
+                    createPackage(
                         id = Identifier("PIP::second-package:0.0.2"),
-                        declaredLicenses = listOf("BSD-2-Clause AND Apache-2.0")
+                        declaredLicenses = setOf("BSD-2-Clause AND Apache-2.0")
                     ),
-                    curatedPackage(
+                    createPackage(
                         id = Identifier("PIP::unreferenced-package:0.0.3"),
-                        declaredLicenses = listOf("LicenseRef-scancode-public-domain-disclaimer")
+                        declaredLicenses = setOf("LicenseRef-scancode-public-domain-disclaimer")
                     ),
-                    curatedPackage(
+                    createPackage(
                         id = Identifier("Maven:some-group:excluded-package:0.0.4"),
-                        declaredLicenses = listOf("LicenseRef-scancode-josl-1.0")
+                        declaredLicenses = setOf("LicenseRef-scancode-josl-1.0")
                     )
                 )
             )
@@ -159,15 +153,13 @@ private fun createOrtResult(): OrtResult {
     )
 }
 
-private fun curatedPackage(id: Identifier, declaredLicenses: Collection<String>): CuratedPackage =
-    CuratedPackage(
-        pkg = Package(
-            id = id,
-            binaryArtifact = RemoteArtifact.EMPTY,
-            declaredLicenses = declaredLicenses.toSortedSet(),
-            description = "",
-            homepageUrl = "",
-            sourceArtifact = RemoteArtifact.EMPTY,
-            vcs = VcsInfo.EMPTY
-        )
+private fun createPackage(id: Identifier, declaredLicenses: Set<String>): Package =
+    Package(
+        id = id,
+        binaryArtifact = RemoteArtifact.EMPTY,
+        declaredLicenses = declaredLicenses,
+        description = "",
+        homepageUrl = "",
+        sourceArtifact = RemoteArtifact.EMPTY,
+        vcs = VcsInfo.EMPTY
     )

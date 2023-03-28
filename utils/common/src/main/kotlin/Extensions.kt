@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,18 +24,11 @@ package org.ossreviewtoolkit.utils.common
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.util.ClassUtil
 
-import com.vdurmont.semver4j.Semver
-
 import java.io.File
 import java.io.IOException
 import java.net.URI
-import java.nio.file.CopyOption
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.EnumSet
 import java.util.Locale
@@ -91,44 +84,6 @@ fun File.isSymbolicLink(): Boolean =
 fun File.realFile(): File = toPath().toRealPath().toFile()
 
 /**
- * Copy files recursively without following symbolic links (Unix) or junctions (Windows).
- */
-fun File.safeCopyRecursively(target: File, overwrite: Boolean = false) {
-    if (!exists()) return
-
-    val sourcePath = absoluteFile.toPath()
-    val targetPath = target.absoluteFile.toPath()
-
-    val copyOptions = buildList<CopyOption> {
-        add(LinkOption.NOFOLLOW_LINKS)
-        if (overwrite) add(StandardCopyOption.REPLACE_EXISTING)
-    }.toTypedArray()
-
-    Files.walkFileTree(
-        sourcePath,
-        object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                // Note that although FileVisitOption.FOLLOW_LINKS is not set, this would still follow junctions on
-                // Windows, so do a better check here.
-                if (dir.toFile().isSymbolicLink()) return FileVisitResult.SKIP_SUBTREE
-
-                val targetDir = targetPath.resolve(sourcePath.relativize(dir))
-                targetDir.toFile().safeMkdirs()
-
-                return FileVisitResult.CONTINUE
-            }
-
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                val targetFile = targetPath.resolve(sourcePath.relativize(file))
-                Files.copy(file, targetFile, *copyOptions)
-
-                return FileVisitResult.CONTINUE
-            }
-        }
-    )
-}
-
-/**
  * Delete files recursively without following symbolic links (Unix) or junctions (Windows). If [force] is `true`, files
  * which were not deleted in the first attempt are set to be writable and then tried to be deleted again. If
  * [baseDirectory] is given, all empty parent directories along the path to [baseDirectory] are also deleted;
@@ -159,16 +114,15 @@ fun File.safeDeleteRecursively(force: Boolean = false, baseDirectory: File? = nu
 }
 
 /**
- * Create all missing intermediate directories without failing if any already exists.
- *
- * @throws IOException if any missing directory could not be created.
+ * Create all missing intermediate directories without failing if any already exists. Returns the [File] it was called
+ * on if successful, otherwise throws an [IOException].
  */
-fun File.safeMkdirs() {
+fun File.safeMkdirs(): File {
     // Do not blindly trust mkdirs() returning "false" as it can fail for edge-cases like
     // File(File("/tmp/parent1/parent2"), "/").mkdirs() if parent1 does not exist, although the directory is
     // successfully created.
     if (isDirectory || mkdirs() || isDirectory) {
-        return
+        return this
     }
 
     throw IOException("Could not create directory '$absolutePath'.")
@@ -229,6 +183,21 @@ fun File.toSafeUri(): URI {
 }
 
 /**
+ * Return the bytes equal to this [Int] number of kibibytes (KiB).
+ */
+inline val Int.kibibytes get(): Long = this * 1024L
+
+/**
+ * Return the bytes equal to this [Int] number of mebibytes (MiB).
+ */
+inline val Int.mebibytes get(): Long = kibibytes * 1024L
+
+/**
+ * Return the bytes equal to this [Int] number of gibibytes (GiB).
+ */
+inline val Int.gibibytes get(): Long = mebibytes * 1024L
+
+/**
  * Return the next value in the iteration, or null if there is no next value.
  */
 fun <T> Iterator<T>.nextOrNull() = if (hasNext()) next() else null
@@ -256,7 +225,7 @@ fun JsonNode?.textValueOrEmpty(): String = this?.textValue().orEmpty()
  * same key. Arguments passed to [operation] can be null if there is no entry for a key in the respective map.
  */
 inline fun <K, V, W> Map<K, V>.zip(other: Map<K, V>, operation: (V?, V?) -> W): Map<K, W> =
-    (this.keys + other.keys).associateWith { key ->
+    (keys + other.keys).associateWith { key ->
         operation(this[key], other[key])
     }
 
@@ -265,7 +234,7 @@ inline fun <K, V, W> Map<K, V>.zip(other: Map<K, V>, operation: (V?, V?) -> W): 
  * same key. If there is no entry for a key in one of the maps, [default] is used as the value for that map.
  */
 inline fun <K, V, W> Map<K, V>.zipWithDefault(other: Map<K, V>, default: V, operation: (V, V) -> W): Map<K, W> =
-    (this.keys + other.keys).associateWith { key ->
+    (keys + other.keys).associateWith { key ->
         operation(this[key] ?: default, other[key] ?: default)
     }
 
@@ -273,14 +242,16 @@ inline fun <K, V, W> Map<K, V>.zipWithDefault(other: Map<K, V>, default: V, oper
  * Merge two maps which have collections as values by creating the combined key set of both maps and merging the
  * collections. If there is no entry for a key in one of the maps, the value from the other map is used.
  */
-@Suppress("UNCHECKED_CAST")
 fun <K, V : Collection<T>, T> Map<K, V>.zipWithCollections(other: Map<K, V>): Map<K, V> =
     zip(other) { a, b ->
         when {
             // When iterating over the combined key set, not both values can be null.
-            a == null -> b!!
+            a == null -> checkNotNull(b)
             b == null -> a
-            else -> (a + b) as V
+            else -> {
+                @Suppress("UNCHECKED_CAST")
+                (a + b) as V
+            }
         }
     }
 
@@ -289,21 +260,30 @@ fun <K, V : Collection<T>, T> Map<K, V>.zipWithCollections(other: Map<K, V>): Ma
  * is no entry for a key in one of the maps, the value from the other map is used.
  */
 @JvmName("zipWithSets")
-@Suppress("UNCHECKED_CAST")
 fun <K, V : Set<T>, T> Map<K, V>.zipWithCollections(other: Map<K, V>): Map<K, V> =
     zip(other) { a, b ->
         when {
             // When iterating over the combined key set, not both values can be null.
-            a == null -> b!!
+            a == null -> checkNotNull(b)
             b == null -> a
-            else -> (a + b) as V
+            else -> {
+                @Suppress("UNCHECKED_CAST")
+                (a + b) as V
+            }
         }
     }
 
 /**
  * Converts this [Number] from bytes to mebibytes (MiB).
  */
-fun Number.bytesToMib(): Double = toDouble() / (1024 * 1024)
+fun Number.bytesToMib(): Double = toDouble() / 1.mebibytes
+
+/**
+ * Trim leading and trailing whitespace, and collapse consecutive inner whitespace to a single space.
+ */
+fun String.collapseWhitespace() = trim().replace(CONSECUTIVE_WHITESPACE_REGEX, " ")
+
+private val CONSECUTIVE_WHITESPACE_REGEX = Regex("\\s+")
 
 /**
  * Decode a hex-string and return the value as a [ByteArray].
@@ -357,12 +337,6 @@ fun String.fileSystemEncode() =
 fun String?.isFalse() = this?.toBoolean()?.not() ?: false
 
 /**
- * True if the string is a valid semantic version of the given [type], false otherwise.
- */
-fun String.isSemanticVersion(type: Semver.SemverType = Semver.SemverType.STRICT) =
-    runCatching { Semver(this, type) }.isSuccess
-
-/**
  * Return true if the string represents a true value, otherwise return false.
  */
 fun String?.isTrue() = this?.toBoolean() ?: false
@@ -404,6 +378,13 @@ fun String.replaceCredentialsInUri(userInfo: String? = null) =
     toUri {
         URI(it.scheme, userInfo, it.host, it.port, it.path, it.query, it.fragment).toString()
     }.getOrDefault(this)
+
+/**
+ * Return all substrings that do not contain any whitespace as a list.
+ */
+fun String.splitOnWhitespace(): List<String> = nonSpaceRegex.findAll(this).mapTo(mutableListOf()) { it.value }
+
+private val nonSpaceRegex = Regex("\\S+")
 
 /**
  * Return this string lower-cased except for the first character which is upper-cased.

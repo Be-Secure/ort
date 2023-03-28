@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,6 +51,7 @@ data class LicenseFinding(
 ) : Comparable<LicenseFinding> {
     companion object {
         private val COMPARATOR = compareBy<LicenseFinding>({ it.license.toString() }, { it.location })
+            .thenByDescending { it.score }
 
         /**
          * Create a [LicenseFinding] with [detectedLicenseMapping]s applied.

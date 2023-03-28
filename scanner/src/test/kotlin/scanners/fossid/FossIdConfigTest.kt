@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,6 @@ class FossIdConfigTest : WordSpec({
                 "user" to USER,
                 "apiKey" to API_KEY,
                 "waitForResult" to "false",
-                "addAuthenticationToUrl" to "false",
                 "keepFailedScans" to "true",
                 "deltaScans" to "true",
                 "deltaScanLimit" to "42",
@@ -66,7 +65,6 @@ class FossIdConfigTest : WordSpec({
                 user = USER,
                 apiKey = API_KEY,
                 waitForResult = false,
-                addAuthenticationToUrl = false,
                 keepFailedScans = true,
                 deltaScans = true,
                 deltaScanLimit = 42,
@@ -92,7 +90,6 @@ class FossIdConfigTest : WordSpec({
                 user = USER,
                 apiKey = API_KEY,
                 waitForResult = true,
-                addAuthenticationToUrl = false,
                 keepFailedScans = false,
                 deltaScans = false,
                 deltaScanLimit = Int.MAX_VALUE,
@@ -180,6 +177,23 @@ class FossIdConfigTest : WordSpec({
         }
     }
 
+    "createUrlProvider" should {
+        "initialize correct URL mappings" {
+            val url = "https://changeit.example.org/foo"
+            val scannerConfig = mapOf(
+                "serverUrl" to SERVER_URL,
+                "user" to USER,
+                "apiKey" to API_KEY,
+                "urlMappingChangeHost" to "$url -> $SERVER_URL"
+            ).toScannerConfig()
+
+            val fossIdConfig = FossIdConfig.create(scannerConfig)
+            val urlProvider = fossIdConfig.createUrlProvider()
+
+            urlProvider.getUrl(url) shouldBe SERVER_URL
+        }
+    }
+
     "createService" should {
         "create a correctly configured FossIdRestService" {
             val loginPage = "Welcome to FossID"
@@ -205,7 +219,7 @@ class FossIdConfigTest : WordSpec({
                 )
 
                 val fossIdConfig = FossIdConfig.create(scannerConfig)
-                val service = FossIdRestService.createService(fossIdConfig.serverUrl)
+                val service = FossIdRestService.create(fossIdConfig.serverUrl)
 
                 service.getLoginPage().string() shouldBe loginPage
             } finally {

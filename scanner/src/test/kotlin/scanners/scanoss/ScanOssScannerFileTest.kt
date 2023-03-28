@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,9 +23,8 @@ import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.maps.shouldHaveSize
-import io.kotest.matchers.shouldBe
+import io.kotest.matchers.collections.containExactly
+import io.kotest.matchers.should
 
 import io.mockk.every
 import io.mockk.spyk
@@ -34,11 +33,14 @@ import io.mockk.verify
 import java.io.File
 import java.util.UUID
 
+import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.PackageType
+import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.config.DownloaderConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
-import org.ossreviewtoolkit.utils.test.shouldNotBeNull
+import org.ossreviewtoolkit.scanner.ScanContext
 
-const val TEST_FILE_TO_SCAN = "src/test/assets/scanoss/filesToScan/ScannerFactory.kt"
+private val TEST_FILE_TO_SCAN = File("src/test/assets/scanoss/filesToScan/ScannerFactory.kt")
 
 /**
  * A test for scanning a single file with the [ScanOss] scanner.
@@ -74,22 +76,27 @@ class ScanOssScannerFileTest : StringSpec({
         } answers {
             UUID.fromString("bf5401e9-03b3-4c91-906c-cadb90487b8c")
         }
-        val result = scanner.scanPath(File(TEST_FILE_TO_SCAN))
+
+        val summary = scanner.scanPath(
+            TEST_FILE_TO_SCAN,
+            ScanContext(labels = emptyMap(), packageType = PackageType.PACKAGE)
+        )
 
         verify(exactly = 1) {
             scanner.createWfpForFile(TEST_FILE_TO_SCAN)
         }
 
-        result.scanner shouldNotBeNull {
-            results.scanResults shouldHaveSize 1
-            results.scanResults[results.scanResults.firstKey()] shouldNotBeNull {
-                this shouldHaveSize 1
-                this.first() shouldNotBeNull {
-                    summary.packageVerificationCode shouldBe "027fef3ecf34d1069b3cd60dad127195aeb069be"
-                    summary.licenseFindings shouldHaveSize 1
-                    summary.licenseFindings.first().license.toString() shouldBe "Apache-2.0"
-                }
-            }
+        with(summary) {
+            licenseFindings should containExactly(
+                LicenseFinding(
+                    license = "Apache-2.0",
+                    location = TextLocation(
+                        path = "scanner/src/main/kotlin/ScannerFactory.kt",
+                        line = TextLocation.UNKNOWN_LINE
+                    ),
+                    score = 100.0f
+                )
+            )
         }
     }
 })

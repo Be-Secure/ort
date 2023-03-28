@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,8 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonInclude
-
-import java.util.SortedSet
 
 import org.ossreviewtoolkit.utils.common.zip
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
@@ -33,7 +31,6 @@ import org.ossreviewtoolkit.utils.spdx.SpdxExpression
  * package with corrections. This is required because the metadata provided by a package can be wrong (e.g. outdated
  * VCS data) or incomplete.
  */
-@JsonIgnoreProperties(value = [/* Backwards-compatibility: */ "declared_licenses"])
 @JsonInclude(JsonInclude.Include.NON_NULL)
 data class PackageCurationData(
     /**
@@ -48,19 +45,18 @@ data class PackageCurationData(
     val purl: String? = null,
 
     /**
-     * An optional additional identifier in [CPE syntax](https://cpe.mitre.org/specification/).
+     * An additional identifier in [CPE syntax](https://cpe.mitre.org/specification/).
      */
     val cpe: String? = null,
 
     /**
-     * The list of authors of this package.
+     * The set of authors of the package.
      */
-    val authors: SortedSet<String>? = null,
+    val authors: Set<String>? = null,
 
     /**
-     * The concluded license as an [SpdxExpression]. It can be used to correct the [declared licenses of a package]
-     * [Package.declaredLicenses] in case the found in the packages metadata or the licenses detected by a scanner do
-     * not match reality.
+     * The concluded license as an [SpdxExpression]. It can be used to override the [declared][Package.declaredLicenses]
+     * / [detected][LicenseFinding.license] licenses of the package.
      */
     val concludedLicense: SpdxExpression? = null,
 
@@ -92,7 +88,8 @@ data class PackageCurationData(
     /**
      * Whether the package is metadata only.
      */
-    val isMetaDataOnly: Boolean? = null,
+    @JsonAlias("is_meta_data_only")
+    val isMetadataOnly: Boolean? = null,
 
     /**
      * Whether the package is modified compared to the original source
@@ -107,11 +104,11 @@ data class PackageCurationData(
     val declaredLicenseMapping: Map<String, SpdxExpression> = emptyMap()
 ) {
     /**
-     * Apply the curation data to the provided [targetPackage] by overriding all values of the original package with
-     * non-null values of the curation data, and return the curated package.
+     * Apply this [PackageCuration] to [targetPackage] by overriding all values of [targetPackage] with non-null values
+     * of this [PackageCurationData], and return the resulting [CuratedPackage].
      */
     fun apply(targetPackage: CuratedPackage): CuratedPackage {
-        val original = targetPackage.pkg
+        val original = targetPackage.metadata
 
         val vcsProcessed = vcs?.let {
             // Curation data for VCS information is handled specially, so we can curate only individual properties.
@@ -123,7 +120,6 @@ data class PackageCurationData(
             ).normalize()
         } ?: original.vcsProcessed
 
-        val authors = authors ?: original.authors
         val declaredLicenseMapping = targetPackage.getDeclaredLicenseMapping() + declaredLicenseMapping
         val declaredLicensesProcessed = DeclaredLicenseProcessor.process(
             original.declaredLicenses,
@@ -134,7 +130,7 @@ data class PackageCurationData(
             id = original.id,
             purl = purl ?: original.purl,
             cpe = cpe ?: original.cpe,
-            authors = authors,
+            authors = authors ?: original.authors,
             declaredLicenses = original.declaredLicenses,
             declaredLicensesProcessed = declaredLicensesProcessed,
             concludedLicense = concludedLicense ?: original.concludedLicense,
@@ -144,7 +140,7 @@ data class PackageCurationData(
             sourceArtifact = sourceArtifact ?: original.sourceArtifact,
             vcs = original.vcs,
             vcsProcessed = vcsProcessed,
-            isMetaDataOnly = isMetaDataOnly ?: original.isMetaDataOnly,
+            isMetadataOnly = isMetadataOnly ?: original.isMetadataOnly,
             isModified = isModified ?: original.isModified
         )
 
@@ -173,14 +169,14 @@ data class PackageCurationData(
             comment = setOfNotNull(comment, other.comment).joinToString("\n").takeIf { it.isNotEmpty() },
             purl = purl ?: other.purl,
             cpe = cpe ?: other.cpe,
-            authors = (authors.orEmpty() + other.authors.orEmpty()).toSortedSet(),
+            authors = authors.orEmpty() + other.authors.orEmpty(),
             concludedLicense = setOfNotNull(concludedLicense, other.concludedLicense).reduce(SpdxExpression::and),
             description = description ?: other.description,
             homepageUrl = homepageUrl ?: other.homepageUrl,
             binaryArtifact = binaryArtifact ?: other.binaryArtifact,
             sourceArtifact = sourceArtifact ?: other.sourceArtifact,
             vcs = vcs?.merge(other.vcs ?: vcs) ?: other.vcs,
-            isMetaDataOnly = isMetaDataOnly ?: other.isMetaDataOnly,
+            isMetadataOnly = isMetadataOnly ?: other.isMetadataOnly,
             isModified = isModified ?: other.isModified,
             declaredLicenseMapping = declaredLicenseMapping.zip(other.declaredLicenseMapping) { value, otherValue ->
                 (value ?: otherValue)!!

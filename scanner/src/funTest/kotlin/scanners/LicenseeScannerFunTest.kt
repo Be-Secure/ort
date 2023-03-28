@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,8 +23,8 @@ import org.ossreviewtoolkit.model.LicenseFinding
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.utils.test.ExpensiveTag
 
-class LicenseeScannerFunTest : AbstractScannerFunTest(setOf(ExpensiveTag)) {
-    override val scanner = Licensee("Licensee", scannerConfig, downloaderConfig)
+class LicenseeScannerFunTest : AbstractPathScannerWrapperFunTest(setOf(ExpensiveTag)) {
+    override val scanner = Licensee("Licensee", scannerConfig)
 
     override val expectedFileLicenses = listOf(
         LicenseFinding("Apache-2.0", TextLocation("LICENSE", TextLocation.UNKNOWN_LINE), 100.0f)

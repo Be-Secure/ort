@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 package org.ossreviewtoolkit.analyzer.managers
 
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -32,15 +33,16 @@ import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.common.replaceCredentialsInUri
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.DEFAULT_ANALYZER_CONFIGURATION
-import org.ossreviewtoolkit.utils.test.DEFAULT_REPOSITORY_CONFIGURATION
 import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.utils.test.getAssetFile
 import org.ossreviewtoolkit.utils.test.patchExpectedResult
+import org.ossreviewtoolkit.utils.test.toYaml
 
 class GoDepFunTest : WordSpec() {
-    private val projectsDir = File("src/funTest/assets/projects").absoluteFile
+    private val projectsDir = getAssetFile("projects")
     private val vcsDir = VersionControlSystem.forDirectory(projectsDir)!!
     private val vcsUrl = vcsDir.getRemoteUrl()
     private val vcsRevision = vcsDir.getRevision()
@@ -77,7 +79,7 @@ class GoDepFunTest : WordSpec() {
                             Identifier("GoDep::src/funTest/assets/projects/synthetic/godep/no-lockfile/Gopkg.toml:")
                     project.definitionFilePath shouldBe
                             "analyzer/src/funTest/assets/projects/synthetic/godep/no-lockfile/Gopkg.toml"
-                    packages.size shouldBe 0
+                    packages should beEmpty()
                     issues.size shouldBe 1
                     issues.first().message should haveSubstring("IllegalArgumentException: No lockfile found in")
                 }
@@ -90,7 +92,7 @@ class GoDepFunTest : WordSpec() {
 
                 with(result) {
                     project shouldNotBe Project.EMPTY
-                    issues.size shouldBe 0
+                    issues should beEmpty()
                 }
             }
 
@@ -148,6 +150,6 @@ class GoDepFunTest : WordSpec() {
         }
     }
 
-    private fun createGoDep(config: AnalyzerConfiguration = DEFAULT_ANALYZER_CONFIGURATION) =
-        GoDep("GoDep", USER_DIR, config, DEFAULT_REPOSITORY_CONFIGURATION)
+    private fun createGoDep(config: AnalyzerConfiguration = AnalyzerConfiguration()) =
+        GoDep("GoDep", USER_DIR, config, RepositoryConfiguration())
 }

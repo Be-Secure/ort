@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,37 +19,40 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonPropertyOrder
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
 
-import java.util.SortedMap
-import java.util.SortedSet
+import org.ossreviewtoolkit.model.utils.PackageSortedSetConverter
+import org.ossreviewtoolkit.model.utils.ProjectSortedSetConverter
 
 /**
  * A class that merges all information from individual [ProjectAnalyzerResult]s created for each found definition file.
  */
-@JsonIgnoreProperties(value = ["has_issues", /* Backwards-compatibility: */ "has_errors"], allowGetters = true)
+@JsonIgnoreProperties(value = ["has_issues"], allowGetters = true)
 data class AnalyzerResult(
     /**
      * Sorted set of the projects, as they appear in the individual analyzer results.
      */
-    val projects: SortedSet<Project>,
+    @JsonSerialize(converter = ProjectSortedSetConverter::class)
+    val projects: Set<Project>,
 
     /**
      * The set of identified packages for all projects.
      */
-    val packages: SortedSet<CuratedPackage>,
+    @JsonSerialize(converter = PackageSortedSetConverter::class)
+    val packages: Set<Package>,
 
     /**
-     * The lists of [OrtIssue]s that occurred within the analyzed projects themselves. Issues related to project
+     * The lists of [Issue]s that occurred within the analyzed projects themselves. Issues related to project
      * dependencies are contained in the dependencies of the project's scopes.
      * This property is not serialized if the map is empty to reduce the size of the result file. If there are no issues
      * at all, [AnalyzerResult.hasIssues] already contains that information.
      */
-    @JsonAlias("errors")
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val issues: SortedMap<Identifier, List<OrtIssue>> = sortedMapOf(),
+    @JsonPropertyOrder(alphabetic = true)
+    val issues: Map<Identifier, List<Issue>> = emptyMap(),
 
     /**
      * A map with [DependencyGraph]s keyed by the name of the package manager that created this graph. Package
@@ -57,7 +60,8 @@ data class AnalyzerResult(
      * this map.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val dependencyGraphs: Map<String, DependencyGraph> = sortedMapOf()
+    @JsonPropertyOrder(alphabetic = true)
+    val dependencyGraphs: Map<String, DependencyGraph> = emptyMap()
 ) {
     companion object {
         /**
@@ -65,16 +69,16 @@ data class AnalyzerResult(
          */
         @JvmField
         val EMPTY = AnalyzerResult(
-            projects = sortedSetOf(),
-            packages = sortedSetOf(),
-            issues = sortedMapOf()
+            projects = emptySet(),
+            packages = emptySet(),
+            issues = emptyMap()
         )
     }
 
     /**
-     * Return a map of all de-duplicated [OrtIssue]s associated by [Identifier].
+     * Return a map of all de-duplicated [Issue]s associated by [Identifier].
      */
-    fun collectIssues(): Map<Identifier, Set<OrtIssue>> {
+    fun collectIssues(): Map<Identifier, Set<Issue>> {
         val collectedIssues = issues.mapValuesTo(mutableMapOf()) { it.value.toMutableSet() }
 
         // Collecting issues from projects is necessary only if they use the dependency tree format; otherwise, the
@@ -110,8 +114,8 @@ data class AnalyzerResult(
     fun withResolvedScopes(): AnalyzerResult =
         if (dependencyGraphs.isNotEmpty()) {
             copy(
-                projects = projects.map { it.withResolvedScopes(dependencyGraphs[it.id.type]) }.toSortedSet(),
-                dependencyGraphs = sortedMapOf()
+                projects = projects.mapTo(mutableSetOf()) { it.withResolvedScopes(dependencyGraphs[it.id.type]) },
+                dependencyGraphs = emptyMap()
             )
         } else {
             this

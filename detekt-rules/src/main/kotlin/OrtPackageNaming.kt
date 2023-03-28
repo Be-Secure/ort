@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 Bosch.IO GmbH
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,7 +58,11 @@ class OrtPackageNaming(config: Config) : Rule(config) {
 
         val (pathPrefix, pathSuffix) = path.split(pathPattern, 2).map { File(it) }
         val projectDir = pathPrefix.name
-        val projectGroup = pathPrefix.parent?.let { ".$it" }.orEmpty()
+        val projectGroup = pathPrefix.parent
+            ?.let { ".$it" }
+            ?.replace(forwardOrBackwardSlashPattern, ".")
+            ?.replace("-", "")
+            .orEmpty()
 
         // Maintain a hard-coded mapping of exceptions to the general package naming rules.
         val projectName = when (projectDir) {

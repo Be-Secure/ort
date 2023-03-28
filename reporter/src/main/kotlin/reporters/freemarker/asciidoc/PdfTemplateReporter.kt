@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.io.File
 import org.asciidoctor.Attributes
 
 import org.ossreviewtoolkit.reporter.Reporter
+import org.ossreviewtoolkit.utils.common.safeMkdirs
 
 /**
  * A [Reporter] that creates PDF files using a combination of [Apache Freemarker][1] templates and [AsciiDoc][2]
@@ -51,7 +52,7 @@ import org.ossreviewtoolkit.reporter.Reporter
  * [2]: https://asciidoc.org/
  * [3]: https://github.com/asciidoctor/asciidoctorj
  * [4]: https://github.com/asciidoctor/asciidoctorj-pdf
- * [5]: https://github.com/asciidoctor/asciidoctor-pdf/blob/master/docs/theming-guide.adoc
+ * [5]: https://docs.asciidoctor.org/pdf-converter/latest/theme/
  */
 class PdfTemplateReporter : AsciiDocTemplateReporter("pdf", "PdfTemplate") {
     companion object {
@@ -59,25 +60,50 @@ class PdfTemplateReporter : AsciiDocTemplateReporter("pdf", "PdfTemplate") {
         private const val OPTION_PDF_FONTS_DIR = "pdf.fonts.dir"
     }
 
-    override fun processTemplateOptions(options: MutableMap<String, String>): Attributes {
-        val attributesBuilder = Attributes.builder()
+    override fun processTemplateOptions(outputDir: File, options: MutableMap<String, String>): Attributes =
+        Attributes.builder().apply {
+            val pdfThemeAttribute = options.remove(OPTION_PDF_THEME_FILE)?.let {
+                val pdfThemeFile = File(it).absoluteFile
 
-        options.remove(OPTION_PDF_THEME_FILE)?.let {
-            val pdfThemeFile = File(it).absoluteFile
+                require(pdfThemeFile.isFile) { "Could not find PDF theme file at '$pdfThemeFile'." }
 
-            require(pdfThemeFile.isFile) { "Could not find PDF theme file at '$pdfThemeFile'." }
+                pdfThemeFile.path
+            } ?: run {
+                // Images are being looked up relative to the themes directory. As images currently are the only use for
+                // the themes directory, point it at the images directory. However, the themes directory does not
+                // support the "uri:classloader:" syntax and can only refer to local paths, see
+                // https://github.com/asciidoctor/asciidoctor-pdf/issues/2383. So extract the images resource to the
+                // temporary directory and point to there.
+                val imagesDir = outputDir.resolve("images").safeMkdirs()
+                extractImageResources(imagesDir)
+                attribute("pdf-themesdir", imagesDir.absolutePath)
 
-            attributesBuilder.attribute("pdf-theme", pdfThemeFile.toString())
+                "uri:classloader:/templates/asciidoc/pdf-theme.yml"
+            }
+
+            attribute("pdf-theme", pdfThemeAttribute)
+
+            val pdfFontsDirAttribute = options.remove(OPTION_PDF_FONTS_DIR)?.let {
+                val pdfFontsDir = File(it).absoluteFile
+
+                require(pdfFontsDir.isDirectory) { "Could not find PDF fonts directory at '$pdfFontsDir'." }
+
+                pdfFontsDir.path
+            } ?: "uri:classloader:/fonts"
+
+            attribute("pdf-fontsdir", "$pdfFontsDirAttribute,GEM_FONTS_DIR")
+        }.build()
+
+    private fun extractImageResources(targetDir: File) {
+        val imagesResourceDir = "/images"
+        val imageNames = listOf("ort.png")
+
+        imageNames.forEach { imageName ->
+            javaClass.getResourceAsStream("$imagesResourceDir/$imageName").use { inputStream ->
+                targetDir.resolve(imageName).outputStream().use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
         }
-
-        options.remove(OPTION_PDF_FONTS_DIR)?.let {
-            val pdfFontsDir = File(it).absoluteFile
-
-            require(pdfFontsDir.isDirectory) { "Could not find PDF fonts directory at '$pdfFontsDir'." }
-
-            attributesBuilder.attribute("pdf-fontsdir", "$pdfFontsDir,GEM_FONTS_DIR")
-        }
-
-        return attributesBuilder.build()
     }
 }

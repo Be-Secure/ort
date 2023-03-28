@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import java.time.Instant
 import java.util.SortedSet
 
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
 import org.ossreviewtoolkit.utils.common.FileMatcher
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
@@ -68,12 +68,26 @@ data class ScanSummary(
 
     /**
      * The list of issues that occurred during the scan. This property is not serialized if the list is empty to reduce
-     * the size of the result file. If there are no issues at all, [ScanRecord.hasIssues] already contains that
+     * the size of the result file. If there are no issues at all, [ScannerRun.hasIssues] already contains that
      * information.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
-    val issues: List<OrtIssue> = emptyList()
+    val issues: List<Issue> = emptyList()
 ) {
+    companion object {
+        /**
+         * A constant for a [ScannerRun] where all properties are empty.
+         */
+        @JvmField
+        val EMPTY = ScanSummary(
+            startTime = Instant.EPOCH,
+            endTime = Instant.EPOCH,
+            packageVerificationCode = "",
+            licenseFindings = sortedSetOf(),
+            copyrightFindings = sortedSetOf()
+        )
+    }
+
     @get:JsonIgnore
     val licenses: Set<SpdxExpression> = licenseFindings.mapTo(mutableSetOf()) { it.license }
 
@@ -84,7 +98,7 @@ data class ScanSummary(
     fun filterByPath(path: String): ScanSummary {
         if (path.isBlank()) return this
 
-        val rootLicenseMatcher = RootLicenseMatcher(LicenseFilenamePatterns.getInstance())
+        val rootLicenseMatcher = RootLicenseMatcher(LicenseFilePatterns.getInstance())
         val applicableLicenseFiles = rootLicenseMatcher.getApplicableRootLicenseFindingsForDirectories(
             licenseFindings = licenseFindings,
             directories = listOf(path)

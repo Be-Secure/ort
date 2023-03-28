@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2020 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@
  */
 
 package org.ossreviewtoolkit.model.licenses
-
-import java.util.SortedSet
 
 import org.ossreviewtoolkit.model.CopyrightFinding
 import org.ossreviewtoolkit.model.Identifier
@@ -80,7 +78,7 @@ data class DeclaredLicenseInfo(
     /**
      * The set of authors.
      */
-    val authors: SortedSet<String>,
+    val authors: Set<String>,
 
     /**
      * The unmodified set of declared licenses.

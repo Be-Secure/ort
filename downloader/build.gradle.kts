@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,16 +27,8 @@ dependencies {
 
     implementation(project(":utils:ort-utils"))
 
-    // Force the generated Maven POM to use the same version of "jsch" Gradle resolves the version conflict to.
-    implementation("com.jcraft:jsch") {
-        version {
-            strictly("0.1.55")
-        }
-    }
-
     implementation(libs.jgit)
-    implementation(libs.jgitJsch)
-    implementation(libs.jschAgentProxy)
+    implementation(libs.jgitSshApacheAgent)
     implementation(libs.svnkit)
 
     testImplementation(libs.mockk)

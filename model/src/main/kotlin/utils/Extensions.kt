@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2021 HERE Europe B.V.
+ * Copyright (C) 2020 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,102 +19,108 @@
 
 package org.ossreviewtoolkit.model.utils
 
-import java.io.File
 import java.net.URI
 
 import org.ossreviewtoolkit.clients.clearlydefined.ComponentType
 import org.ossreviewtoolkit.clients.clearlydefined.Coordinates
 import org.ossreviewtoolkit.clients.clearlydefined.Provider
 import org.ossreviewtoolkit.clients.clearlydefined.SourceLocation
-import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
-import org.ossreviewtoolkit.model.Project
+import org.ossreviewtoolkit.model.PackageProvider
 import org.ossreviewtoolkit.model.RemoteArtifact
-import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.TextLocation
-import org.ossreviewtoolkit.model.VcsInfoCurationData
+import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.utils.common.percentEncode
 
 internal fun TextLocation.prependPath(prefix: String): String =
     if (prefix.isBlank()) path else "${prefix.removeSuffix("/")}/$path"
 
 /**
- * Map an [Identifier] to a ClearlyDefined [ComponentType] and [Provider]. Note that an
- * [identifier's type][Identifier.type] in ORT currently implies a default provider. Return null if a mapping is not
- * possible.
+ * Map the [type][Identifier.type] of a [package identifier][Package.id] to a ClearlyDefined [ComponentType], or return
+ * null if a mapping is not possible.
  */
-fun Identifier.toClearlyDefinedTypeAndProvider(): Pair<ComponentType, Provider>? =
-    when (type) {
-        "Bower" -> ComponentType.GIT to Provider.GITHUB
-        "CocoaPods" -> ComponentType.POD to Provider.COCOAPODS
-        "Composer" -> ComponentType.COMPOSER to Provider.PACKAGIST
-        "Crate" -> ComponentType.CRATE to Provider.CRATES_IO
-        "DotNet", "NuGet" -> ComponentType.NUGET to Provider.NUGET
-        "Gem" -> ComponentType.GEM to Provider.RUBYGEMS
-        "GoDep", "GoMod" -> ComponentType.GO to Provider.GOLANG
-        "Maven" -> ComponentType.MAVEN to Provider.MAVEN_CENTRAL
-        "NPM" -> ComponentType.NPM to Provider.NPM_JS
-        "PyPI" -> ComponentType.PYPI to Provider.PYPI
-        "Pub" -> ComponentType.GIT to Provider.GITHUB
+fun Package.toClearlyDefinedType(): ComponentType? =
+    when (id.type) {
+        "Bower" -> ComponentType.GIT
+        "CocoaPods" -> ComponentType.POD
+        "Composer" -> ComponentType.COMPOSER
+        "Crate" -> ComponentType.CRATE
+        "Gem" -> ComponentType.GEM
+        "Go" -> ComponentType.GO
+        "Maven" -> ComponentType.MAVEN
+        "NPM" -> ComponentType.NPM
+        "NuGet" -> ComponentType.NUGET
+        "Pub" -> ComponentType.GIT
+        "PyPI" -> ComponentType.PYPI
         else -> null
     }
 
 /**
- * Map an ORT [Identifier] to ClearlyDefined [Coordinates], or to null if mapping is not possible.
+ * Determine the ClearlyDefined [Provider] based on a [Package]'s location as defined by the [RemoteArtifact] URLs or
+ * the [VcsInfo] URL. Return null if a mapping is not possible.
  */
-fun Identifier.toClearlyDefinedCoordinates(): Coordinates? =
-    toClearlyDefinedTypeAndProvider()?.let { (type, provider) ->
-        Coordinates(
-            type = type,
-            provider = provider,
-            namespace = namespace.takeUnless { it.isEmpty() },
-            name = name,
-            revision = version.takeUnless { it.isEmpty() }
-        )
+fun Package.toClearlyDefinedProvider(): Provider? =
+    sequenceOf(
+        binaryArtifact.url,
+        sourceArtifact.url,
+        vcsProcessed.url
+    ).firstNotNullOfOrNull { url ->
+        PackageProvider.get(url)?.let { provider ->
+            Provider.values().find { it.name == provider.name }
+        }
     }
 
-/** Regular expression to match VCS URLs supported by ClearlyDefined. */
-private val REG_GIT_URL = Regex(".+://github.com/(.+)/(.+).git")
+/**
+ * Map an ORT [Package] to ClearlyDefined [Coordinates], or to null if a mapping is not possible.
+ */
+fun Package.toClearlyDefinedCoordinates(): Coordinates? {
+    val type = toClearlyDefinedType() ?: return null
+    val provider = toClearlyDefinedProvider() ?: type.defaultProvider ?: return null
+
+    return Coordinates(
+        type = type,
+        provider = provider,
+        namespace = id.namespace.takeUnless { it.isEmpty() },
+        name = id.name,
+        revision = id.version.takeUnless { it.isEmpty() }
+    )
+}
 
 /**
- * Create a ClearlyDefined [SourceLocation] from an [Identifier]. Prefer a [VcsInfoCurationData], but eventually fall
- * back to a [RemoteArtifact], or return null if not enough information is available.
+ * Create a ClearlyDefined [SourceLocation] from a [Package]. Prefer [VcsInfo], but eventually fall back to the
+ * [RemoteArtifact] for the source code, or return null if not enough information is available.
  */
-fun Identifier.toClearlyDefinedSourceLocation(
-    vcs: VcsInfoCurationData?,
-    sourceArtifact: RemoteArtifact?
-): SourceLocation? {
-    val vcsUrl = vcs?.url
-    val vcsRevision = vcs?.revision
-    val matchGroups = vcsUrl?.let { REG_GIT_URL.matchEntire(it)?.groupValues }
+fun Package.toClearlyDefinedSourceLocation(): SourceLocation? {
+    val coordinates = toClearlyDefinedCoordinates() ?: return null
 
     return when {
-        // GitHub is the only VCS provider supported by ClearlyDefined for now.
         // TODO: Find out how to handle VCS curations without a revision.
-        vcsUrl != null && matchGroups != null && vcsRevision != null -> {
+        vcsProcessed != VcsInfo.EMPTY -> {
             SourceLocation(
-                name = matchGroups[2],
-                namespace = matchGroups[1],
-                path = vcs.path,
-                provider = Provider.GITHUB,
-                revision = vcsRevision,
                 type = ComponentType.GIT,
-                url = vcsUrl
+                provider = coordinates.provider,
+                namespace = coordinates.namespace,
+                name = coordinates.name,
+
+                revision = vcsProcessed.revision,
+
+                path = vcsProcessed.path,
+                url = vcsProcessed.url
             )
         }
 
-        sourceArtifact != null -> {
-            toClearlyDefinedTypeAndProvider()?.let { (_, provider) ->
-                SourceLocation(
-                    name = name,
-                    namespace = namespace.takeUnless { it.isEmpty() },
-                    provider = provider,
-                    revision = version,
-                    type = ComponentType.SOURCE_ARCHIVE,
-                    url = sourceArtifact.url
-                )
-            }
+        sourceArtifact != RemoteArtifact.EMPTY -> {
+            SourceLocation(
+                type = ComponentType.SOURCE_ARCHIVE,
+                provider = coordinates.provider,
+                namespace = coordinates.namespace,
+                name = coordinates.name,
+
+                revision = id.version,
+
+                url = sourceArtifact.url
+            )
         }
 
         else -> null
@@ -222,22 +228,6 @@ fun createPurl(
 }
 
 /**
- * Return a list of [ScanResult]s where all results contain only findings from the same directory as the [project]'s
- * definition file.
- */
-fun List<ScanResult>.filterByProject(project: Project): List<ScanResult> {
-    val parentPath = File(project.definitionFilePath).parent ?: return this
-
-    return map { result ->
-        if (result.provenance is ArtifactProvenance) {
-            result
-        } else {
-            result.filterByPath(parentPath)
-        }
-    }
-}
-
-/**
  * Return the repo manifest path parsed from this string. The string is interpreted as a URL and the manifest path is
  * expected as the value of the "manifest" query parameter, for example:
  * http://example.com/repo.git?manifest=manifest.xml.
@@ -252,9 +242,3 @@ fun String.parseRepoManifestPath() =
             ?.get(1)
             ?.takeUnless { it.isEmpty() }
     }.getOrNull()
-
-/**
- * Messages are not rendered using additional white spaces and newlines in the reports. However, resolutions are based
- * on the messages. Therefore, characters that are not shown in the reports need to be replaced in the comparison.
- */
-fun String.sanitizeMessage() = replace(Regex("\\s+"), " ").trim()

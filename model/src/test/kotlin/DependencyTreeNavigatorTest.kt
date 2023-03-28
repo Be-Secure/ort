@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
                 )
 
                 val project = Project.EMPTY.copy(scopeDependencies = sortedSetOf(scope))
-                val paths = navigator.getShortestPaths(project)[scope.name]!!
+                val paths = navigator.getShortestPaths(project).getValue(scope.name)
 
                 paths should containExactly(
                     Identifier("A") to emptyList(),

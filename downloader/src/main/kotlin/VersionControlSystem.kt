@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,8 +19,6 @@
 
 package org.ossreviewtoolkit.downloader
 
-import com.vdurmont.semver4j.Semver
-
 import java.io.File
 import java.io.IOException
 import java.util.ServiceLoader
@@ -30,7 +28,7 @@ import org.apache.logging.log4j.kotlin.Logging
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
-import org.ossreviewtoolkit.model.config.LicenseFilenamePatterns
+import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.collectMessages
@@ -38,9 +36,17 @@ import org.ossreviewtoolkit.utils.common.uppercaseFirstChar
 import org.ossreviewtoolkit.utils.ort.ORT_REPO_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
-abstract class VersionControlSystem {
+import org.semver4j.Semver
+
+abstract class VersionControlSystem(
+    /**
+     * The command line tool used by this implementation if any. Via this property, the instance can check whether
+     * the version control system is available.
+     */
+    private val commandLineTool: CommandLineTool? = null
+) {
     companion object : Logging {
-        private val LOADER = ServiceLoader.load(VersionControlSystem::class.java)!!
+        private val LOADER = ServiceLoader.load(VersionControlSystem::class.java)
 
         /**
          * The set of all available [Version Control Systems][VersionControlSystem] in the classpath, sorted by
@@ -151,7 +157,7 @@ abstract class VersionControlSystem {
          */
         internal fun getSparseCheckoutGlobPatterns(): List<String> {
             val globPatterns = mutableListOf("*$ORT_REPO_CONFIG_FILENAME")
-            val licensePatterns = LicenseFilenamePatterns.getInstance()
+            val licensePatterns = LicenseFilePatterns.getInstance()
             return licensePatterns.allLicenseFilenames.generateCapitalizationVariants().mapTo(globPatterns) { "**/$it" }
         }
 
@@ -208,8 +214,14 @@ abstract class VersionControlSystem {
     /**
      * Return true if this [VersionControlSystem] is available for use.
      */
-    fun isAvailable(): Boolean = this !is CommandLineTool || isInPath()
+    fun isAvailable(): Boolean = commandLineTool?.isInPath() ?: true
 
+    /**
+     * Test - in a way specific to this [VersionControlSystem] - whether it can be used to download from the provided
+     * [vcsUrl]. This function is called by [isApplicableUrl] if it cannot be determined from parsing the [vcsUrl]
+     * whether it is applicable for this [VersionControlSystem] or not. A concrete implementation can do specific
+     * checks here that may also include network requests.
+     */
     protected abstract fun isApplicableUrlInternal(vcsUrl: String): Boolean
 
     /**
@@ -233,7 +245,10 @@ abstract class VersionControlSystem {
             throw DownloadException("Failed to initialize $type working tree at '$targetDir'.", e)
         }
 
-        val revisionCandidates = getRevisionCandidates(workingTree, pkg, allowMovingRevisions)
+        val revisionCandidates = getRevisionCandidates(workingTree, pkg, allowMovingRevisions).getOrElse {
+            throw DownloadException("$type failed to get revisions from URL '${pkg.vcsProcessed.url}'.", it)
+        }
+
         val results = mutableListOf<Result<String>>()
 
         for ((index, revision) in revisionCandidates.withIndex()) {
@@ -256,16 +271,16 @@ abstract class VersionControlSystem {
         }
 
         logger.info {
-            "Successfully downloaded revision '$workingTreeRevision' for package '${pkg.id.toCoordinates()}.'."
+            "Successfully downloaded revision '$workingTreeRevision' for package '${pkg.id.toCoordinates()}'."
         }
 
         return workingTree
     }
 
     /**
-     * Get a set of revision candidates for the [package][pkg]. The iteration order of the elements of the returned set
-     * represents the priority of the revision candidates. If no revision candidates can be found a [DownloadException]
-     * is thrown.
+     * Get a list of distinct revision candidates for the [package][pkg]. The iteration order of the elements in the
+     * list represents the priority of the revision candidates. If no revision candidates can be found a
+     * [DownloadException] is thrown.
      *
      * The provided [workingTree] must have been created from the [processed VCS information][Package.vcsProcessed] of
      * the [package][pkg] for the function to return correct results.
@@ -282,36 +297,20 @@ abstract class VersionControlSystem {
         workingTree: WorkingTree,
         pkg: Package,
         allowMovingRevisions: Boolean
-    ): Set<String> {
-        val revisionCandidates = mutableSetOf<String>()
+    ): Result<List<String>> {
+        val revisionCandidates = mutableListOf<String>()
         val emptyRevisionCandidatesException = DownloadException("Unable to determine a revision to checkout.")
-
-        runCatching {
-            pkg.vcsProcessed.revision.also {
-                if (it.isNotBlank() && (allowMovingRevisions || isFixedRevision(workingTree, it))) {
-                    if (revisionCandidates.add(it)) {
-                        logger.info {
-                            "Adding $type revision '$it' (taken from package metadata) as a candidate."
-                        }
-                    }
-                }
-            }
-        }.onFailure {
-            logger.info {
-                "Metadata has invalid $type revision '${pkg.vcsProcessed.revision}': ${it.collectMessages()}"
-            }
-
-            emptyRevisionCandidatesException.addSuppressed(it)
-        }
 
         fun addGuessedRevision(project: String, version: String): Boolean =
             runCatching {
                 workingTree.guessRevisionName(project, version).also {
-                    if (revisionCandidates.add(it)) {
+                    if (it !in revisionCandidates) {
                         logger.info {
                             "Adding $type revision '$it' (guessed from package '$project' and version '$version') as " +
                                     "a candidate."
                         }
+
+                        revisionCandidates += it
                     }
                 }
             }.onFailure {
@@ -323,6 +322,34 @@ abstract class VersionControlSystem {
                 emptyRevisionCandidatesException.addSuppressed(it)
             }.isSuccess
 
+        fun addMetadataRevision(revision: String) {
+            if (revision.isBlank() || revision in revisionCandidates) return
+
+            isFixedRevision(workingTree, revision).onSuccess { isFixedRevision ->
+                if (isFixedRevision) {
+                    logger.info {
+                        "Adding $type fixed revision '$revision' (taken from package metadata) as a candidate."
+                    }
+
+                    // Add a fixed revision from package metadata with the highest priority.
+                    revisionCandidates.add(0, revision)
+                } else if (allowMovingRevisions) {
+                    logger.info {
+                        "Adding $type moving revision '$revision' (taken from package metadata) as a candidate."
+                    }
+
+                    // Add a moving revision from package metadata with lower priority than guessed fixed revisions.
+                    revisionCandidates += revision
+                }
+            }.onFailure {
+                logger.info {
+                    "Metadata has invalid $type revision '$revision': ${it.collectMessages()}"
+                }
+
+                emptyRevisionCandidatesException.addSuppressed(it)
+            }
+        }
+
         if (!addGuessedRevision(pkg.id.name, pkg.id.version)) {
             when {
                 pkg.id.type == "NPM" && pkg.id.namespace.isNotEmpty() -> {
@@ -330,20 +357,21 @@ abstract class VersionControlSystem {
                     // e.g. support Git tag of the format "@organisation/my-component@x.x.x".
                     addGuessedRevision("${pkg.id.namespace}/${pkg.id.name}", pkg.id.version)
                 }
-
-                pkg.id.type == "GoMod" && pkg.vcsProcessed.path.isNotEmpty() -> {
-                    // Fallback for GoMod packages from mono repos which use the tag format described in
-                    // https://golang.org/ref/mod#vcs-version.
-                    val tag = "${pkg.vcsProcessed.path}/${pkg.id.version}"
-
-                    if (tag in workingTree.listRemoteTags()) revisionCandidates += tag
-                }
             }
         }
 
-        if (revisionCandidates.isEmpty()) throw emptyRevisionCandidatesException
+        addMetadataRevision(pkg.vcsProcessed.revision)
 
-        return revisionCandidates
+        if (type == VcsType.GIT && pkg.vcsProcessed.revision == "master") {
+            // Also try with Git's upcoming default branch name in case the repository is already using it.
+            addMetadataRevision("main")
+        }
+
+        return if (revisionCandidates.isEmpty()) {
+            Result.failure(emptyRevisionCandidatesException)
+        } else {
+            Result.success(revisionCandidates)
+        }
     }
 
     /**
@@ -366,18 +394,21 @@ abstract class VersionControlSystem {
     ): Result<String>
 
     /**
-     * Check whether the given [revision] is likely to name a fixed revision that does not move.
+     * Check whether the given [revision] is likely to name a fixed revision that does not move. Return a [Result] with
+     * a [Boolean] on success, or with a [Throwable] is there was a failure.
      */
-    fun isFixedRevision(workingTree: WorkingTree, revision: String) =
-        revision.isNotBlank()
-                && revision !in latestRevisionNames
-                && (revision !in workingTree.listRemoteBranches() || revision in workingTree.listRemoteTags())
+    fun isFixedRevision(workingTree: WorkingTree, revision: String): Result<Boolean> =
+        runCatching {
+            revision.isNotBlank()
+                    && revision !in latestRevisionNames
+                    && (revision !in workingTree.listRemoteBranches() || revision in workingTree.listRemoteTags())
+        }
 
     /**
      * Check whether the VCS tool is at least of the specified [expectedVersion], e.g. to check for features.
      */
     fun isAtLeastVersion(expectedVersion: String): Boolean {
-        val actualVersion = Semver(getVersion(), Semver.SemverType.LOOSE)
-        return actualVersion.isGreaterThanOrEqualTo(expectedVersion)
+        val actualVersion = Semver.coerce(getVersion())
+        return actualVersion.isGreaterThanOrEqualTo(Semver.coerce(expectedVersion))
     }
 }

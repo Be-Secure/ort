@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,25 +17,21 @@
  * License-Filename: LICENSE
  */
 
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
 import java.nio.charset.Charset
 
+@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
     // Apply core plugins.
     application
-
-    // Apply third-party plugins.
-    alias(libs.plugins.shadow)
 }
 
 application {
     applicationName = "orth"
+    applicationDefaultJvmArgs = listOf(
+        "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
+        "--add-opens", "java.base/java.io=ALL-UNNAMED"
+    )
     mainClass.set("org.ossreviewtoolkit.helper.HelperMainKt")
-}
-
-tasks.withType<ShadowJar>().configureEach {
-    isZip64 = true
 }
 
 tasks.named<CreateStartScripts>("startScripts").configure {
@@ -88,6 +83,7 @@ repositories {
 dependencies {
     implementation(project(":analyzer"))
     implementation(project(":downloader"))
+    implementation(project(":plugins:package-curation-providers:file-package-curation-provider"))
     implementation(project(":scanner"))
     implementation(project(":utils:ort-utils"))
 
@@ -95,6 +91,7 @@ dependencies {
     implementation(libs.commonsCompress)
     implementation(libs.exposedCore)
     implementation(libs.hikari)
+    implementation(libs.jacksonModuleKotlin)
     implementation(libs.jslt)
     implementation(libs.log4jApiToSlf4j)
     implementation(libs.logbackClassic)

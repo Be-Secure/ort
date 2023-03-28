@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 Bosch.IO GmbH
+ * Copyright (C) 2021 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,14 +33,11 @@ import io.mockk.mockk
 import org.ossreviewtoolkit.model.AdvisorResult
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
-import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.config.AdvisorConfiguration
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class AdvisorTest : WordSpec({
@@ -50,7 +47,7 @@ class AdvisorTest : WordSpec({
 
             val advisor = createAdvisor(listOf(provider))
 
-            advisor.retrieveFindings(OrtResult.EMPTY) should beTheSameInstanceAs(OrtResult.EMPTY)
+            advisor.advise(OrtResult.EMPTY) should beTheSameInstanceAs(OrtResult.EMPTY)
 
             coVerify(exactly = 0) {
                 provider.retrievePackageFindings(any())
@@ -59,11 +56,11 @@ class AdvisorTest : WordSpec({
 
         "return an ORT result with an empty advisor run if there are no packages" {
             val provider = mockkAdviceProvider()
-            val originResult = createOrtResultWithPackages(emptyList())
+            val originResult = createOrtResultWithPackages(emptySet())
 
             val advisor = createAdvisor(listOf(provider))
 
-            val result = advisor.retrieveFindings(originResult)
+            val result = advisor.advise(originResult)
 
             result.advisor shouldNotBeNull {
                 results.advisorResults should beEmpty()
@@ -77,7 +74,7 @@ class AdvisorTest : WordSpec({
         "return the merged results of advice providers" {
             val pkg1 = createPackage(1)
             val pkg2 = createPackage(2)
-            val packages = listOf(pkg1, pkg2)
+            val packages = setOf(pkg1, pkg2)
             val originResult = createOrtResultWithPackages(packages)
 
             val advisorResult1 = mockk<AdvisorResult>()
@@ -103,7 +100,7 @@ class AdvisorTest : WordSpec({
 
             val advisor = createAdvisor(listOf(provider1, provider2))
 
-            val result = advisor.retrieveFindings(originResult)
+            val result = advisor.advise(originResult)
 
             result.advisor shouldNotBeNull {
                 results.advisorResults shouldBe expectedResults
@@ -130,14 +127,12 @@ private fun createAdvisor(providers: List<AdviceProvider>): Advisor {
 /**
  * Create an [OrtResult] containing the given [packages].
  */
-private fun createOrtResultWithPackages(packages: List<Package>): OrtResult =
+private fun createOrtResultWithPackages(packages: Set<Package>): OrtResult =
     OrtResult.EMPTY.copy(
-        analyzer = AnalyzerRun(
-            environment = Environment(),
-            config = AnalyzerConfiguration(),
+        analyzer = AnalyzerRun.EMPTY.copy(
             result = AnalyzerResult(
-                projects = sortedSetOf(Project.EMPTY.copy(id = Identifier.EMPTY.copy(name = "test-project"))),
-                packages = packages.map { CuratedPackage(it) }.toSortedSet()
+                projects = setOf(Project.EMPTY.copy(id = Identifier.EMPTY.copy(name = "test-project"))),
+                packages = packages
             )
         )
     )

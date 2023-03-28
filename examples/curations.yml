@@ -11,18 +11,20 @@
 #    homepage_url: "http://example.com"
 #    binary_artifact:
 #      url: "http://example.com/binary.zip"
-#      hash: "ddce269a1e3d054cae349621c198dd52"
-#      hash_algorithm: "MD5"
+#      hash:
+#        value: "ddce269a1e3d054cae349621c198dd52"
+#        algorithm: "MD5"
 #    source_artifact:
 #      url: "http://example.com/sources.zip"
-#      hash: "ddce269a1e3d054cae349621c198dd52"
-#      hash_algorithm: "MD5"
+#      hash:
+#        value: "ddce269a1e3d054cae349621c198dd52"
+#        algorithm: "MD5"
 #    vcs:
 #      type: "Git"
 #      url: "http://example.com/repo.git"
 #      revision: "1234abc"
 #      path: "subdirectory"
-#    is_meta_data_only: true # Whether the package is metadata only.
+#    is_metadata_only: true # Whether the package is metadata only.
 #    is_modified: true # Whether the package is modified compared to the original source.
 
 - id: "Maven:asm:asm" # No version means the curation will be applied to all versions of the package.
@@ -55,7 +57,7 @@
 - id: "Maven:org.jetbrains.kotlin:kotlin-bom"
   curations:
     comment: "The package is a Maven BOM file and thus is metadata only."
-    is_meta_data_only: true
+    is_metadata_only: true
 
 - id: "PyPI::pyramid-workflow:1.0.0"
   curations:

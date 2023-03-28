@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Bosch.IO GmbH
+ * Copyright (C) 2022 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import io.kotest.matchers.result.shouldBeSuccess
 
 import java.time.Instant
 
-import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService
+import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.Server
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.HashAlgorithm
@@ -40,15 +40,16 @@ import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
+import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 
 class ClearlyDefinedStorageFunTest : StringSpec({
-    val storage = ClearlyDefinedStorage(ClearlyDefinedStorageConfiguration(ClearlyDefinedService.Server.PRODUCTION.url))
+    val storage = ClearlyDefinedStorage(ClearlyDefinedStorageConfiguration(Server.PRODUCTION.apiUrl))
 
     "Scan results for ScanCode 3.0.2 should be read correctly" {
         val id = Identifier("Maven:com.vdurmont:semver4j:3.1.0")
-        val result = storage.read(id)
+        val results = storage.read(id)
 
-        result.shouldBeSuccess {
+        results.shouldBeSuccess {
             it shouldContain ScanResult(
                 provenance = ArtifactProvenance(
                     sourceArtifact = RemoteArtifact(
@@ -69,10 +70,10 @@ class ClearlyDefinedStorageFunTest : StringSpec({
                             "--package true --processes 2 --strip-root true --summary true --summary-key-files true " +
                             "--timeout 1000.0 --url true"
                 ),
-                summary = ScanSummary(
+                summary = ScanSummary.EMPTY.copy(
                     startTime = Instant.parse("2020-02-14T00:36:14.000335513Z"),
                     endTime = Instant.parse("2020-02-14T00:36:37.000492119Z"),
-                    packageVerificationCode = "",
+                    packageVerificationCode = SpdxConstants.NONE,
                     licenseFindings = sortedSetOf(
                         LicenseFinding(
                             license = "MIT",
@@ -83,9 +84,7 @@ class ClearlyDefinedStorageFunTest : StringSpec({
                             ),
                             score = 60.87f
                         )
-                    ),
-                    copyrightFindings = sortedSetOf(),
-                    issues = emptyList()
+                    )
                 )
             )
         }
@@ -93,9 +92,9 @@ class ClearlyDefinedStorageFunTest : StringSpec({
 
     "Scan results for ScanCode 30.1.0 should be read correctly" {
         val id = Identifier("Maven:com.sksamuel.hoplite:hoplite-core:2.1.3")
-        val result = storage.read(id)
+        val results = storage.read(id)
 
-        result.shouldBeSuccess {
+        results.shouldBeSuccess {
             it shouldContain ScanResult(
                 provenance = RepositoryProvenance(
                     vcsInfo = VcsInfo(
@@ -114,14 +113,27 @@ class ClearlyDefinedStorageFunTest : StringSpec({
                             "--license-text-diagnostics true --package true --processes 2 --strip-root true " +
                             "--summary true --summary-key-files true --timeout 1000.0 --url true"
                 ),
-                summary = ScanSummary(
+                summary = ScanSummary.EMPTY.copy(
                     startTime = Instant.parse("2022-05-02T07:34:28.000784295Z"),
                     endTime = Instant.parse("2022-05-02T07:34:59.000958218Z"),
-                    packageVerificationCode = "",
-                    licenseFindings = sortedSetOf(),
-                    copyrightFindings = sortedSetOf(),
-                    issues = emptyList()
+                    packageVerificationCode = SpdxConstants.NONE
                 )
+            )
+        }
+    }
+
+    "Scan results for packages without a namespace should be present" {
+        val id = Identifier("NPM::iobroker.eusec:0.9.9")
+        val results = storage.read(id)
+
+        results.shouldBeSuccess { result ->
+            result.map { it.provenance } shouldContain RepositoryProvenance(
+                vcsInfo = VcsInfo(
+                    type = VcsType.GIT,
+                    url = "https://github.com/bropat/ioBroker.eusec/tree/327b125548c9b806490085a2dacfdfc6e7776803",
+                    revision = "327b125548c9b806490085a2dacfdfc6e7776803"
+                ),
+                resolvedRevision = "327b125548c9b806490085a2dacfdfc6e7776803"
             )
         }
     }

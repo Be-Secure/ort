@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2019 Bosch Software Innovations GmbH
+ * Copyright (C) 2019 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ class SpdxDeclaredLicenseMappingTest : WordSpec({
                 "http://www.gnu.org/copyleft/lesser.html"
             )
 
-            SpdxDeclaredLicenseMapping.rawMapping.asSequence().forAll { (key, license) ->
+            SpdxDeclaredLicenseMapping.rawMapping.forAll { (key, license) ->
                 if (key !in keysWithImpliedVersion && license.licenses().any { it.endsWith("-only") }) {
                     key should containADigit()
                 }
@@ -97,7 +97,7 @@ class SpdxDeclaredLicenseMappingTest : WordSpec({
         }
 
         "be case-insensitive" {
-            SpdxDeclaredLicenseMapping.mapping.asSequence().forAll { (key, license) ->
+            SpdxDeclaredLicenseMapping.mapping.forAll { (key, license) ->
                 SpdxDeclaredLicenseMapping.map(key.lowercase()) shouldBe license
                 SpdxDeclaredLicenseMapping.map(key.uppercase()) shouldBe license
                 SpdxDeclaredLicenseMapping.map(key.titlecase()) shouldBe license

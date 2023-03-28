@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2019 HERE Europe B.V.
+ * Copyright (C) 2017 The ORT Project Authors (see <https://github.com/oss-review-toolkit/ort/blob/main/NOTICE>)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ package org.ossreviewtoolkit.evaluator
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.shouldBe
 
+import org.ossreviewtoolkit.model.CuratedPackage
 import org.ossreviewtoolkit.model.LicenseSource
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.licenses.ResolvedLicense
@@ -33,7 +34,12 @@ class PackageRuleTest : WordSpec() {
     private val ruleSet = ruleSet(ortResult)
 
     private fun createPackageRule(pkg: Package) =
-        PackageRule(ruleSet, "test", pkg, emptyList(), ruleSet.licenseInfoResolver.resolveLicenseInfo(pkg.id))
+        PackageRule(
+            ruleSet = ruleSet,
+            name = "test",
+            pkg = CuratedPackage(pkg),
+            resolvedLicenseInfo = ruleSet.licenseInfoResolver.resolveLicenseInfo(pkg.id)
+        )
 
     private fun PackageRule.createLicenseRule(license: SpdxSingleLicenseExpression, licenseSource: LicenseSource) =
         LicenseRule(
@@ -124,17 +130,17 @@ class PackageRuleTest : WordSpec() {
             }
         }
 
-        "isMetaDataOnly()" should {
+        "isMetadataOnly()" should {
             "return true for a package that has only metadata" {
-                val rule = createPackageRule(packageMetaDataOnly)
-                val matcher = rule.isMetaDataOnly()
+                val rule = createPackageRule(packageMetadataOnly)
+                val matcher = rule.isMetadataOnly()
 
                 matcher.matches() shouldBe true
             }
 
             "return false for a package that has not only metadata" {
                 val rule = createPackageRule(packageWithoutLicense)
-                val matcher = rule.isMetaDataOnly()
+                val matcher = rule.isMetadataOnly()
 
                 matcher.matches() shouldBe false
             }
