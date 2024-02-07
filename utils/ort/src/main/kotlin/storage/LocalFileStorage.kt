@@ -23,8 +23,6 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 
-import org.apache.logging.log4j.kotlin.Logging
-
 import org.ossreviewtoolkit.utils.common.safeMkdirs
 
 /**
@@ -37,19 +35,6 @@ open class LocalFileStorage(
      */
     val directory: File
 ) : FileStorage {
-    companion object : Logging
-
-    init {
-        if (!directory.exists()) {
-            logger.debug { "Creating directory '${directory.invariantSeparatorsPath}' for local file storage." }
-            directory.safeMkdirs()
-        } else {
-            require(directory.isDirectory) {
-                "Cannot use storage directory '${directory.invariantSeparatorsPath}' because it is not a directory."
-            }
-        }
-    }
-
     /**
      * Return the internally used path, which might differ from the provided [path] e.g. in case a suffix is added to
      * denote a compression scheme.
@@ -70,9 +55,10 @@ open class LocalFileStorage(
     }
 
     /**
-     * Return the output stream to be used when writing to the provided [path].
+     * Ensure that [path] resolves to a file in [directory], create any parent directories if needed, and return an
+     * output stream for writing to the file.
      */
-    protected open fun getOutputStream(path: String): OutputStream {
+    protected open fun safeOutputStream(path: String): OutputStream {
         val file = directory.resolve(path)
 
         require(file.canonicalFile.startsWith(directory.canonicalFile)) {
@@ -86,7 +72,7 @@ open class LocalFileStorage(
 
     @Synchronized
     override fun write(path: String, inputStream: InputStream) {
-        getOutputStream(path).use { outputStream ->
+        safeOutputStream(path).use { outputStream ->
             inputStream.use { it.copyTo(outputStream) }
         }
     }

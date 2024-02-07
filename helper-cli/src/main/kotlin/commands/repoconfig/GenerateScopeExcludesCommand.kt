@@ -39,7 +39,7 @@ import org.ossreviewtoolkit.utils.common.expandTilde
 
 internal class GenerateScopeExcludesCommand : CliktCommand(
     help = "Generate scope excludes based on common default for the package managers. The generated scope excludes " +
-            "get written to the given repository configuration file, replacing any existing scope excludes."
+        "get written to the given repository configuration file, replacing any existing scope excludes."
 ) {
     private val ortFile by option(
         "--ort-file", "-i",
@@ -131,6 +131,11 @@ private fun getScopeExcludesForPackageManager(packageManagerName: String): List<
         )
         "Gradle" -> listOf(
             ScopeExclude(
+                pattern = "annotationProcessor",
+                reason = ScopeExcludeReason.BUILD_DEPENDENCY_OF,
+                comment = "Packages to process code annotations only."
+            ),
+            ScopeExclude(
                 pattern = ".*AnnotationProcessor.*",
                 reason = ScopeExcludeReason.BUILD_DEPENDENCY_OF,
                 comment = "Packages to process code annotations only."
@@ -176,6 +181,11 @@ private fun getScopeExcludesForPackageManager(packageManagerName: String): List<
                 comment = "Packages to process code annotations only."
             ),
             ScopeExclude(
+                pattern = ".*Kapt.*",
+                reason = ScopeExcludeReason.BUILD_DEPENDENCY_OF,
+                comment = "Packages to process code annotations only."
+            ),
+            ScopeExclude(
                 pattern = "kotlinCompiler.*",
                 reason = ScopeExcludeReason.BUILD_DEPENDENCY_OF,
                 comment = "Packages for Kotlin compiler only."
@@ -194,6 +204,11 @@ private fun getScopeExcludesForPackageManager(packageManagerName: String): List<
                 pattern = "lint.*",
                 reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
                 comment = "Packages for static code analysis only."
+            ),
+            ScopeExclude(
+                pattern = "lombok",
+                reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
+                comment = "Packages from Project Lombok only."
             ),
             ScopeExclude(
                 pattern = "pmd",
@@ -233,6 +248,28 @@ private fun getScopeExcludesForPackageManager(packageManagerName: String): List<
                 pattern = "devDependencies",
                 reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
                 comment = "Packages for development only."
+            )
+        )
+        "Poetry" -> listOf(
+            ScopeExclude(
+                pattern = "dev",
+                reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
+                comment = "Packages for development only."
+            ),
+            ScopeExclude(
+                pattern = "docs",
+                reason = ScopeExcludeReason.DOCUMENTATION_DEPENDENCY_OF,
+                comment = "Packages for building the documentation only."
+            ),
+            ScopeExclude(
+                pattern = "lint",
+                reason = ScopeExcludeReason.DEV_DEPENDENCY_OF,
+                comment = "Packages for static code analysis only."
+            ),
+            ScopeExclude(
+                pattern = "test",
+                reason = ScopeExcludeReason.TEST_DEPENDENCY_OF,
+                comment = "Packages for testing only."
             )
         )
         "SBT" -> listOf(

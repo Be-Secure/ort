@@ -34,18 +34,25 @@ interface Plugin {
         /**
          * Return instances for all ORT plugins of type [T].
          */
-        inline fun <reified T : Plugin> getAll() = getLoaderFor<T>()
-            .iterator()
-            .asSequence()
-            .associateByTo(sortedMapOf(String.CASE_INSENSITIVE_ORDER)) {
-                it.type
-            }
+        inline fun <reified T : Plugin> getAll() =
+            getLoaderFor<T>()
+                .iterator()
+                .asSequence()
+                .associateByTo(sortedMapOf(String.CASE_INSENSITIVE_ORDER)) {
+                    it.type
+                }
     }
 
     /**
      * The type of the plugin.
      */
     val type: String
+
+    /**
+     * A flag to indicate whether the plugin should be enabled by default or not.
+     */
+    val isEnabledByDefault: Boolean
+        get() = true
 }
 
 /**
@@ -54,7 +61,26 @@ interface Plugin {
  */
 interface ConfigurablePluginFactory<out PLUGIN> : Plugin {
     /**
+     * Create a new instance of [PLUGIN] from [options] and [secrets].
+     */
+    fun create(options: Options, secrets: Options): PLUGIN
+}
+
+/**
+ * An interface to be implemented by [configurable plugin factories][ConfigurablePluginFactory] that provide a
+ * [typed configuration class][CONFIG]. The benefit of implementing this interface over [ConfigurablePluginFactory] is
+ * that it enforces the separation of parsing the config map and creating the plugin.
+ */
+interface TypedConfigurablePluginFactory<CONFIG, out PLUGIN> : ConfigurablePluginFactory<PLUGIN> {
+    override fun create(options: Options, secrets: Options): PLUGIN = create(parseConfig(options, secrets))
+
+    /**
      * Create a new instance of [PLUGIN] from [config].
      */
-    fun create(config: Map<String, String>): PLUGIN
+    fun create(config: CONFIG): PLUGIN
+
+    /**
+     * Parse the [options] and [secrets] map into a [CONFIG] object.
+     */
+    fun parseConfig(options: Options, secrets: Options): CONFIG
 }

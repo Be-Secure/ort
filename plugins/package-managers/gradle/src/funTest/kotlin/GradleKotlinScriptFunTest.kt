@@ -20,44 +20,39 @@
 package org.ossreviewtoolkit.plugins.packagemanagers.gradle
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.shouldBe
+import io.kotest.matchers.should
 
+import org.ossreviewtoolkit.analyzer.managers.create
 import org.ossreviewtoolkit.analyzer.managers.resolveSingleProject
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
-import org.ossreviewtoolkit.utils.test.patchExpectedResult2
-import org.ossreviewtoolkit.utils.test.toYaml
+import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
 class GradleKotlinScriptFunTest : StringSpec({
     "root project dependencies are detected correctly" {
         val definitionFile = getAssetFile("projects/synthetic/multi-kotlin-project/build.gradle.kts")
         val expectedResultFile = getAssetFile("projects/synthetic/multi-kotlin-project-expected-output-root.yml")
 
-        val result = createGradle().resolveSingleProject(definitionFile, resolveScopes = true)
+        val result = create("Gradle").resolveSingleProject(definitionFile, resolveScopes = true)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 
     "core project dependencies are detected correctly" {
         val definitionFile = getAssetFile("projects/synthetic/multi-kotlin-project/core/build.gradle.kts")
         val expectedResultFile = getAssetFile("projects/synthetic/multi-kotlin-project-expected-output-core.yml")
 
-        val result = createGradle().resolveSingleProject(definitionFile, resolveScopes = true)
+        val result = create("Gradle").resolveSingleProject(definitionFile, resolveScopes = true)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 
     "cli project dependencies are detected correctly" {
         val definitionFile = getAssetFile("projects/synthetic/multi-kotlin-project/cli/build.gradle.kts")
         val expectedResultFile = getAssetFile("projects/synthetic/multi-kotlin-project-expected-output-cli.yml")
 
-        val result = createGradle().resolveSingleProject(definitionFile, resolveScopes = true)
+        val result = create("Gradle").resolveSingleProject(definitionFile, resolveScopes = true)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 })
-
-private fun createGradle() =
-    Gradle("Gradle", USER_DIR, AnalyzerConfiguration(), RepositoryConfiguration())

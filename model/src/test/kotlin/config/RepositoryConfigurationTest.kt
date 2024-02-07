@@ -20,7 +20,6 @@
 package org.ossreviewtoolkit.model.config
 
 import com.fasterxml.jackson.databind.exc.ValueInstantiationException
-import com.fasterxml.jackson.module.kotlin.readValue
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
@@ -31,7 +30,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.model.fromYaml
 import org.ossreviewtoolkit.utils.spdx.toSpdx
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
@@ -44,9 +43,10 @@ class RepositoryConfigurationTest : WordSpec({
                   - pattern: "android/**/build.gradle"
                     reason: "BUILD_TOOL_OF"
                     comment: "project comment"
-                """.trimIndent()
+            """.trimIndent()
 
-            val config = yamlMapper.readValue<RepositoryConfiguration>(configuration)
+            val config = configuration.fromYaml<RepositoryConfiguration>()
+
             config.excludes.paths.first().matches("android/project1/build.gradle") shouldBe true
         }
 
@@ -60,7 +60,7 @@ class RepositoryConfigurationTest : WordSpec({
             """.trimIndent()
 
             val exception = shouldThrow<ValueInstantiationException> {
-                yamlMapper.readValue<RepositoryConfiguration>(configuration)
+                configuration.fromYaml<RepositoryConfiguration>()
             }
 
             exception.message shouldContain "problem: LicenseChoices SpdxLicenseChoice(given=null, choice=MIT)"
@@ -121,9 +121,9 @@ class RepositoryConfigurationTest : WordSpec({
                     - given: MPL-2.0 or EPL-1.0
                       choice: MPL-2.0
                     - choice: MPL-2.0 AND MIT
-                """.trimIndent()
+            """.trimIndent()
 
-            val repositoryConfiguration = yamlMapper.readValue<RepositoryConfiguration>(configuration)
+            val repositoryConfiguration = configuration.fromYaml<RepositoryConfiguration>()
 
             repositoryConfiguration.analyzer shouldNotBeNull {
                 allowDynamicVersions shouldBe true

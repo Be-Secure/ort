@@ -32,13 +32,15 @@ import com.github.ajalt.clikt.parameters.types.file
 import java.util.regex.Pattern
 
 import org.ossreviewtoolkit.analyzer.AnalyzerResultBuilder
+import org.ossreviewtoolkit.analyzer.PackageManagerResult
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
+import org.ossreviewtoolkit.model.fromYaml
 import org.ossreviewtoolkit.model.readValue
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.model.utils.DependencyGraphConverter
 import org.ossreviewtoolkit.model.writeValue
-import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.expandTilde
 
 /**
@@ -52,7 +54,7 @@ import org.ossreviewtoolkit.utils.common.expandTilde
  * files can contain placeholders, which make them invalid (e.g. a placeholder for a numeric value causes serialization
  * to fail). Therefore, a special mode can be enabled, in which well-known placeholders are handled.
  */
-class SetDependencyRepresentationCommand : CliktCommand(
+internal class SetDependencyRepresentationCommand : CliktCommand(
     help = "Set the dependency representation of an ORT result to a specific target format."
 ) {
     /**
@@ -62,8 +64,7 @@ class SetDependencyRepresentationCommand : CliktCommand(
     enum class TargetFormat {
         /** The dependency graph format. */
         GRAPH {
-            override fun convert(result: AnalyzerResult): AnalyzerResult =
-                DependencyGraphConverter.convert(result)
+            override fun convert(result: AnalyzerResult): AnalyzerResult = DependencyGraphConverter.convert(result)
         },
 
         /** The classic dependency tree format. */
@@ -107,8 +108,8 @@ class SetDependencyRepresentationCommand : CliktCommand(
     private val ortFile by option(
         "--ort-file", "-i",
         help = "The ORT result file to read as input. This can be the serialized form of an OrtResult, an " +
-                "AnalyzerResult, or a ProjectAnalyzerResult. NOTE: If no output file is specified, this file is " +
-                "overwritten."
+            "AnalyzerResult, or a ProjectAnalyzerResult. NOTE: If no output file is specified, this file is " +
+            "overwritten."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
@@ -123,7 +124,7 @@ class SetDependencyRepresentationCommand : CliktCommand(
 
     private val targetFormat by option(
         "--format", "-f",
-        help = "The target format for the conversion."
+        help = "The target format for the conversion. Must be one of ${TargetFormat.entries.map { it.name }}."
     ).enum<TargetFormat>().default(TargetFormat.GRAPH)
 
     private val handlePlaceholders by option(
@@ -132,7 +133,12 @@ class SetDependencyRepresentationCommand : CliktCommand(
     ).flag("--no-placeholders", "-P")
 
     override fun run() {
-        val converters = sequenceOf(::convertOrtResult, ::convertAnalyzerResult, ::convertProjectAnalyzerResult)
+        val converters = sequenceOf(
+            ::convertOrtResult,
+            ::convertAnalyzerResult,
+            ::convertProjectAnalyzerResult,
+            ::convertPackageManagerResult
+        )
         converters.firstNotNullOfOrNull { it() }?.let { writeResult(it) }
             ?: throw UsageError("$ortFile does not contain a supported result.")
     }
@@ -174,6 +180,14 @@ class SetDependencyRepresentationCommand : CliktCommand(
         }
 
     /**
+     * Convert a [PackageManagerResult]. The result file then contains an [AnalyzerResult].
+     */
+    private fun convertPackageManagerResult(): Any? =
+        convertResult<PackageManagerResult> { result ->
+            convertToTarget(result.toAnalyzerResult())
+        }
+
+    /**
      * Convert a result of type [T]. Read this result from the input file and invoke [block] with it. Return *false*
      * if the result file could not be loaded (which probably means that it contains a result of a different type).
      */
@@ -187,8 +201,7 @@ class SetDependencyRepresentationCommand : CliktCommand(
      */
     private inline fun <reified T : Any> readInput(): T =
         if (handlePlaceholders) {
-            val resultText = replacePlaceholders(ortFile.readText(), inputPlaceholderReplacements())
-            yamlMapper.readValue(resultText, T::class.java)
+            replacePlaceholders(ortFile.readText(), inputPlaceholderReplacements()).fromYaml()
         } else {
             ortFile.readValue()
         }
@@ -209,8 +222,7 @@ class SetDependencyRepresentationCommand : CliktCommand(
         println("Writing converted result to $targetFile.")
 
         if (handlePlaceholders) {
-            val yaml = yamlMapper.writeValueAsString(result)
-            val text = replacePlaceholders(yaml, outputPlaceholderReplacements())
+            val text = replacePlaceholders(result.toYaml(), outputPlaceholderReplacements())
             targetFile.writeText(text)
         } else {
             targetFile.writeValue(result)
@@ -262,3 +274,20 @@ private fun matchProperty(name: String, expectedValue: String): Regex =
  */
 private fun replacement(property: String, oldValue: String, newValue: String): Pair<Regex, String> =
     matchProperty(property, oldValue) to "$1$newValue"
+
+/**
+ * Convert this [PackageManagerResult] to an [AnalyzerResult].
+ */
+private fun PackageManagerResult.toAnalyzerResult(): AnalyzerResult {
+    val builder = AnalyzerResultBuilder()
+
+    val results = projectResults.values.flatten()
+    results.forEach { builder.addResult(it) }
+
+    val managerName = results.first().project.id.type
+    dependencyGraph?.let {
+        builder.addDependencyGraph(managerName, it).addPackages(sharedPackages)
+    }
+
+    return builder.build()
+}

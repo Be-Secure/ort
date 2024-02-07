@@ -17,6 +17,8 @@
  * License-Filename: LICENSE
  */
 
+package org.ossreviewtoolkit.clients.fossid
+
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
@@ -30,8 +32,6 @@ import java.io.File
 
 import kotlin.io.path.createTempDirectory
 
-import org.ossreviewtoolkit.clients.fossid.FossIdRestService
-import org.ossreviewtoolkit.clients.fossid.generateReport
 import org.ossreviewtoolkit.clients.fossid.model.report.ReportType
 import org.ossreviewtoolkit.clients.fossid.model.report.SelectionType
 
@@ -68,8 +68,8 @@ class FossIdReportTest : StringSpec({
         )
         result.shouldBeSuccess {
             it shouldHaveName "fossid-" +
-                    "semver4j_semver4j__20220119_094101_delta-" +
-                    "cc1267688905d7493df292786a245297c9fd36ee.html"
+                "semver4j_semver4j__20220119_094101_delta-" +
+                "cc1267688905d7493df292786a245297c9fd36ee.html"
             it.useLines { lines ->
                 lines shouldContain "<html>"
             }

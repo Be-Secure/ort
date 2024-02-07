@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.utils.spdx
 
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.core.test.TestCase
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.nulls.beNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
@@ -33,13 +34,12 @@ import java.io.File
 
 import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants.EMPTY_PACKAGE_VERIFICATION_CODE
-import org.ossreviewtoolkit.utils.test.createTestTempDir
 
 class UtilsTest : WordSpec() {
     private lateinit var tempDir: File
 
     override suspend fun beforeEach(testCase: TestCase) {
-        tempDir = createTestTempDir()
+        tempDir = tempdir()
     }
 
     private fun setupTempFile(filename: String, content: String) =
@@ -87,7 +87,7 @@ class UtilsTest : WordSpec() {
 
                 calculatePackageVerificationCode(sha1sums) shouldBe "1a74d8321c452522ec516a46893e6a42f36b5953"
                 calculatePackageVerificationCode(sha1sums, excludes) shouldBe
-                        "1a74d8321c452522ec516a46893e6a42f36b5953 (excludes: ./package.spdx)"
+                    "1a74d8321c452522ec516a46893e6a42f36b5953 (excludes: ./package.spdx)"
             }
 
             "work for given files and excludes" {
@@ -100,7 +100,7 @@ class UtilsTest : WordSpec() {
 
                 calculatePackageVerificationCode(files) shouldBe "378d5a37b5b10b90535e32a190014d2a8d25354a"
                 calculatePackageVerificationCode(files, excludes) shouldBe
-                        "378d5a37b5b10b90535e32a190014d2a8d25354a (excludes: ./package.spdx)"
+                    "378d5a37b5b10b90535e32a190014d2a8d25354a (excludes: ./package.spdx)"
             }
 
             "work for a given file" {
@@ -118,7 +118,7 @@ class UtilsTest : WordSpec() {
                 setupTempFile("dir/package.spdx", "content")
 
                 calculatePackageVerificationCode(tempDir) shouldBe
-                        "15d3fa138d9302ec9a1584180b5eba0d342b60fa (excludes: ./package.spdx, ./dir/package.spdx)"
+                    "15d3fa138d9302ec9a1584180b5eba0d342b60fa (excludes: ./package.spdx, ./dir/package.spdx)"
             }
 
             "exclude VCS directories" {
@@ -129,7 +129,7 @@ class UtilsTest : WordSpec() {
                 }
 
                 calculatePackageVerificationCode(tempDir) shouldBe
-                        "81e250a78cc6386afc25fa57ad6eaee31394019b"
+                    "81e250a78cc6386afc25fa57ad6eaee31394019b"
             }
         }
 
@@ -164,7 +164,7 @@ class UtilsTest : WordSpec() {
             }
 
             "return a non-blank string for all SPDX ids" {
-                enumValues<SpdxLicense>().forEach {
+                SpdxLicense.entries.forEach {
                     getLicenseText(it.id) shouldNot beBlank()
                 }
             }
@@ -184,7 +184,7 @@ class UtilsTest : WordSpec() {
         "getLicenseText provided a custom dir" should {
             "return the custom license text for a license ID not known by ort but in custom dir" {
                 val id = "LicenseRef-ort-abc"
-                val text = "a\nb\nc\n"
+                val text = "a\nb\nc"
 
                 setupTempFile(id, text)
 
@@ -195,6 +195,58 @@ class UtilsTest : WordSpec() {
                 setupTempFile("LicenseRef-ort-abc", "abc")
 
                 getLicenseText("LicenseRef-not-present", handleExceptions = true, listOf(tempDir)) should beNull()
+            }
+        }
+
+        "removeYamlFrontMatter" should {
+            "remove a YAML front matter" {
+                val text = """
+                    ---
+                    key: alasir
+                    short_name: Alasir Licence
+                    name: The Alasir Licence
+                    category: Proprietary Free
+                    owner: Alasir
+                    homepage_url: http://alasir.com/licence/TAL.txt
+                    spdx_license_key: LicenseRef-scancode-alasir
+                    ---
+
+                    The Alasir Licence
+
+                        This is a free software. It's provided as-is and carries absolutely no
+                    warranty or responsibility by the author and the contributors, neither in
+                    general nor in particular. No matter if this software is able or unable to
+                    cause any damage to your or third party's computer hardware, software, or any
+                    other asset available, neither the author nor a separate contributor may be
+                    found liable for any harm or its consequences resulting from either proper or
+                    improper use of the software, even if advised of the possibility of certain
+                    injury as such and so forth.
+                """.trimIndent()
+
+                text.removeYamlFrontMatter() shouldBe """
+                    The Alasir Licence
+
+                        This is a free software. It's provided as-is and carries absolutely no
+                    warranty or responsibility by the author and the contributors, neither in
+                    general nor in particular. No matter if this software is able or unable to
+                    cause any damage to your or third party's computer hardware, software, or any
+                    other asset available, neither the author nor a separate contributor may be
+                    found liable for any harm or its consequences resulting from either proper or
+                    improper use of the software, even if advised of the possibility of certain
+                    injury as such and so forth.
+                """.trimIndent()
+            }
+
+            "remove trailing whitespace" {
+                "last sentence\n".removeYamlFrontMatter() shouldBe "last sentence"
+            }
+
+            "remove leading empty lines" {
+                "\nfirst sentence".removeYamlFrontMatter() shouldBe "first sentence"
+            }
+
+            "keep leading whitespace" {
+                "    indented title".removeYamlFrontMatter() shouldBe "    indented title"
             }
         }
     }

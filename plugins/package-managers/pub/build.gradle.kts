@@ -18,28 +18,29 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
-}
-
-repositories {
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.gradle.org/gradle/libs-releases/")
-        }
-
-        filter {
-            includeGroup("org.gradle")
-        }
-    }
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":analyzer"))
+    api(projects.analyzer)
+    api(projects.model)
+    api(projects.utils.commonUtils) {
+        because("This is a CommandLineTool.")
+    }
 
-    implementation(project(":downloader"))
+    api(libs.semver4j) {
+        because("This is a CommandLineTool.")
+    }
 
-    funTestImplementation(project(":plugins:package-managers:gradle-package-manager"))
+    implementation(projects.downloader)
+    implementation(projects.utils.ortUtils)
+    implementation(projects.utils.spdxUtils)
 
-    funTestImplementation(testFixtures(project(":analyzer")))
+    implementation(libs.jackson.databind)
+    implementation(libs.jackson.dataformat.yaml)
+
+    funTestImplementation(projects.plugins.packageManagers.gradlePackageManager)
+
+    funTestImplementation(testFixtures(projects.analyzer))
 }

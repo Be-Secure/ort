@@ -19,7 +19,9 @@
 
 package org.ossreviewtoolkit.model.config
 
+import com.fasterxml.jackson.annotation.JsonAlias
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.annotation.JsonPropertyOrder
 
 import org.ossreviewtoolkit.model.utils.FileArchiver
 import org.ossreviewtoolkit.utils.ort.ORT_REPO_CONFIG_FILENAME
@@ -38,6 +40,11 @@ data class ScannerConfiguration(
     val skipConcluded: Boolean = false,
 
     /**
+     * A flag to control whether excluded scopes and paths should be skipped during the scan.
+     */
+    val skipExcluded: Boolean = false,
+
+    /**
      * Configuration of a [FileArchiver] that archives certain scanned files in an external [FileStorage].
      */
     val archive: FileArchiverConfiguration? = null,
@@ -51,6 +58,7 @@ data class ScannerConfiguration(
      * Mappings from licenses returned by the scanner to valid SPDX licenses. Note that these mappings are only applied
      * in new scans, stored scan results are not affected.
      */
+    @JsonPropertyOrder(alphabetic = true)
     val detectedLicenseMapping: Map<String, String> = mapOf(
         // https://scancode-licensedb.aboutcode.org/?search=generic
         "LicenseRef-scancode-agpl-generic-additional-terms" to SpdxConstants.NOASSERTION,
@@ -75,10 +83,16 @@ data class ScannerConfiguration(
     ),
 
     /**
-     * Scanner specific configuration options. The key needs to match the name of the scanner class, e.g. "ScanCode"
+     * The storage to store the file lists by provenance.
+     */
+    val fileListStorage: FileListStorageConfiguration? = null,
+
+    /**
+     * Scanner-specific configuration options. The key needs to match the name of the scanner class, e.g. "ScanCode"
      * for the ScanCode wrapper. See the documentation of the scanner for available options.
      */
-    val options: Map<String, Options>? = null,
+    @JsonAlias("options")
+    val config: Map<String, PluginConfiguration>? = null,
 
     /**
      * A map with the configurations of the scan result storages available. Based on this information the actual

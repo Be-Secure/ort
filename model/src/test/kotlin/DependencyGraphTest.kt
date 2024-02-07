@@ -21,12 +21,11 @@ package org.ossreviewtoolkit.model
 
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.containExactly
+import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-
-import java.util.SortedSet
 
 class DependencyGraphTest : WordSpec({
     "createScopes()" should {
@@ -50,7 +49,7 @@ class DependencyGraphTest : WordSpec({
             val graph = DependencyGraph(ids, fragments, scopeMap)
             val scopes = graph.createScopes()
 
-            scopes.map { it.name } should containExactly("p1:scope1", "p2:scope2")
+            scopes.map { it.name } should containExactlyInAnyOrder("p1:scope1", "p2:scope2")
             scopeDependencies(scopes, "p1:scope1") shouldBe "${ids[1]}${ids[0]}"
             scopeDependencies(scopes, "p2:scope2") shouldBe "${ids[1]}${ids[2]}"
         }
@@ -241,11 +240,12 @@ private fun id(group: String, artifact: String, version: String): Identifier =
 /**
  * Output the dependency tree of the given scope as a string.
  */
-private fun scopeDependencies(scopes: SortedSet<Scope>, name: String): String = buildString {
-    scopes.find { it.name == name }?.let { scope ->
-        scope.dependencies.forEach { dumpDependencies(it) }
+private fun scopeDependencies(scopes: Set<Scope>, name: String): String =
+    buildString {
+        scopes.find { it.name == name }?.let { scope ->
+            scope.dependencies.sorted().forEach { dumpDependencies(it) }
+        }
     }
-}
 
 /**
  * Transform a dependency tree structure starting at [ref] to a string.
@@ -254,7 +254,7 @@ private fun StringBuilder.dumpDependencies(ref: PackageReference) {
     append(ref.id)
     if (ref.dependencies.isNotEmpty()) {
         append('<')
-        ref.dependencies.forEach { dumpDependencies(it) }
+        ref.dependencies.sorted().forEach { dumpDependencies(it) }
         append('>')
     }
 }

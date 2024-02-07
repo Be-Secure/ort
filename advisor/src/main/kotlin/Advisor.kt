@@ -25,7 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.AdvisorRecord
 import org.ossreviewtoolkit.model.AdvisorResult
@@ -34,7 +34,6 @@ import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.config.AdvisorConfiguration
-import org.ossreviewtoolkit.utils.common.Plugin
 import org.ossreviewtoolkit.utils.ort.Environment
 
 /**
@@ -42,16 +41,9 @@ import org.ossreviewtoolkit.utils.ort.Environment
  * [OrtResult].
  */
 class Advisor(
-    private val providerFactories: List<AdviceProviderFactory>,
+    private val providerFactories: List<AdviceProviderFactory<*>>,
     private val config: AdvisorConfiguration
 ) {
-    companion object : Logging {
-        /**
-         * All [advice provider factories][AdviceProviderFactory] available in the classpath, associated by their names.
-         */
-        val ALL by lazy { Plugin.getAll<AdviceProviderFactory>() }
-    }
-
     /**
      * Query the [advice providers][providerFactories] and add the result to the provided [ortResult]. Excluded packages
      * can optionally be [skipped][skipExcluded].
@@ -60,7 +52,7 @@ class Advisor(
         if (ortResult.analyzer == null) {
             logger.warn {
                 "Cannot run the advisor as the provided ORT result does not contain an analyzer result. " +
-                        "No result will be added."
+                    "No result will be added."
             }
 
             return ortResult
@@ -78,23 +70,26 @@ class Advisor(
         withContext(Dispatchers.IO) {
             val startTime = Instant.now()
 
-            val results = sortedMapOf<Identifier, List<AdvisorResult>>()
+            val results = mutableMapOf<Identifier, List<AdvisorResult>>()
 
             if (packages.isEmpty()) {
                 logger.info { "There are no packages to give advice for." }
             } else {
-                val providers = providerFactories.map { it.create(config) }
+                val providers = providerFactories.map {
+                    val providerConfig = config.config?.get(it.type)
+                    it.create(providerConfig?.options.orEmpty(), providerConfig?.secrets.orEmpty())
+                }
 
                 providers.map { provider ->
                     async {
                         val providerResults = provider.retrievePackageFindings(packages)
 
                         logger.info {
-                            "Found ${providerResults.values.flatten().distinct().size} distinct vulnerabilities via " +
-                                    "${provider.providerName}. "
+                            "Found ${providerResults.values.flatMap { it.vulnerabilities }.distinct().size} distinct " +
+                                "vulnerabilities via ${provider.providerName}. "
                         }
 
-                        providerResults.filter { it.value.isNotEmpty() }.keys.takeIf { it.isNotEmpty() }?.let { pkgs ->
+                        providerResults.keys.takeIf { it.isNotEmpty() }?.let { pkgs ->
                             logger.debug {
                                 "Affected packages:\n\n${pkgs.joinToString("\n") { it.id.toCoordinates() }}\n"
                             }
@@ -104,7 +99,7 @@ class Advisor(
                     }
                 }.forEach { providerResults ->
                     providerResults.await().forEach { (pkg, advisorResults) ->
-                        results.merge(pkg.id, advisorResults) { oldResults, newResults ->
+                        results.merge(pkg.id, listOf(advisorResults)) { oldResults, newResults ->
                             oldResults + newResults
                         }
                     }

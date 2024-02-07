@@ -77,23 +77,24 @@ class AdvisorTest : WordSpec({
             val packages = setOf(pkg1, pkg2)
             val originResult = createOrtResultWithPackages(packages)
 
-            val advisorResult1 = mockk<AdvisorResult>()
-            val advisorResult2 = mockk<AdvisorResult>()
-            val advisorResult3 = mockk<AdvisorResult>()
-            val advisorResult4 = mockk<AdvisorResult>()
+            val advisorResult1 = mockkAdvisorResult()
+            val advisorResult2 = mockkAdvisorResult()
+            val advisorResult3 = mockkAdvisorResult()
+            val advisorResult4 = mockkAdvisorResult()
 
             val provider1 = mockkAdviceProvider()
             val provider2 = mockkAdviceProvider()
 
             coEvery { provider1.retrievePackageFindings(packages) } returns mapOf(
-                pkg1 to listOf(advisorResult1, advisorResult2),
-                pkg2 to listOf(advisorResult3)
+                pkg1 to advisorResult1,
+                pkg2 to advisorResult3
             )
             coEvery { provider2.retrievePackageFindings(packages) } returns mapOf(
-                pkg2 to listOf(advisorResult4)
+                pkg1 to advisorResult2,
+                pkg2 to advisorResult4
             )
 
-            val expectedResults = sortedMapOf(
+            val expectedResults = mapOf(
                 pkg1.id to listOf(advisorResult1, advisorResult2),
                 pkg2.id to listOf(advisorResult3, advisorResult4)
             )
@@ -116,8 +117,8 @@ private fun createAdvisor(providers: List<AdviceProvider>): Advisor {
     val advisorConfig = AdvisorConfiguration()
 
     val factories = providers.map { provider ->
-        val factory = mockk<AdviceProviderFactory>()
-        every { factory.create(advisorConfig) } returns provider
+        val factory = mockk<AdviceProviderFactory<*>>()
+        every { factory.create(emptyMap(), emptyMap()) } returns provider
         factory
     }
 
@@ -146,4 +147,9 @@ private fun createPackage(index: Int): Package =
 private fun mockkAdviceProvider(): AdviceProvider =
     mockk<AdviceProvider>().apply {
         every { providerName } returns "provider"
+    }
+
+private fun mockkAdvisorResult(): AdvisorResult =
+    mockk<AdvisorResult>().apply {
+        every { vulnerabilities } returns emptyList()
     }

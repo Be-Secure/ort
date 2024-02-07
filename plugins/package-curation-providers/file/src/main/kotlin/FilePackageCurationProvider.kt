@@ -22,19 +22,19 @@ package org.ossreviewtoolkit.plugins.packagecurationproviders.file
 import java.io.File
 import java.io.IOException
 
-import org.apache.logging.log4j.kotlin.Logging
-
 import org.ossreviewtoolkit.model.FileFormat
 import org.ossreviewtoolkit.model.PackageCuration
 import org.ossreviewtoolkit.model.readValue
+import org.ossreviewtoolkit.model.utils.PackageCurationProvider
 import org.ossreviewtoolkit.plugins.packagecurationproviders.api.PackageCurationProviderFactory
 import org.ossreviewtoolkit.plugins.packagecurationproviders.api.SimplePackageCurationProvider
+import org.ossreviewtoolkit.utils.common.Options
 import org.ossreviewtoolkit.utils.common.getDuplicates
 import org.ossreviewtoolkit.utils.ort.ORT_PACKAGE_CURATIONS_DIRNAME
 import org.ossreviewtoolkit.utils.ort.ORT_PACKAGE_CURATIONS_FILENAME
 import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
 
-class FilePackageCurationProviderConfig(
+data class FilePackageCurationProviderConfig(
     /**
      * The path of the package curation file or directory.
      */
@@ -49,20 +49,19 @@ class FilePackageCurationProviderConfig(
 open class FilePackageCurationProviderFactory : PackageCurationProviderFactory<FilePackageCurationProviderConfig> {
     override val type = "File"
 
-    override fun create(config: FilePackageCurationProviderConfig) =
-        FilePackageCurationProvider(config)
+    override fun create(config: FilePackageCurationProviderConfig) = FilePackageCurationProvider(config)
 
-    override fun parseConfig(config: Map<String, String>) =
+    override fun parseConfig(options: Options, secrets: Options) =
         FilePackageCurationProviderConfig(
-            path = File(config.getValue("path")),
-            mustExist = config["mustExist"]?.toBooleanStrict() ?: true,
+            path = File(options.getValue("path")),
+            mustExist = options["mustExist"]?.toBooleanStrict() ?: true
         )
 }
 
 class DefaultFilePackageCurationProviderFactory : FilePackageCurationProviderFactory() {
     override val type = "DefaultFile"
 
-    override fun parseConfig(config: Map<String, String>) =
+    override fun parseConfig(options: Options, secrets: Options) =
         FilePackageCurationProviderConfig(
             path = ortConfigDirectory.resolve(ORT_PACKAGE_CURATIONS_FILENAME),
             mustExist = false
@@ -72,7 +71,7 @@ class DefaultFilePackageCurationProviderFactory : FilePackageCurationProviderFac
 class DefaultDirPackageCurationProviderFactory : FilePackageCurationProviderFactory() {
     override val type = "DefaultDir"
 
-    override fun parseConfig(config: Map<String, String>) =
+    override fun parseConfig(options: Options, secrets: Options) =
         FilePackageCurationProviderConfig(
             path = ortConfigDirectory.resolve(ORT_PACKAGE_CURATIONS_DIRNAME),
             mustExist = false
@@ -90,7 +89,7 @@ class FilePackageCurationProvider(
         config.path.takeUnless { !it.exists() && !config.mustExist }
     )
 
-    companion object : Logging {
+    companion object {
         /**
          * Read a list of [PackageCuration]s from existing [paths], which can either point to files or directories. In
          * the latter case, the directory is searched recursively for deserializable files (according to their

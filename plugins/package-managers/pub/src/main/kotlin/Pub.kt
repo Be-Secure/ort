@@ -24,19 +24,21 @@ import com.fasterxml.jackson.dataformat.yaml.JacksonYAMLParseException
 
 import java.io.File
 import java.io.IOException
-import java.util.SortedSet
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.analyzer.PackageManagerDependencyResult
+import org.ossreviewtoolkit.analyzer.PackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManagerResult
 import org.ossreviewtoolkit.analyzer.managers.utils.PackageManagerDependencyHandler
 import org.ossreviewtoolkit.analyzer.parseAuthorString
 import org.ossreviewtoolkit.downloader.VcsHost
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.EMPTY_JSON_NODE
+import org.ossreviewtoolkit.model.Hash
+import org.ossreviewtoolkit.model.HashAlgorithm
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
@@ -64,8 +66,9 @@ import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.common.splitOnWhitespace
 import org.ossreviewtoolkit.utils.common.textValueOrEmpty
 import org.ossreviewtoolkit.utils.common.unpack
-import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
+import org.ossreviewtoolkit.utils.ort.downloadFile
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
+import org.ossreviewtoolkit.utils.ort.okHttpClient
 import org.ossreviewtoolkit.utils.ort.ortToolsDirectory
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
@@ -79,7 +82,7 @@ private const val PUB_LOCK_FILE = "pubspec.lock"
 private val flutterCommand = if (Os.isWindows) "flutter.bat" else "flutter"
 private val dartCommand = if (Os.isWindows) "dart.bat" else "dart"
 
-private val flutterVersion = Os.env["FLUTTER_VERSION"] ?: "3.3.8-stable"
+private val flutterVersion = Os.env["FLUTTER_VERSION"] ?: "3.13.6-stable"
 private val flutterInstallDir = ortToolsDirectory.resolve("flutter-$flutterVersion")
 
 val flutterHome by lazy {
@@ -107,7 +110,7 @@ class Pub(
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
-    companion object : Logging {
+    companion object {
         const val OPTION_PUB_DEPENDENCIES_ONLY = "pubDependenciesOnly"
     }
 
@@ -121,7 +124,7 @@ class Pub(
         ) = Pub(type, analysisRoot, analyzerConfig, repoConfig)
     }
 
-    private val gradleFactory = ALL["Gradle"]
+    private val gradleFactory = PackageManagerFactory.ALL["Gradle"]
 
     private data class ParsePackagesResult(
         val packages: Map<Identifier, Package>,
@@ -163,15 +166,22 @@ class Pub(
         }
 
         if (flutterAbsolutePath.resolve(flutterCommand).isFile) {
-            logger.info { "Skipping to bootstrap flutter as it was found in $flutterAbsolutePath." }
+            logger.info { "Skipping to bootstrap Flutter as it was found in $flutterAbsolutePath." }
             return
         }
 
-        logger.info { "Bootstrapping flutter as it was not found." }
+        logger.info { "Bootstrapping Flutter as it was not found." }
 
         val archive = when {
             Os.isWindows -> "windows/flutter_windows_$flutterVersion.zip"
             Os.isLinux -> "linux/flutter_linux_$flutterVersion.tar.xz"
+            Os.isMac -> {
+                when (val arch = System.getProperty("os.arch")) {
+                    "x86_64" -> "macos/flutter_macos_$flutterVersion.zip"
+                    "aarch64" -> "macos/flutter_macos_arm64_$flutterVersion.zip"
+                    else -> throw IllegalArgumentException("Unsupported macOS architecture '$arch'.")
+                }
+            }
             else -> throw IllegalArgumentException("Unsupported operating system.")
         }
 
@@ -179,7 +189,9 @@ class Pub(
 
         logger.info { "Downloading flutter-$flutterVersion from $url... " }
         flutterInstallDir.safeMkdirs()
-        val flutterArchive = OkHttpClientHelper.downloadFile(url, flutterInstallDir).getOrThrow()
+        val flutterArchive = okHttpClient.downloadFile(url, flutterInstallDir).onFailure {
+            logger.warn { "Unable to download Flutter $flutterVersion from $url." }
+        }.getOrThrow()
 
         logger.info { "Unpacking '$flutterArchive' to '$flutterInstallDir'... " }
         flutterArchive.unpack(flutterInstallDir)
@@ -245,7 +257,7 @@ class Pub(
         }
 
         val packages = mutableMapOf<Identifier, Package>()
-        val scopes = sortedSetOf<Scope>()
+        val scopes = mutableSetOf<Scope>()
         val issues = mutableListOf<Issue>()
         val projectAnalyzerResults = mutableListOf<ProjectAnalyzerResult>()
 
@@ -267,14 +279,14 @@ class Pub(
                         .toList()
 
                     if (gradleDefinitionFiles.isNotEmpty()) {
-                        val gradleDependencies = gradleDefinitionFiles.map {
+                        val gradleDependencies = gradleDefinitionFiles.mapTo(mutableSetOf()) {
                             PackageManagerDependencyHandler.createPackageManagerDependency(
                                 packageManager = gradleFactory.type,
                                 definitionFile = VersionControlSystem.getPathInfo(it).path,
                                 scope = "releaseCompileClasspath",
                                 linkage = PackageLinkage.PROJECT_STATIC
                             )
-                        }.toSortedSet()
+                        }
 
                         scopes += Scope("android", gradleDependencies)
                     }
@@ -282,7 +294,7 @@ class Pub(
                     createAndLogIssue(
                         source = managerName,
                         message = "The Gradle package manager plugin was not found in the runtime classpath of " +
-                                "ORT. Gradle project analysis will be disabled.",
+                            "ORT. Gradle project analysis will be disabled.",
                         severity = Severity.WARNING
                     )
                 }
@@ -331,7 +343,7 @@ class Pub(
         labels: Map<String, String>,
         workingDir: File,
         processedPackages: Set<String> = emptySet()
-    ): SortedSet<PackageReference> {
+    ): Set<PackageReference> {
         val packageReferences = mutableSetOf<PackageReference>()
         val nameOfCurrentPackage = manifest["name"].textValue()
         val containsFlutter = "flutter" in dependencies
@@ -351,8 +363,8 @@ class Pub(
 
             val id = Identifier(
                 type = managerName,
-                namespace = packageName.substringBefore('/'),
-                name = packageName.substringAfter('/'),
+                namespace = "",
+                name = packageName,
                 version = pkgInfoFromLockFile["version"].textValueOrEmpty()
             )
 
@@ -396,14 +408,14 @@ class Pub(
                         createAndLogIssue(
                             source = managerName,
                             message = "Could not resolve dependencies of '$packageName': " +
-                                    e.collectMessages()
+                                e.collectMessages()
                         )
                     )
                 )
             }
         }
 
-        return packageReferences.toSortedSet()
+        return packageReferences
     }
 
     private val analyzerResultCacheAndroid = mutableMapOf<String, List<ProjectAnalyzerResult>>()
@@ -466,15 +478,15 @@ class Pub(
             source = managerName,
             severity = Severity.WARNING,
             message = "Cannot get iOS dependencies for package '$packageName'. Support for CocoaPods is not yet " +
-                    "implemented."
+                "implemented."
         )
 
         return ProjectAnalyzerResult(Project.EMPTY, emptySet(), listOf(issue))
     }
 
-    private fun parseProject(definitionFile: File, pubspec: JsonNode, scopes: SortedSet<Scope>): Project {
+    private fun parseProject(definitionFile: File, pubspec: JsonNode, scopes: Set<Scope>): Project {
         // See https://dart.dev/tools/pub/pubspec for supported fields.
-        val rawName = pubspec["name"]?.textValue() ?: definitionFile.parentFile.name
+        val rawName = pubspec["name"]?.textValue() ?: getFallbackProjectName(analysisRoot, definitionFile)
         val homepageUrl = pubspec["homepage"].textValueOrEmpty()
         val repositoryUrl = pubspec["repository"].textValueOrEmpty()
         val authors = parseAuthors(pubspec)
@@ -484,8 +496,8 @@ class Pub(
         return Project(
             id = Identifier(
                 type = managerName,
-                namespace = rawName.substringBefore('/'),
-                name = rawName.substringAfter('/'),
+                namespace = "",
+                name = rawName,
                 version = pubspec["version"].textValueOrEmpty()
             ),
             definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
@@ -509,7 +521,7 @@ class Pub(
         val packages = mutableMapOf<Identifier, Package>()
         val issues = mutableListOf<Issue>()
 
-        // Flag if the project is a flutter project.
+        // Flag if the project is a Flutter project.
         var containsFlutter = false
 
         listOf("packages"/*, "packages-dev"*/).forEach {
@@ -522,23 +534,25 @@ class Pub(
                     var vcs = VcsInfo.EMPTY
                     var authors = emptySet<String>()
 
+                    val source = pkgInfoFromLockFile["source"].textValueOrEmpty()
+
                     when {
-                        pkgInfoFromLockFile["source"].textValueOrEmpty() == "path" -> {
+                        source == "path" -> {
                             rawName = packageName
                             val path = pkgInfoFromLockFile["description"]["path"].textValueOrEmpty()
                             vcs = VersionControlSystem.forDirectory(workingDir.resolve(path))?.getInfo() ?: run {
                                 logger.warn {
                                     "Invalid path of package $rawName: " +
-                                    "'$path' is outside of the project root '$workingDir'."
+                                        "'$path' is outside of the project root '$workingDir'."
                                 }
                                 VcsInfo.EMPTY
                             }
                         }
 
-                        pkgInfoFromLockFile["source"].textValueOrEmpty() == "git" -> {
+                        source == "git" -> {
                             val pkgInfoFromYamlFile = readPackageInfoFromCache(pkgInfoFromLockFile, workingDir)
 
-                            rawName = pkgInfoFromYamlFile["name"].textValue() ?: packageName
+                            rawName = pkgInfoFromYamlFile["name"]?.textValue() ?: packageName
                             description = pkgInfoFromYamlFile["description"].textValueOrEmpty().trim()
                             homepageUrl = pkgInfoFromYamlFile["homepage"].textValueOrEmpty()
                             authors = parseAuthors(pkgInfoFromYamlFile)
@@ -552,7 +566,7 @@ class Pub(
                         }
 
                         // For now, we ignore SDKs like the Dart SDK and the Flutter SDK in the analyzer.
-                        pkgInfoFromLockFile["source"].textValueOrEmpty() != "sdk" -> {
+                        source != "sdk" -> {
                             val pkgInfoFromYamlFile = readPackageInfoFromCache(pkgInfoFromLockFile, workingDir)
 
                             rawName = pkgInfoFromYamlFile["name"].textValueOrEmpty()
@@ -561,11 +575,15 @@ class Pub(
                             authors = parseAuthors(pkgInfoFromYamlFile)
 
                             val repositoryUrl = pkgInfoFromYamlFile["repository"].textValueOrEmpty()
-                            vcs = VcsHost.parseUrl(repositoryUrl)
+
+                            // Ignore the revision parsed from the repositoryUrl because the URL often points to the
+                            // main or master branch of the repository but never to the correct revision that matches
+                            // the version of the package.
+                            vcs = VcsHost.parseUrl(repositoryUrl).copy(revision = "")
                         }
 
                         pkgInfoFromLockFile["description"].textValueOrEmpty() == "flutter" -> {
-                            // Set flutter flag, which triggers another scan for iOS and Android native dependencies.
+                            // Set Flutter flag, which triggers another scan for iOS and Android native dependencies.
                             containsFlutter = true
                             // Set hardcoded package details.
                             rawName = "flutter"
@@ -585,10 +603,23 @@ class Pub(
                         logger.warn { "No version information found for package $rawName." }
                     }
 
+                    val hostUrl = pkgInfoFromLockFile["description"]["url"].textValueOrEmpty()
+
+                    val sourceArtifact = if (source == "hosted" && hostUrl.isNotEmpty() && version.isNotEmpty()) {
+                        val sha256 = pkgInfoFromLockFile["description"]["sha256"].textValueOrEmpty()
+
+                        RemoteArtifact(
+                            url = "$hostUrl/packages/$rawName/versions/$version.tar.gz",
+                            hash = Hash.create(sha256, HashAlgorithm.SHA256.name)
+                        )
+                    } else {
+                        RemoteArtifact.EMPTY
+                    }
+
                     val id = Identifier(
                         type = managerName,
-                        namespace = rawName.substringBefore('/'),
-                        name = rawName.substringAfter('/'),
+                        namespace = "",
+                        name = rawName,
                         version = version
                     )
 
@@ -601,8 +632,7 @@ class Pub(
                         homepageUrl = homepageUrl,
                         // Pub does not create binary artifacts, therefore use any empty artifact.
                         binaryArtifact = RemoteArtifact.EMPTY,
-                        // Pub does not create source artifacts, therefore use any empty artifact.
-                        sourceArtifact = RemoteArtifact.EMPTY,
+                        sourceArtifact = sourceArtifact,
                         vcs = vcs,
                         vcsProcessed = processPackageVcs(vcs, homepageUrl)
                     )
@@ -613,7 +643,7 @@ class Pub(
                     issues += createAndLogIssue(
                         source = managerName,
                         message = "Failed to parse $PUBSPEC_YAML for package $packageName:$packageVersion: " +
-                                e.collectMessages()
+                            e.collectMessages()
                     )
                 }
             }
@@ -624,7 +654,7 @@ class Pub(
         // the ".pub-cache" directory.
         if (containsFlutter && !pubDependenciesOnly) {
             lockFile["packages"]?.forEach { pkgInfoFromLockFile ->
-                // As this package contains flutter, trigger Gradle manually for it.
+                // As this package contains Flutter, trigger Gradle manually for it.
                 scanAndroidPackages(pkgInfoFromLockFile, labels, workingDir).forEach { result ->
                     result.collectPackagesByScope("releaseCompileClasspath").forEach { pkg ->
                         packages[pkg.id] = pkg
@@ -633,7 +663,7 @@ class Pub(
                     issues += result.issues
                 }
 
-                // As this package contains flutter, trigger CocoaPods manually for it.
+                // As this package contains Flutter, trigger CocoaPods manually for it.
                 scanIosPackages(pkgInfoFromLockFile, workingDir)?.let { result ->
                     result.packages.forEach { pkg ->
                         packages[pkg.id] = pkg

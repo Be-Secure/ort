@@ -15,15 +15,22 @@
 # SPDX-License-Identifier: Apache-2.0
 # License-Filename: LICENSE
 
-# Sort the entries below via IntelliJ's "Edit" -> "Sort Lines".
 ---
 389-exception:
 - GPL-2.0-only
 - GPL-2.0-or-later
+Asterisk-exception:
+- GPL-2.0-only
 Autoconf-exception-2.0:
 - GPL-2.0-only
 - GPL-2.0-or-later
 Autoconf-exception-3.0:
+- GPL-3.0-only
+- GPL-3.0-or-later
+Autoconf-exception-generic:
+- GPL-2.0-only
+- GPL-2.0-or-later
+Autoconf-exception-generic-3.0:
 - GPL-3.0-only
 - GPL-3.0-or-later
 Bison-exception-2.2:

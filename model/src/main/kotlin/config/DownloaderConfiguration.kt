@@ -30,10 +30,15 @@ data class DownloaderConfiguration(
     val allowMovingRevisions: Boolean = false,
 
     /**
-     * The [categories][LicenseCategory] licenses of packages need to be part of in order to get included into the
-     * download, or an empty list to include all packages.
+     * The [categories][LicenseCategory] licenses of packages need to be part of to get included in the download, or an
+     * empty list to include all packages.
      */
     val includedLicenseCategories: List<String> = emptyList(),
+
+    /**
+     * A flag to control whether excluded scopes and paths should be skipped during the download.
+     */
+    val skipExcluded: Boolean = false,
 
     /**
      * Configuration of the considered source code origins and their priority order.

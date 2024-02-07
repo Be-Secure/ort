@@ -27,37 +27,42 @@ import org.ossreviewtoolkit.model.Severity
 
 class RuleViolationResolutionTest : WordSpec({
     "matches" should {
+        "interpret the message as a regular expression" {
+            resolution("message").matches(ruleViolation("message")) shouldBe true
+            resolution(".*").matches(ruleViolation("message")) shouldBe true
+            resolution("[a-zA-Z0-9]*").matches(ruleViolation("M3ss4GE")) shouldBe true
+
+            resolution("").matches(ruleViolation("message")) shouldBe false
+            resolution(".+").matches(ruleViolation("")) shouldBe false
+            resolution("!(message)").matches(ruleViolation("message")) shouldBe false
+        }
+
         "ignore white spaces" {
-            val result = ruleViolationResolution("Message with additional spaces. Another line.").matches(
+            resolution("Message with additional spaces. Another line.").matches(
                 ruleViolation(
                     """
                         Message with  additional spaces. 
                         Another line.
                     """
                 )
-            )
-
-            result shouldBe true
+            ) shouldBe true
         }
 
         "ignore new lines" {
-            val result = ruleViolationResolution("Message with newline.").matches(
-                ruleViolation("Message with\nnewline.")
-            )
-
-            result shouldBe true
+            resolution("Message with newline.").matches(ruleViolation("Message with\nnewline.")) shouldBe true
         }
     }
 })
 
-private fun ruleViolationResolution(message: String) = RuleViolationResolution(
-    message = message,
-    reason = RuleViolationResolutionReason.EXAMPLE_OF_EXCEPTION,
-    comment = ""
-)
+private fun resolution(message: String) =
+    RuleViolationResolution(
+        message = message,
+        reason = RuleViolationResolutionReason.EXAMPLE_OF_EXCEPTION,
+        comment = ""
+    )
 
-private fun ruleViolation(message: String): RuleViolation {
-    return RuleViolation(
+private fun ruleViolation(message: String) =
+    RuleViolation(
         rule = "",
         pkg = null,
         license = null,
@@ -66,4 +71,3 @@ private fun ruleViolation(message: String): RuleViolation {
         message = message,
         howToFix = ""
     )
-}

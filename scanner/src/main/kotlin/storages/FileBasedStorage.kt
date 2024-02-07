@@ -25,9 +25,10 @@ import java.io.ByteArrayInputStream
 import java.io.FileNotFoundException
 import java.io.IOException
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
@@ -47,12 +48,10 @@ class FileBasedStorage(
      */
     val backend: FileStorage
 ) : ScanResultsStorage() {
-    companion object : Logging
-
     override val name = "${javaClass.simpleName} with ${backend.javaClass.simpleName} backend"
 
-    override fun readInternal(id: Identifier): Result<List<ScanResult>> {
-        val path = storagePath(id)
+    override fun readInternal(pkg: Package): Result<List<ScanResult>> {
+        val path = storagePath(pkg.id)
 
         return runCatching {
             backend.read(path).use { input ->
@@ -62,8 +61,8 @@ class FileBasedStorage(
             // If the file cannot be found it means no scan results have been stored, yet.
             if (it is FileNotFoundException) return EMPTY_RESULT
 
-            val message = "Could not read scan results for '${id.toCoordinates()}' from path '$path': " +
-                    it.collectMessages()
+            val message = "Could not read scan results for '${pkg.id.toCoordinates()}' from path '$path': " +
+                it.collectMessages()
 
             logger.info { message }
 
@@ -72,11 +71,13 @@ class FileBasedStorage(
     }
 
     override fun addInternal(id: Identifier, scanResult: ScanResult): Result<Unit> {
-        val existingScanResults = read(id).getOrDefault(emptyList())
+        // Note: The file-based `read()`-implementation does not require the full `Package` information for reading
+        // existing results, so it is fine to use an empty package here.
+        val existingScanResults = read(Package.EMPTY.copy(id = id)).getOrDefault(emptyList())
 
         if (existingScanResults.any { it.scanner == scanResult.scanner && it.provenance == scanResult.provenance }) {
             val message = "Did not store scan result for '${id.toCoordinates()}' because a scan result for the same " +
-                    "scanner and provenance was already stored."
+                "scanner and provenance was already stored."
 
             logger.warn { message }
 
@@ -97,7 +98,7 @@ class FileBasedStorage(
                 it.showStackTrace()
 
                 val message = "Could not store scan result for '${id.toCoordinates()}' at path '$path': " +
-                        it.collectMessages()
+                    it.collectMessages()
 
                 logger.warn { message }
 

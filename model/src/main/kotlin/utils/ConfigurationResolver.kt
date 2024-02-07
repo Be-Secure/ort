@@ -21,37 +21,44 @@ package org.ossreviewtoolkit.model.utils
 
 import kotlin.time.measureTimedValue
 
-import org.apache.logging.log4j.kotlin.Logging
 import org.apache.logging.log4j.kotlin.logger
 
-import org.ossreviewtoolkit.model.AnalyzerResult
+import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Issue
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageCuration
-import org.ossreviewtoolkit.model.ResolvedConfiguration
 import org.ossreviewtoolkit.model.ResolvedPackageCurations
+import org.ossreviewtoolkit.model.RuleViolation
+import org.ossreviewtoolkit.model.ScanResult
+import org.ossreviewtoolkit.model.config.PackageConfiguration
+import org.ossreviewtoolkit.model.config.Resolutions
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
 
-object ConfigurationResolver : Logging {
+object ConfigurationResolver {
     /**
-     * Return the resolved configuration for the given [analyzerResult]. The [curationProviders] must be ordered
-     * highest-priority-first.
+     * Resolved the [PackageConfiguration]s that match the [scan results][scanResultProvider] for the provided
+     * [identifiers].
      */
-    fun resolveConfiguration(
-        analyzerResult: AnalyzerResult,
-        curationProviders: List<Pair<String, PackageCurationProvider>>
-    ): ResolvedConfiguration =
-        ResolvedConfiguration(
-            packageCurations = resolvePackageCurations(analyzerResult.packages, curationProviders)
-        )
+    fun resolvePackageConfigurations(
+        identifiers: Set<Identifier>,
+        scanResultProvider: (id: Identifier) -> List<ScanResult>,
+        packageConfigurationProvider: PackageConfigurationProvider
+    ): List<PackageConfiguration> =
+        identifiers.flatMap { id ->
+            scanResultProvider(id).flatMap { scanResult ->
+                packageConfigurationProvider.getPackageConfigurations(id, scanResult.provenance)
+            }
+        }.distinct()
 
     /**
-     * Return the resolved [PackageCurations] for the given [packages]. The [curationProviders] must be ordered
+     * Return the resolved [PackageCuration]s for the given [packages]. The [curationProviders] must be ordered
      * highest-priority-first.
      */
     fun resolvePackageCurations(
         packages: Collection<Package>,
         curationProviders: List<Pair<String, PackageCurationProvider>>
     ): List<ResolvedPackageCurations> {
-        val packageCurations = mutableMapOf<String, Set<PackageCuration>>()
+        val packageCurations = mutableMapOf<String, List<PackageCuration>>()
 
         curationProviders.forEach { (id, curationProvider) ->
             val (curations, duration) = measureTimedValue {
@@ -60,18 +67,18 @@ object ConfigurationResolver : Logging {
 
             val (applicableCurations, nonApplicableCurations) = curations.partition { curation ->
                 packages.any { pkg -> curation.isApplicable(pkg.id) }
-            }.let { it.first.toSet() to it.second.toSet() }
+            }.let { it.first to it.second }
 
             if (nonApplicableCurations.isNotEmpty()) {
                 logger.warn {
                     "The provider '$id' returned the following non-applicable curations: " +
-                            "${nonApplicableCurations.joinToString()}."
+                        "${nonApplicableCurations.joinToString()}."
                 }
             }
 
             packageCurations[id] = applicableCurations
 
-            logger().info { "Getting ${curations.size} package curation(s) from provider '$id' took $duration." }
+            logger.info { "Getting ${curations.size} package curation(s) from provider '$id' took $duration." }
         }
 
         return packageCurations.map { (providerId, curations) ->
@@ -81,4 +88,15 @@ object ConfigurationResolver : Logging {
             )
         }
     }
+
+    fun resolveResolutions(
+        issues: List<Issue>,
+        ruleViolations: List<RuleViolation>,
+        vulnerabilities: List<Vulnerability>,
+        resolutionProvider: ResolutionProvider
+    ) = Resolutions(
+        issues = issues.flatMap { resolutionProvider.getResolutionsFor(it) }.distinct(),
+        ruleViolations = ruleViolations.flatMap { resolutionProvider.getResolutionsFor(it) }.distinct(),
+        vulnerabilities = vulnerabilities.flatMap { resolutionProvider.getResolutionsFor(it) }.distinct()
+    )
 }

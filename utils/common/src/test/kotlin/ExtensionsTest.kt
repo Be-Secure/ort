@@ -23,14 +23,16 @@ import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.throwables.shouldNotThrow
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.engine.spec.tempdir
+import io.kotest.engine.spec.tempfile
 import io.kotest.inspectors.forAll
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.collections.containExactly as containExactlyCollection
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.file.aDirectory
 import io.kotest.matchers.file.aFile
 import io.kotest.matchers.file.exist
 import io.kotest.matchers.maps.containExactly
-import io.kotest.matchers.nulls.beNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNot
@@ -42,9 +44,6 @@ import java.net.URI
 import java.time.DayOfWeek
 import java.util.Locale
 
-import org.ossreviewtoolkit.utils.test.createSpecTempDir
-import org.ossreviewtoolkit.utils.test.createTestTempDir
-import org.ossreviewtoolkit.utils.test.createTestTempFile
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class ExtensionsTest : WordSpec({
@@ -112,7 +111,7 @@ class ExtensionsTest : WordSpec({
     }
 
     "File.isSymbolicLink" should {
-        val tempDir = createSpecTempDir()
+        val tempDir = tempdir()
         val file = tempDir.resolve("file").apply { createNewFile() }
         val directory = tempDir.resolve("directory").safeMkdirs()
 
@@ -172,7 +171,7 @@ class ExtensionsTest : WordSpec({
 
     "File.safeMkDirs" should {
         "succeed if directory already exists" {
-            val directory = createTestTempDir()
+            val directory = tempdir()
 
             directory.isDirectory shouldBe true
             shouldNotThrow<IOException> { directory.safeMkdirs() }
@@ -180,7 +179,7 @@ class ExtensionsTest : WordSpec({
         }
 
         "succeed if directory could be created" {
-            val parent = createTestTempDir()
+            val parent = tempdir()
             val child = File(parent, "child")
 
             parent.isDirectory shouldBe true
@@ -192,7 +191,7 @@ class ExtensionsTest : WordSpec({
             // Test case for an unexpected behaviour of File.mkdirs() which returns false for
             // File(File("parent1/parent2"), "/").mkdirs() if both "parent" directories do not exist, even when the
             // directory was successfully created.
-            val parent = createTestTempDir()
+            val parent = tempdir()
             val nonExistingParent = File(parent, "parent1/parent2")
             val child = File(nonExistingParent, "/")
 
@@ -204,35 +203,11 @@ class ExtensionsTest : WordSpec({
         }
 
         "throw exception if file is not a directory" {
-            val file = createTestTempFile()
+            val file = tempfile(null, null)
 
             file shouldBe aFile()
             shouldThrow<IOException> { file.safeMkdirs() }
             file shouldBe aFile() // should still be a file afterwards
-        }
-    }
-
-    "File.searchUpwardsForFile" should {
-        "find the README.md file case insensitive" {
-            val readmeFile = File(".").searchUpwardsForFile("ReadMe.MD", true)
-
-            readmeFile shouldNotBeNull {
-                this shouldBe File("../..").absoluteFile.normalize().resolve("README.md")
-            }
-        }
-
-        "find the README.md file case sensitive" {
-            val readmeFile = File(".").searchUpwardsForFile("README.md", false)
-
-            readmeFile shouldNotBeNull {
-                this shouldBe File("../..").absoluteFile.normalize().resolve("README.md")
-            }
-        }
-
-        "not find the README.md with wrong cases" {
-            val readmeFile = File(".").searchUpwardsForFile("ReadMe.MD", false)
-
-            readmeFile should beNull()
         }
     }
 
@@ -363,7 +338,7 @@ class ExtensionsTest : WordSpec({
     "String.collapseWhitespace()" should {
         "remove additional white spaces" {
             "String with additional   white spaces. ".collapseWhitespace() shouldBe
-                    "String with additional white spaces."
+                "String with additional white spaces."
         }
 
         "remove newlines" {
@@ -417,27 +392,27 @@ class ExtensionsTest : WordSpec({
     "String.replaceCredentialsInUri" should {
         "strip the user name from a string representing a URL" {
             "ssh://bot@gerrit.host.com:29418/parent/project".replaceCredentialsInUri() shouldBe
-                    "ssh://gerrit.host.com:29418/parent/project"
+                "ssh://gerrit.host.com:29418/parent/project"
         }
 
         "strip the user name and password from a string representing a URL" {
             "ssh://bot:pass@gerrit.host.com:29418/parent/project".replaceCredentialsInUri() shouldBe
-                    "ssh://gerrit.host.com:29418/parent/project"
+                "ssh://gerrit.host.com:29418/parent/project"
         }
 
         "replace the user name from a string representing a URL" {
             "ssh://bot@gerrit.host.com:29418/parent/project".replaceCredentialsInUri("user") shouldBe
-                    "ssh://user@gerrit.host.com:29418/parent/project"
+                "ssh://user@gerrit.host.com:29418/parent/project"
         }
 
         "replace the user name and password from a string representing a URL" {
             "ssh://bot:pass@gerrit.host.com:29418/parent/project".replaceCredentialsInUri("user:secret") shouldBe
-                    "ssh://user:secret@gerrit.host.com:29418/parent/project"
+                "ssh://user:secret@gerrit.host.com:29418/parent/project"
         }
 
         "not modify encodings in a URL" {
             "ssh://bot@gerrit.host.com:29418/parent/project%20with%20spaces".replaceCredentialsInUri() shouldBe
-                    "ssh://gerrit.host.com:29418/parent/project%20with%20spaces"
+                "ssh://gerrit.host.com:29418/parent/project%20with%20spaces"
         }
 
         "not modify a string not representing a URL" {
@@ -488,7 +463,7 @@ class ExtensionsTest : WordSpec({
         }
 
         "create a valid file name" {
-            val tempDir = createTestTempDir()
+            val tempDir = tempdir()
             val fileFromStr = tempDir.resolve(str.fileSystemEncode()).apply { writeText("dummy") }
 
             fileFromStr shouldBe aFile()
@@ -498,20 +473,20 @@ class ExtensionsTest : WordSpec({
     "URI.getQueryParameters" should {
         "return the query parameter for a simple query" {
             URI("https://oss-review-toolkit.org?key=value").getQueryParameters() shouldBe
-                    mapOf("key" to listOf("value"))
+                mapOf("key" to listOf("value"))
         }
 
         "work with multiple query parameters" {
             URI("https://oss-review-toolkit.org?key1=value1&key2=value2").getQueryParameters() shouldBe
-                    mapOf("key1" to listOf("value1"), "key2" to listOf("value2"))
+                mapOf("key1" to listOf("value1"), "key2" to listOf("value2"))
         }
 
         "return query parameter with multiple values" {
             URI("https://oss-review-toolkit.org?key=value1,value2,value3").getQueryParameters() shouldBe
-                    mapOf("key" to listOf("value1", "value2", "value3"))
+                mapOf("key" to listOf("value1", "value2", "value3"))
 
             URI("https://oss-review-toolkit.org?key=value1&key=value2").getQueryParameters() shouldBe
-                    mapOf("key" to listOf("value1", "value2"))
+                mapOf("key" to listOf("value1", "value2"))
         }
 
         "work for URIs without query parameters" {
@@ -520,6 +495,44 @@ class ExtensionsTest : WordSpec({
 
         "work with empty values" {
             URI("https://oss-review-toolkit.org?key=").getQueryParameters() shouldBe mapOf("key" to listOf(""))
+        }
+    }
+
+    "collapseValues" should {
+        "not modify a single value" {
+            val lines = listOf(255)
+            lines.collapseToRanges() should containExactlyCollection(255 to 255)
+        }
+
+        "collapse two elements in a single range" {
+            val lines = listOf(255, 256)
+            lines.collapseToRanges() should containExactlyCollection(255 to 256)
+        }
+
+        "collapse three elements in a single range" {
+            val lines = listOf(255, 256, 257)
+            lines.collapseToRanges() should containExactlyCollection(255 to 257)
+        }
+
+        "not include single element in a range" {
+            val lines = listOf(255, 257, 258)
+            lines.collapseToRanges() should containExactlyCollection(255 to 255, 257 to 258)
+        }
+
+        "collapse multiple ranges" {
+            val lines = listOf(255, 256, 258, 259)
+            lines.collapseToRanges() should containExactlyCollection(255 to 256, 258 to 259)
+        }
+
+        "collapse a mix of ranges and single values" {
+            val lines = listOf(253, 255, 256, 258, 260, 261, 263)
+            lines.collapseToRanges() should containExactlyCollection(
+                253 to 253,
+                255 to 256,
+                258 to 258,
+                260 to 261,
+                263 to 263
+            )
         }
     }
 })

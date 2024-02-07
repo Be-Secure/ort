@@ -20,40 +20,32 @@
 package org.ossreviewtoolkit.scanner
 
 import java.io.File
+import java.time.Instant
 
-import org.apache.logging.log4j.kotlin.Logging
-
-import org.ossreviewtoolkit.model.ScannerDetails
+import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 
 /**
  * A [PathScannerWrapper] that is executed as a [CommandLineTool] on the local machine.
  */
-abstract class CommandLinePathScannerWrapper(name: String) : PathScannerWrapper, CommandLineTool {
-    companion object : Logging
+abstract class CommandLinePathScannerWrapper(override val name: String) : PathScannerWrapper, CommandLineTool {
+    override val version by lazy { getVersion() }
 
-    /**
-     * The configuration used by the scanner, should contain command line options that influence the scan result.
-     */
-    abstract val configuration: String
-
-    override val details by lazy { ScannerDetails(name, getVersion(), configuration) }
-
-    /**
-     * Return the invariant relative path of the [scanned file][scannedFilename] with respect to the
-     * [scanned path][scanPath].
-     */
-    protected fun relativizePath(scanPath: File, scannedFilename: File): String {
-        val relativePathToScannedFile = if (scannedFilename.isAbsolute) {
-            if (scanPath.isFile) {
-                scannedFilename.relativeTo(scanPath.parentFile)
-            } else {
-                scannedFilename.relativeTo(scanPath)
-            }
-        } else {
-            scannedFilename
-        }
-
-        return relativePathToScannedFile.invariantSeparatorsPath
+    final override fun scanPath(path: File, context: ScanContext): ScanSummary {
+        val startTime = Instant.now()
+        val result = runScanner(path, context)
+        val endTime = Instant.now()
+        return createSummary(result, startTime, endTime)
     }
+
+    /**
+     * Run the scanner on the given [path] with the given [context].
+     */
+    abstract fun runScanner(path: File, context: ScanContext): String
+
+    /**
+     * Create a [ScanSummary] from the scan [result] in a scanner-native format. If the [result] itself does not contain
+     * time information, [startTime] and [endTime] may be used instead.
+     */
+    abstract fun createSummary(result: String, startTime: Instant, endTime: Instant): ScanSummary
 }

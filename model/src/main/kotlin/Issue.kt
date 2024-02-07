@@ -19,6 +19,7 @@
 
 package org.ossreviewtoolkit.model
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonGenerator
 import com.fasterxml.jackson.databind.SerializerProvider
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
@@ -26,7 +27,7 @@ import com.fasterxml.jackson.databind.ser.std.StdSerializer
 
 import java.time.Instant
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.utils.common.normalizeLineBreaks
 
@@ -53,7 +54,13 @@ data class Issue(
     /**
      * The issue's severity.
      */
-    val severity: Severity = Severity.ERROR
+    val severity: Severity = Severity.ERROR,
+
+    /**
+     * The affected file or directory the issue is limited to, if any.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val affectedPath: String? = null
 ) {
     override fun toString(): String {
         val time = if (timestamp == Instant.EPOCH) "Unknown time" else timestamp.toString()
@@ -70,11 +77,7 @@ class NormalizeLineBreaksSerializer : StdSerializer<String>(String::class.java) 
 /**
  * Create an [Issue] and log the message. The log level is aligned with the [severity].
  */
-inline fun <reified T : Logging> T.createAndLogIssue(
-    source: String,
-    message: String,
-    severity: Severity? = null
-): Issue {
+fun Any.createAndLogIssue(source: String, message: String, severity: Severity? = null): Issue {
     val issue = severity?.let { Issue(source = source, message = message, severity = it) }
         ?: Issue(source = source, message = message)
     logger.log(issue.severity.toLog4jLevel()) { message }

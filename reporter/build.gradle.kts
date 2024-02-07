@@ -19,68 +19,25 @@
 
 plugins {
     // Apply core plugins.
-    `java-library`
-}
+    `java-test-fixtures`
 
-val generatedResourcesDir = file("$buildDir/generated-resources/main")
-val copyWebAppTemplate by tasks.registering(Copy::class) {
-    dependsOn(":reporter-web-app:yarnBuild")
-
-    from(project(":reporter-web-app").file("build")) {
-        include("scan-report-template.html")
-    }
-
-    into(generatedResourcesDir)
-    outputs.cacheIf { true }
-}
-
-sourceSets.named("main") {
-    output.dir(mapOf("builtBy" to copyWebAppTemplate), generatedResourcesDir)
-}
-
-repositories {
-    exclusiveContent {
-        forRepository {
-            maven("https://jitpack.io")
-        }
-
-        filter {
-            includeGroup("com.github.ralfstuckert.pdfbox-layout")
-            includeGroup("com.github.everit-org.json-schema")
-        }
-    }
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":model"))
+    api(projects.model)
 
-    implementation(project(":clients:fossid-webapp-client"))
-    implementation(project(":downloader"))
-    implementation(project(":utils:ort-utils"))
-    implementation(project(":utils:scripting-utils"))
-    implementation(project(":utils:spdx-utils"))
+    implementation(projects.utils.scriptingUtils)
+    implementation(projects.utils.spdxUtils)
 
     implementation("org.jetbrains.kotlin:kotlin-scripting-common")
     implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host")
 
-    implementation(libs.asciidoctorj)
-    implementation(libs.asciidoctorjPdf)
-    implementation(libs.commonsCompress)
-    implementation(libs.cyclonedx)
-    implementation(libs.flexmark)
-    implementation(libs.freemarker)
-    implementation(libs.jacksonDatatypeJsr310)
-    implementation(libs.jacksonModuleKotlin)
-    implementation(libs.kotlinxCoroutines)
-    implementation(libs.kotlinxHtml)
-    implementation(libs.poiOoxml)
-    implementation(libs.retrofit)
+    // Only the Java plugin's built-in "test" source set automatically depends on the test fixtures.
+    funTestImplementation(testFixtures(project))
 
-    // This is required to not depend on the version of Apache Xalan bundled with the JDK. Otherwise, the formatting of
-    // the HTML generated in StaticHtmlReporter is slightly different with different Java versions.
-    implementation(libs.saxonHe)
+    funTestImplementation(libs.kotest.assertions.json)
 
-    testImplementation(libs.mockk)
-
-    funTestImplementation(libs.kotestAssertionsJson)
+    testFixturesImplementation(projects.utils.testUtils)
 }

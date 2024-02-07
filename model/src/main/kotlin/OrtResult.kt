@@ -22,18 +22,25 @@ package org.ossreviewtoolkit.model
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 
-import org.apache.logging.log4j.kotlin.Logging
+import java.lang.invoke.MethodHandles
+
+import org.apache.logging.log4j.kotlin.loggerOf
 
 import org.ossreviewtoolkit.model.ResolvedPackageCurations.Companion.REPOSITORY_CONFIGURATION_PROVIDER_ID
 import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.IssueResolution
 import org.ossreviewtoolkit.model.config.LicenseFindingCuration
+import org.ossreviewtoolkit.model.config.PackageConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.config.Resolutions
+import org.ossreviewtoolkit.model.config.RuleViolationResolution
+import org.ossreviewtoolkit.model.config.VulnerabilityResolution
 import org.ossreviewtoolkit.model.config.orEmpty
-import org.ossreviewtoolkit.model.utils.ConfigurationResolver
-import org.ossreviewtoolkit.model.utils.PackageCurationProvider
+import org.ossreviewtoolkit.model.utils.PackageConfigurationProvider
+import org.ossreviewtoolkit.model.utils.ResolutionProvider
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
 import org.ossreviewtoolkit.utils.common.zipWithCollections
-import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
+import org.ossreviewtoolkit.utils.spdx.SpdxLicenseChoice
 
 /**
  * The common output format for the analyzer and scanner. It contains information about the scanned repository, and the
@@ -82,8 +89,8 @@ data class OrtResult(
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     val labels: Map<String, String> = emptyMap()
-) {
-    companion object : Logging {
+) : ResolutionProvider, PackageConfigurationProvider {
+    companion object {
         /**
          * A constant for an [OrtResult] with an empty repository and all other properties `null`.
          */
@@ -100,32 +107,11 @@ data class OrtResult(
 
     /** An object that can be used to navigate the dependency information contained in this result. */
     @get:JsonIgnore
-    val dependencyNavigator: DependencyNavigator by lazy { createDependencyNavigator() }
+    val dependencyNavigator: DependencyNavigator by lazy { CompatibilityDependencyNavigator.create(this) }
 
-    private data class ProjectEntry(val project: Project, val isExcluded: Boolean)
-
-    /**
-     * A map of projects and their excluded state. Calculating this map once brings massive performance improvements
-     * when querying projects in large analyzer results.
-     */
-    private val projects: Map<Identifier, ProjectEntry> by lazy {
-        getProjects().associateBy(
-            { project -> project.id },
-            { project ->
-                val pathExcludes = getExcludes().findPathExcludes(project, this)
-                ProjectEntry(
-                    project = project,
-                    isExcluded = pathExcludes.isNotEmpty()
-                )
-            }
-        )
+    private val advisorResultsById: Map<Identifier, List<AdvisorResult>> by lazy {
+        advisor?.results?.advisorResults.orEmpty()
     }
-
-    private data class PackageEntry(
-        val pkg: Package?,
-        val curatedPackage: CuratedPackage?,
-        val isExcluded: Boolean
-    )
 
     /**
      * A map of packages and their excluded state. Calculating this map once brings massive performance improvements
@@ -163,56 +149,147 @@ data class OrtResult(
         }
     }
 
-    private val scanResultsById: Map<Identifier, List<ScanResult>> by lazy { scanner?.scanResults.orEmpty() }
-
-    private val advisorResultsById: Map<Identifier, List<AdvisorResult>> by lazy {
-        advisor?.results?.advisorResults.orEmpty()
+    private val packageConfigurationsById: Map<Identifier, List<PackageConfiguration>> by lazy {
+        resolvedConfiguration.packageConfigurations.orEmpty().groupBy { it.id }
     }
+
+    /**
+     * A map of projects and their excluded state. Calculating this map once brings massive performance improvements
+     * when querying projects in large analyzer results.
+     */
+    private val projects: Map<Identifier, ProjectEntry> by lazy {
+        getProjects().associateBy(
+            { project -> project.id },
+            { project ->
+                val pathExcludes = getExcludes().findPathExcludes(project, this)
+                ProjectEntry(
+                    project = project,
+                    isExcluded = pathExcludes.isNotEmpty()
+                )
+            }
+        )
+    }
+
+    private val relativeProjectVcsPath: Map<Identifier, String?> by lazy {
+        getProjects().associateBy({ it.id }, { repository.getRelativePath(it.vcsProcessed) })
+    }
+
+    /**
+     * Return all [AdvisorResult]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
+     * true.
+     */
+    @JsonIgnore
+    fun getAdvisorResults(omitExcluded: Boolean = false): Map<Identifier, List<AdvisorResult>> =
+        advisorResultsById.filter { (id, _) ->
+            !omitExcluded || !isExcluded(id)
+        }
+
+    /**
+     * Return the list of [AdvisorResult]s for the given [id].
+     */
+    @Suppress("UNUSED")
+    fun getAdvisorResultsForId(id: Identifier): List<AdvisorResult> = advisorResultsById[id].orEmpty()
+
+    /**
+     * Return the path of the definition file of the [project], relative to the analyzer root. If the project was
+     * checked out from a VCS the analyzer root is the root of the working tree, if the project was not checked out from
+     * a VCS the analyzer root is the input directory of the analyzer.
+     */
+    fun getDefinitionFilePathRelativeToAnalyzerRoot(project: Project) =
+        getFilePathRelativeToAnalyzerRoot(project, project.definitionFilePath)
 
     /**
      * Return the dependencies of the given [id] (which can refer to a [Project] or a [Package]), up to and including a
      * depth of [maxLevel] where counting starts at 0 (for the [Project] or [Package] itself) and 1 are direct
-     * dependencies etc. A value below 0 means to not limit the depth.
+     * dependencies etc. A value below 0 means to not limit the depth. If [omitExcluded] is set to true, identifiers of
+     * excluded projects / packages are omitted from the result.
      */
-    fun collectDependencies(id: Identifier, maxLevel: Int = -1): Set<Identifier> {
+    fun getDependencies(id: Identifier, maxLevel: Int = -1, omitExcluded: Boolean = false): Set<Identifier> {
         val dependencies = mutableSetOf<Identifier>()
+        val matcher = DependencyNavigator.MATCH_ALL.takeUnless { omitExcluded } ?: { !isExcluded(it.id) }
 
         getProjects().forEach { project ->
             if (project.id == id) {
-                dependencies += dependencyNavigator.projectDependencies(project, maxLevel)
+                dependencies += dependencyNavigator.projectDependencies(project, maxLevel, matcher)
             }
 
-            dependencies += dependencyNavigator.packageDependencies(project, id, maxLevel)
+            dependencies += dependencyNavigator.packageDependencies(project, id, maxLevel, matcher)
         }
 
         return dependencies
     }
 
+    @JsonIgnore
+    fun getExcludes(): Excludes = repository.config.excludes
+
+    /**
+     * Return the path of a file contained in [project], relative to the analyzer root. If the project was checked out
+     * from a VCS the analyzer root is the root of the working tree, if the project was not checked out from a VCS the
+     * analyzer root is the input directory of the analyzer.
+     */
+    fun getFilePathRelativeToAnalyzerRoot(project: Project, path: String): String {
+        val vcsPath = relativeProjectVcsPath.getValue(project.id)
+
+        requireNotNull(vcsPath) {
+            "The ${project.vcsProcessed} of project '${project.id.toCoordinates()}' cannot be found in $repository."
+        }
+
+        return buildString {
+            if (vcsPath.isNotEmpty()) {
+                append(vcsPath)
+                append("/")
+            }
+            append(path)
+        }
+    }
+
     /**
      * Return a map of all de-duplicated [Issue]s associated by [Identifier].
      */
-    fun collectIssues(): Map<Identifier, Set<Issue>> {
-        val analyzerIssues = analyzer?.result?.collectIssues().orEmpty()
-        val scannerIssues = scanner?.collectIssues().orEmpty()
-        val advisorIssues = advisor?.results?.collectIssues().orEmpty()
+    @JsonIgnore
+    fun getIssues(): Map<Identifier, Set<Issue>> {
+        val analyzerIssues = analyzer?.result?.getAllIssues().orEmpty()
+        val scannerIssues = scanner?.getIssues().orEmpty()
+        val advisorIssues = advisor?.results?.getIssues().orEmpty()
 
         val analyzerAndScannerIssues = analyzerIssues.zipWithCollections(scannerIssues)
         return analyzerAndScannerIssues.zipWithCollections(advisorIssues)
     }
 
     /**
-     * Return the set of all project or package identifiers in the result, optionally [including those of subprojects]
-     * [includeSubProjects].
+     * Return the label values corresponding to the given [key] split at the delimiter ',', or an empty set if the label
+     * is absent.
      */
-    fun collectProjectsAndPackages(includeSubProjects: Boolean = true): Set<Identifier> {
-        val projectsAndPackages = mutableSetOf<Identifier>()
-        val projects = getProjects(includeSubProjects = includeSubProjects)
+    fun getLabelValues(key: String): Set<String> = labels[key]?.split(',').orEmpty().mapTo(mutableSetOf()) { it.trim() }
 
-        projects.mapTo(projectsAndPackages) { it.id }
-        getPackages().mapTo(projectsAndPackages) { it.metadata.id }
+    /**
+     * Return the [LicenseFindingCuration]s associated with the given package [id].
+     */
+    fun getLicenseFindingCurations(id: Identifier): List<LicenseFindingCuration> =
+        if (projects.containsKey(id)) {
+            repository.config.curations.licenseFindings
+        } else {
+            emptyList()
+        }
 
-        return projectsAndPackages
-    }
+    /**
+     * Return all non-excluded issues which are not resolved by resolutions in the resolved configuration of this
+     * [OrtResult] with severities equal to or over [minSeverity].
+     */
+    @JsonIgnore
+    fun getOpenIssues(minSeverity: Severity = Severity.WARNING) =
+        getIssues()
+            .mapNotNull { (id, issues) -> issues.takeUnless { isExcluded(id) } }
+            .flatten()
+            .filter { issue ->
+                issue.severity >= minSeverity && getResolutions().issues.none { it.matches(issue) }
+            }
+
+    /**
+     * Return a list of [PackageConfiguration]s for the given [packageId] and [provenance].
+     */
+    override fun getPackageConfigurations(packageId: Identifier, provenance: Provenance): List<PackageConfiguration> =
+        packageConfigurationsById[packageId].orEmpty().filter { it.matches(packageId, provenance) }
 
     /**
      * Return all projects and packages that are likely to belong to one of the organizations of the given [names]. If
@@ -239,6 +316,178 @@ data class OrtResult(
     }
 
     /**
+     * Return the [CuratedPackage] denoted by the given [id].
+     */
+    fun getPackage(id: Identifier): CuratedPackage? = packages[id]?.curatedPackage
+
+    /**
+     * Return all [SpdxLicenseChoice]s for the [Package] with [id].
+     */
+    fun getPackageLicenseChoices(id: Identifier): List<SpdxLicenseChoice> =
+        repository.config.licenseChoices.packageLicenseChoices.find { it.packageId == id }?.licenseChoices.orEmpty()
+
+    /**
+     * Return a [CuratedPackage] which represents either a [Package] if the given [id] corresponds to a [Package],
+     * a [Project] if the given [id] corresponds to a [Project] or `null` otherwise.
+     */
+    fun getPackageOrProject(id: Identifier): CuratedPackage? =
+        getPackage(id) ?: getProject(id)?.toPackage()?.toCuratedPackage()
+
+    /**
+     * Return all [CuratedPackage]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
+     * true.
+     */
+    @JsonIgnore
+    fun getPackages(omitExcluded: Boolean = false): Set<CuratedPackage> =
+        packages.mapNotNullTo(mutableSetOf()) { (_, entry) ->
+            entry.curatedPackage.takeUnless { omitExcluded && entry.isExcluded }
+        }
+
+    /**
+     * Return the [Project] denoted by the given [id].
+     */
+    fun getProject(id: Identifier): Project? = projects[id]?.project
+
+    /**
+     * Return the [Project]s contained in this [OrtResult], optionally limited to only non-excluded ones if
+     * [omitExcluded] is true, or to only root projects if [includeSubProjects] is false.
+     */
+    @JsonIgnore
+    fun getProjects(omitExcluded: Boolean = false, includeSubProjects: Boolean = true): Set<Project> {
+        val projects = analyzer?.result?.projects.orEmpty().filterTo(mutableSetOf()) { project ->
+            !omitExcluded || !isExcluded(project.id)
+        }
+
+        if (!includeSubProjects) {
+            val subProjectIds = projects.flatMapTo(mutableSetOf()) {
+                dependencyNavigator.collectSubProjects(it)
+            }
+
+            projects.removeAll { it.id in subProjectIds }
+        }
+
+        return projects
+    }
+
+    /**
+     * Return the set of all project or package identifiers in the result, optionally [including those of subprojects]
+     * [includeSubProjects].
+     */
+    @JsonIgnore
+    fun getProjectsAndPackages(includeSubProjects: Boolean = true): Set<Identifier> {
+        val projectsAndPackages = mutableSetOf<Identifier>()
+        val projects = getProjects(includeSubProjects = includeSubProjects)
+
+        projects.mapTo(projectsAndPackages) { it.id }
+        getPackages().mapTo(projectsAndPackages) { it.metadata.id }
+
+        return projectsAndPackages
+    }
+
+    /**
+     * Return all [SpdxLicenseChoice]s applicable for the scope of the whole [repository].
+     */
+    @JsonIgnore
+    fun getRepositoryLicenseChoices(): List<SpdxLicenseChoice> =
+        repository.config.licenseChoices.repositoryLicenseChoices
+
+    /**
+     * Return the [Resolutions] contained in the repository configuration of this [OrtResult].
+     */
+    @JsonIgnore
+    fun getRepositoryConfigResolutions(): Resolutions = repository.config.resolutions.orEmpty()
+
+    /**
+     * Return the [Resolutions] contained in the resolved configuration of this [OrtResult].
+     */
+    @JsonIgnore
+    fun getResolutions(): Resolutions = resolvedConfiguration.resolutions.orEmpty()
+
+    /**
+     * Return true if and only if [violation] is resolved in this [OrtResult].
+     */
+    override fun isResolved(violation: RuleViolation): Boolean =
+        getResolutions().ruleViolations.any { it.matches(violation) }
+
+    /**
+     * Return true if and only if [vulnerability] is resolved in this [OrtResult].
+     */
+    override fun isResolved(vulnerability: Vulnerability): Boolean =
+        getResolutions().vulnerabilities.any { it.matches(vulnerability) }
+
+    /**
+     * Return the resolutions matching [issue].
+     */
+    override fun getResolutionsFor(issue: Issue): List<IssueResolution> =
+        getResolutions().issues.filter { it.matches(issue) }
+
+    /**
+     * Return the resolutions matching [violation].
+     */
+    override fun getResolutionsFor(violation: RuleViolation): List<RuleViolationResolution> =
+        getResolutions().ruleViolations.filter { it.matches(violation) }
+
+    /**
+     * Return the resolutions matching [vulnerability].
+     */
+    override fun getResolutionsFor(vulnerability: Vulnerability): List<VulnerabilityResolution> =
+        getResolutions().vulnerabilities.filter { it.matches(vulnerability) }
+
+    /**
+     * Return all [RuleViolation]s contained in this [OrtResult]. Optionally exclude resolved violations with
+     * [omitResolved] and remove violations below the [minSeverity].
+     */
+    @JsonIgnore
+    fun getRuleViolations(omitResolved: Boolean = false, minSeverity: Severity? = null): List<RuleViolation> {
+        val allViolations = evaluator?.violations.orEmpty()
+
+        val severeViolations = when (minSeverity) {
+            null -> allViolations
+            else -> allViolations.filter { it.severity >= minSeverity }
+        }
+
+        return if (omitResolved) {
+            val resolutions = getResolutions().ruleViolations
+
+            severeViolations.filter { violation ->
+                resolutions.none { resolution ->
+                    resolution.matches(violation)
+                }
+            }
+        } else {
+            severeViolations
+        }
+    }
+
+    /**
+     * Return the list of [ScanResult]s for the given [id].
+     */
+    fun getScanResultsForId(id: Identifier): List<ScanResult> = scanner?.getScanResults(id).orEmpty()
+
+    /**
+     * Return the scan results associated with the respective identifiers.
+     */
+    @JsonIgnore
+    fun getScanResults(): Map<Identifier, List<ScanResult>> = scanner?.getAllScanResults().orEmpty()
+
+    /**
+     * Return the [FileList] for the given [id].
+     */
+    fun getFileListForId(id: Identifier): FileList? = scanner?.getFileList(id)
+
+    /**
+     * Return the [FileList] associated with the respective identifier.
+     */
+    @JsonIgnore
+    fun getFileLists(): Map<Identifier, FileList> = scanner?.getAllFileLists().orEmpty()
+
+    /**
+     * Return an uncurated [Package] which represents either a [Package] if the given [id] corresponds to a [Package],
+     * a [Project] if the given [id] corresponds to a [Project] or `null` otherwise.
+     */
+    fun getUncuratedPackageOrProject(id: Identifier): Package? = packages[id]?.pkg ?: getProject(id)?.toPackage()
+
+    /**
      * Return all uncurated [Package]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
      * true.
      */
@@ -248,45 +497,39 @@ data class OrtResult(
             entry.pkg.takeUnless { omitExcluded && entry.isExcluded }
         }
 
-    /**
-     * Return an uncurated [Package] which represents either a [Package] if the given [id] corresponds to a [Package],
-     * a [Project] if the given [id] corresponds to a [Project] or `null` otherwise.
-     */
-    fun getUncuratedPackageOrProject(id: Identifier): Package? =
-        packages[id]?.pkg ?: getProject(id)?.toPackage()
+    @JsonIgnore
+    fun getVulnerabilities(
+        omitResolved: Boolean = false,
+        omitExcluded: Boolean = false
+    ): Map<Identifier, List<Vulnerability>> {
+        val allVulnerabilities = advisor?.results?.getVulnerabilities().orEmpty()
+            .filterKeys { !omitExcluded || !isExcluded(it) }
 
-    /**
-     * Return the path of the definition file of the [project], relative to the analyzer root. If the project was
-     * checked out from a VCS the analyzer root is the root of the working tree, if the project was not checked out from
-     * a VCS the analyzer root is the input directory of the analyzer.
-     */
-    fun getDefinitionFilePathRelativeToAnalyzerRoot(project: Project) =
-        getFilePathRelativeToAnalyzerRoot(project, project.definitionFilePath)
+        return if (omitResolved) {
+            val resolutions = getResolutions().vulnerabilities
 
-    private val relativeProjectVcsPath: Map<Identifier, String?> by lazy {
-        getProjects().associateBy({ it.id }, { repository.getRelativePath(it.vcsProcessed) })
-    }
-
-    /**
-     * Return the path of a file contained in [project], relative to the analyzer root. If the project was checked out
-     * from a VCS the analyzer root is the root of the working tree, if the project was not checked out from a VCS the
-     * analyzer root is the input directory of the analyzer.
-     */
-    fun getFilePathRelativeToAnalyzerRoot(project: Project, path: String): String {
-        val vcsPath = relativeProjectVcsPath.getValue(project.id)
-
-        requireNotNull(vcsPath) {
-            "The ${project.vcsProcessed} of project '${project.id.toCoordinates()}' cannot be found in $repository."
-        }
-
-        return buildString {
-            if (vcsPath.isNotEmpty()) {
-                append(vcsPath)
-                append("/")
-            }
-            append(path)
+            allVulnerabilities.mapValues { (_, vulnerabilities) ->
+                vulnerabilities.filter { vulnerability ->
+                    resolutions.none { it.matches(vulnerability) }
+                }
+            }.filterValues { it.isNotEmpty() }
+        } else {
+            allVulnerabilities
         }
     }
+
+    /**
+     * Return true if a [label] with [value] exists in this [OrtResult]. If [value] is null the value of the label is
+     * ignored. If [splitValue] is true, the label value is interpreted as comma-separated list.
+     */
+    fun hasLabel(label: String, value: String? = null, splitValue: Boolean = true) =
+        if (value == null) {
+            label in labels
+        } else if (splitValue) {
+            value in getLabelValues(label)
+        } else {
+            labels[label] == value
+        }
 
     /**
      * Return `true` if the project or package with the given [id] is excluded.
@@ -330,6 +573,16 @@ data class OrtResult(
     fun isProjectExcluded(id: Identifier): Boolean = projects[id]?.isExcluded ?: false
 
     /**
+     * Return true if and only if the given [id] denotes a [Package] contained in this [OrtResult].
+     */
+    fun isPackage(id: Identifier): Boolean = getPackage(id) != null
+
+    /**
+     * Return true if and only if the given [id] denotes a [Project] contained in this [OrtResult].
+     */
+    fun isProject(id: Identifier): Boolean = getProject(id) != null
+
+    /**
      * Return a copy of this [OrtResult] with the [Repository.config] replaced by [config]. The package curations
      * within the given config only take effect in case the corresponding feature was enabled during the initial
      * creation of this [OrtResult].
@@ -344,202 +597,11 @@ data class OrtResult(
                     if (it.provider.id != REPOSITORY_CONFIGURATION_PROVIDER_ID) {
                         it
                     } else {
-                        it.copy(curations = config.curations.packages.toSet())
+                        it.copy(curations = config.curations.packages)
                     }
                 }
             )
         )
-
-    /**
-     * Return a copy of this [OrtResult] with the [PackageCuration]s replaced by the ones from the given [provider]
-     * associated with the given [providerId].
-     */
-    fun replacePackageCurations(provider: PackageCurationProvider, providerId: String): OrtResult {
-        require(providerId != REPOSITORY_CONFIGURATION_PROVIDER_ID) {
-            "Cannot replace curations for id '$REPOSITORY_CONFIGURATION_PROVIDER_ID' which is reserved and not allowed."
-        }
-
-        val packageCurations = resolvedConfiguration.packageCurations.find {
-            it.provider.id == REPOSITORY_CONFIGURATION_PROVIDER_ID
-        }.let { listOfNotNull(it) } + ConfigurationResolver.resolvePackageCurations(
-            packages = getUncuratedPackages(),
-            curationProviders = listOf(providerId to provider)
-        )
-
-        return copy(
-            resolvedConfiguration = resolvedConfiguration.copy(
-                packageCurations = packageCurations
-            )
-        )
-    }
-
-    /**
-     * Return the [Project] denoted by the given [id].
-     */
-    fun getProject(id: Identifier): Project? = projects[id]?.project
-
-    /**
-     * Return the [CuratedPackage] denoted by the given [id].
-     */
-    fun getPackage(id: Identifier): CuratedPackage? = packages[id]?.curatedPackage
-
-    /**
-     * Return a [CuratedPackage] which represents either a [Package] if the given [id] corresponds to a [Package],
-     * a [Project] if the given [id] corresponds to a [Project] or `null` otherwise.
-     */
-    fun getPackageOrProject(id: Identifier): CuratedPackage? =
-        getPackage(id) ?: getProject(id)?.toPackage()?.toCuratedPackage()
-
-    /**
-     * Return all [CuratedPackage]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
-     * true.
-     */
-    @JsonIgnore
-    fun getPackages(omitExcluded: Boolean = false): Set<CuratedPackage> =
-        packages.mapNotNullTo(mutableSetOf()) { (_, entry) ->
-            entry.curatedPackage.takeUnless { omitExcluded && entry.isExcluded }
-        }
-
-    /**
-     * Return the [Project]s contained in this [OrtResult], optionally limited to only non-excluded ones if
-     * [omitExcluded] is true, or to only root projects if [includeSubProjects] is false.
-     */
-    @JsonIgnore
-    fun getProjects(omitExcluded: Boolean = false, includeSubProjects: Boolean = true): Set<Project> {
-        val projects = analyzer?.result?.projects.orEmpty().filterTo(mutableSetOf()) { project ->
-            !omitExcluded || !isExcluded(project.id)
-        }
-
-        if (!includeSubProjects) {
-            val subProjectIds = projects.flatMapTo(mutableSetOf()) {
-                dependencyNavigator.collectSubProjects(it)
-            }
-
-            projects.removeAll { it.id in subProjectIds }
-        }
-
-        return projects
-    }
-
-    /**
-     * Return all [AdvisorResult]s contained in this [OrtResult] or only the non-excluded ones if [omitExcluded] is
-     * true.
-     */
-    @JsonIgnore
-    fun getAdvisorResults(omitExcluded: Boolean = false): Map<Identifier, List<AdvisorResult>> =
-        advisorResultsById.filter { (id, _) ->
-            !omitExcluded || !isExcluded(id)
-        }
-
-    /**
-     * Return all [SpdxLicenseChoice]s for the [Package] with [id].
-     */
-    fun getPackageLicenseChoices(id: Identifier): List<SpdxLicenseChoice> =
-        repository.config.licenseChoices.packageLicenseChoices.find { it.packageId == id }?.licenseChoices.orEmpty()
-
-    /**
-     * Return all [SpdxLicenseChoice]s applicable for the scope of the whole [repository].
-     */
-    @JsonIgnore
-    fun getRepositoryLicenseChoices(): List<SpdxLicenseChoice> =
-        repository.config.licenseChoices.repositoryLicenseChoices
-
-    /**
-     * Return the list of [AdvisorResult]s for the given [id].
-     */
-    @Suppress("UNUSED")
-    fun getAdvisorResultsForId(id: Identifier): List<AdvisorResult> = advisorResultsById[id].orEmpty()
-
-    /**
-     * Return all [RuleViolation]s contained in this [OrtResult]. Optionally exclude resolved violations with
-     * [omitResolved] and remove violations below the [minSeverity].
-     */
-    @JsonIgnore
-    fun getRuleViolations(omitResolved: Boolean = false, minSeverity: Severity? = null): List<RuleViolation> {
-        val allViolations = evaluator?.violations.orEmpty()
-
-        val severeViolations = when (minSeverity) {
-            null -> allViolations
-            else -> allViolations.filter { it.severity >= minSeverity }
-        }
-
-        return if (omitResolved) {
-            val resolutions = getResolutions().ruleViolations
-
-            severeViolations.filter { violation ->
-                resolutions.none { resolution ->
-                    resolution.matches(violation)
-                }
-            }
-        } else {
-            severeViolations
-        }
-    }
-
-    @JsonIgnore
-    fun getVulnerabilities(
-        omitResolved: Boolean = false,
-        omitExcluded: Boolean = false
-    ): Map<Identifier, List<Vulnerability>> {
-        val allVulnerabilities = advisor?.results?.getVulnerabilities().orEmpty()
-            .filterKeys { !omitExcluded || !isExcluded(it) }
-
-        return if (omitResolved) {
-            val resolutions = getResolutions().vulnerabilities
-
-            allVulnerabilities.mapValues { (_, vulnerabilities) ->
-                vulnerabilities.filter { vulnerability ->
-                    resolutions.none { it.matches(vulnerability) }
-                }
-            }.filterValues { it.isNotEmpty() }
-        } else {
-            allVulnerabilities
-        }
-    }
-
-    @JsonIgnore
-    fun getExcludes(): Excludes = repository.config.excludes
-
-    /**
-     * Return the [LicenseFindingCuration]s associated with the given package [id].
-     */
-    fun getLicenseFindingsCurations(id: Identifier): List<LicenseFindingCuration> =
-        if (projects.containsKey(id)) {
-            repository.config.curations.licenseFindings
-        } else {
-            emptyList()
-        }
-
-    /**
-     * Retrieve non-excluded issues which are not resolved by resolutions in the repository configuration of this
-     * [OrtResult] with severities equal to or over [minSeverity].
-     */
-    @JsonIgnore
-    fun getOpenIssues(minSeverity: Severity = Severity.WARNING) = collectIssues()
-        .mapNotNull { (id, issues) -> issues.takeUnless { isExcluded(id) } }
-        .flatten()
-        .filter { issue -> issue.severity >= minSeverity && getResolutions().issues.none { it.matches(issue) } }
-
-    /**
-     * Return the [Resolutions] contained in the repository configuration of this [OrtResult].
-     */
-    @JsonIgnore
-    fun getResolutions(): Resolutions = repository.config.resolutions.orEmpty()
-
-    /**
-     * Return the list of [ScanResult]s for the given [id].
-     */
-    fun getScanResultsForId(id: Identifier): List<ScanResult> = scanResultsById[id].orEmpty()
-
-    /**
-     * Return true if and only if the given [id] denotes a [Package] contained in this [OrtResult].
-     */
-    fun isPackage(id: Identifier): Boolean = getPackage(id) != null
-
-    /**
-     * Return true if and only if the given [id] denotes a [Project] contained in this [OrtResult].
-     */
-    fun isProject(id: Identifier): Boolean = getProject(id) != null
 
     /**
      * Resolves the scopes of all [Project]s in this [OrtResult] with [Project.withResolvedScopes].
@@ -550,33 +612,9 @@ data class OrtResult(
                 result = analyzer.result.withResolvedScopes()
             )
         )
-
-    /**
-     * Create the [DependencyNavigator] for this [OrtResult]. The concrete navigator implementation depends on the
-     * format, in which dependency information is stored.
-     */
-    private fun createDependencyNavigator(): DependencyNavigator = CompatibilityDependencyNavigator.create(this)
-
-    /**
-     * Return the label values corresponding to the given [key] split at the delimiter ',', or an empty set if the label
-     * is absent.
-     */
-    fun getLabelValues(key: String): Set<String> =
-        labels[key]?.split(',').orEmpty().mapTo(mutableSetOf()) { it.trim() }
-
-    /**
-     * Return true if a [label] with [value] exists in this [OrtResult]. If [value] is null the value of the label is
-     * ignored. If [splitValue] is true, the label value is interpreted as comma-separated list.
-     */
-    fun hasLabel(label: String, value: String? = null, splitValue: Boolean = true) =
-        if (value == null) {
-            label in labels
-        } else if (splitValue) {
-            value in getLabelValues(label)
-        } else {
-            labels[label] == value
-        }
 }
+
+private val logger = loggerOf(MethodHandles.lookup().lookupClass())
 
 /**
  * Return a set containing exactly one [CuratedPackage] for each given [Package], derived from applying all
@@ -598,7 +636,7 @@ private fun applyPackageCurations(
 
     return packages.mapTo(mutableSetOf()) { pkg ->
         curationsForId[pkg.id].orEmpty().asReversed().fold(pkg.toCuratedPackage()) { cur, packageCuration ->
-            OrtResult.logger.debug {
+            logger.debug {
                 "Applying curation '$packageCuration' to package '${pkg.id.toCoordinates()}'."
             }
 
@@ -606,3 +644,11 @@ private fun applyPackageCurations(
         }
     }
 }
+
+private data class PackageEntry(
+    val pkg: Package?,
+    val curatedPackage: CuratedPackage?,
+    val isExcluded: Boolean
+)
+
+private data class ProjectEntry(val project: Project, val isExcluded: Boolean)

@@ -27,12 +27,15 @@ import com.github.ajalt.clikt.parameters.types.file
 
 import org.ossreviewtoolkit.helper.utils.readOrtResult
 import org.ossreviewtoolkit.helper.utils.writeOrtResult
+import org.ossreviewtoolkit.model.ResolvedPackageCurations.Companion.REPOSITORY_CONFIGURATION_PROVIDER_ID
+import org.ossreviewtoolkit.model.utils.setPackageCurations
+import org.ossreviewtoolkit.plugins.packagecurationproviders.api.SimplePackageCurationProvider
 import org.ossreviewtoolkit.plugins.packagecurationproviders.file.FilePackageCurationProvider
 import org.ossreviewtoolkit.utils.common.expandTilde
 
-class SetCommand : CliktCommand(
+internal class SetCommand : CliktCommand(
     help = "(Re-)set all package curations for a given ORT file to the curations specified via package curations " +
-            "file and directory. If no curations are given then all curations get removed."
+        "file and directory. If no curations are given then all curations get removed."
 ) {
     private val ortFile by option(
         "--ort-file", "-i",
@@ -44,23 +47,36 @@ class SetCommand : CliktCommand(
 
     private val packageCurationsDir by option(
         "--package-curations-dir",
-        help = "A directory containing package curation data."
+        help = "A directory containing package curation files."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
 
     private val packageCurationsFile by option(
         "--package-curations-file",
-        help = "A file containing package curation data."
+        help = "A file containing package curations."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
 
     override fun run() {
-        val provider = FilePackageCurationProvider(packageCurationsFile, packageCurationsDir)
+        val ortResultInput = readOrtResult(ortFile)
 
-        val ortResult = readOrtResult(ortFile).replacePackageCurations(provider, providerId = "SetCommandOption")
+        val packageCurationProviders = buildList {
+            val hasRepositoryConfigurationPackageCurations = ortResultInput.resolvedConfiguration.packageCurations.any {
+                it.provider.id == REPOSITORY_CONFIGURATION_PROVIDER_ID
+            }
 
-        writeOrtResult(ortResult, ortFile)
+            if (hasRepositoryConfigurationPackageCurations) {
+                val packageCurations = ortResultInput.repository.config.curations.packages
+                add(REPOSITORY_CONFIGURATION_PROVIDER_ID to SimplePackageCurationProvider(packageCurations))
+            }
+
+            add("SetCommandOption" to FilePackageCurationProvider(packageCurationsFile, packageCurationsDir))
+        }
+
+        val ortResultOutput = ortResultInput.setPackageCurations(packageCurationProviders)
+
+        writeOrtResult(ortResultOutput, ortFile)
     }
 }

@@ -36,6 +36,7 @@ import org.ossreviewtoolkit.helper.utils.sortPathExcludes
 import org.ossreviewtoolkit.helper.utils.write
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.config.PackageConfiguration
@@ -50,8 +51,8 @@ import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
 
 internal class CreateCommand : CliktCommand(
     help = "Creates one package configuration for the source artifact scan and one for the VCS scan, if " +
-            "a corresponding scan result exists in the given ORT result for the respective provenance. The output " +
-            "package configuration YAML files are written to the given output directory."
+        "a corresponding scan result exists in the given ORT result for the respective provenance. The output " +
+        "package configuration YAML files are written to the given output directory."
 ) {
     private val scanResultsStorageDir by option(
         "--scan-results-storage-dir",
@@ -100,21 +101,26 @@ internal class CreateCommand : CliktCommand(
     private val nonOffendingLicenseCategories by option(
         "--non-offending-license-categories",
         help = "Specify licenses by their category which should be considered non-offending. Path excludes are not" +
-                "generated for files or directories which only contain non-offending licenses. Each category name " +
-                "must be present in the given license classifications file."
+            "generated for files or directories which only contain non-offending licenses. Each category name " +
+            "must be present in the given license classifications file."
     ).split(",").default(emptyList())
 
     private val nonOffendingLicenseIds by option(
         "--non-offending-license-ids",
         help = "Specify license IDs which should be considered non-offending. Path excludes are not generated for " +
-                "files or directories which only contain non-offending licenses."
+            "files or directories which only contain non-offending licenses."
     ).split(",").default(emptyList())
+
+    private val noSkeletonFiles by option(
+        "--no-skeleton-files",
+        help = "Only write the package configuration if it contains path excludes or license finding curations."
+    ).flag()
 
     override fun run() {
         outputDir.safeMkdirs()
 
         val scanResultsStorage = FileBasedStorage(LocalFileStorage(scanResultsStorageDir))
-        val scanResults = scanResultsStorage.read(packageId).getOrThrow().run {
+        val scanResults = scanResultsStorage.read(Package.EMPTY.copy(id = packageId)).getOrThrow().run {
             listOfNotNull(
                 find { it.provenance is RepositoryProvenance },
                 find { it.provenance is ArtifactProvenance }
@@ -134,8 +140,12 @@ internal class CreateCommand : CliktCommand(
             throw UsageError("The output file '${outputFile.absolutePath}' must not exist yet.", statusCode = 2)
         }
 
-        write(outputFile)
-        println("Wrote a package configuration to '${outputFile.absolutePath}'.")
+        if (pathExcludes.isEmpty() && noSkeletonFiles) {
+            println("Skip writing empty package configuration to '${outputFile.absolutePath}'.")
+        } else {
+            write(outputFile)
+            println("Wrote a package configuration to '${outputFile.absolutePath}'.")
+        }
     }
 
     private fun getOutputFile(filename: String): File {
@@ -192,15 +202,15 @@ internal class CreateCommand : CliktCommand(
 
         val licenseClassifications = licenseClassificationsFile?.readValue<LicenseClassifications>()
             ?: throw UsageError(
-                text = "The license classifications file must be specified in order to resolve the given " +
-                        "non-offending license category names to license IDs.",
+                message = "The license classifications file must be specified in order to resolve the given " +
+                    "non-offending license category names to license IDs.",
                 statusCode = 2
             )
 
         nonOffendingLicenseCategories.flatMapTo(result) { categoryName ->
             licenseClassifications.licensesByCategory[categoryName] ?: throw UsageError(
-                text = "The given license category '$categoryName' was not found in " +
-                        "'${licenseClassificationsFile!!.absolutePath}'.",
+                message = "The given license category '$categoryName' was not found in " +
+                    "'${licenseClassificationsFile!!.absolutePath}'.",
                 statusCode = 2
             )
         }

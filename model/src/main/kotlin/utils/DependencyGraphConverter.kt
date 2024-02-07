@@ -120,7 +120,7 @@ object DependencyGraphConverter {
      */
     private fun Project.convertToScopeNames(excludes: Excludes): Project =
         takeIf { scopeNames != null } ?: copy(
-            scopeNames = scopes.filterNot { excludes.isScopeExcluded(it.name) }.mapTo(sortedSetOf()) { it.name },
+            scopeNames = scopes.filterNot { excludes.isScopeExcluded(it.name) }.mapTo(mutableSetOf()) { it.name },
             scopeDependencies = null
         )
 
@@ -139,8 +139,7 @@ object DependencyGraphConverter {
 
         override fun createPackage(dependency: PackageReference, issues: MutableList<Issue>): Package? = null
 
-        override fun issuesForDependency(dependency: PackageReference): Collection<Issue> =
-            dependency.issues
+        override fun issuesForDependency(dependency: PackageReference): Collection<Issue> = dependency.issues
     }
 }
 

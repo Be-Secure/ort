@@ -19,10 +19,11 @@
 
 package org.ossreviewtoolkit.scanner.provenance
 
+import io.kotest.engine.spec.tempdir
+
 import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
-import org.ossreviewtoolkit.utils.test.createTestTempDir
 
 class FileBasedPackageProvenanceStorageFunTest : AbstractPackageProvenanceStorageFunTest() {
     override fun createStorage(): PackageProvenanceStorage =
-        FileBasedPackageProvenanceStorage(LocalFileStorage(createTestTempDir()))
+        FileBasedPackageProvenanceStorage(LocalFileStorage(tempdir()))
 }

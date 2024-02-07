@@ -43,9 +43,7 @@ import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.scanner.ProvenanceBasedScanStorage
 import org.ossreviewtoolkit.scanner.ScanStorageException
-import org.ossreviewtoolkit.scanner.ScannerCriteria
-
-import org.semver4j.Semver
+import org.ossreviewtoolkit.scanner.ScannerMatcher
 
 abstract class AbstractProvenanceBasedStorageFunTest(vararg listeners: TestListener) : WordSpec() {
     private lateinit var storage: ProvenanceBasedScanStorage
@@ -133,10 +131,10 @@ abstract class AbstractProvenanceBasedStorageFunTest(vararg listeners: TestListe
 
             "fail if the provenance contains a VCS path" {
                 val provenance = createRepositoryProvenance(vcsInfo = VcsInfo.valid().copy(path = "path"))
-                val criteria = ScannerCriteria.forDetails(createScannerDetails())
+                val matcher = ScannerMatcher.create(createScannerDetails())
 
                 shouldThrow<ScanStorageException> { storage.read(provenance) }
-                shouldThrow<ScanStorageException> { storage.read(provenance, criteria) }
+                shouldThrow<ScanStorageException> { storage.read(provenance, matcher) }
             }
 
             "find scan result for a specific scanner" {
@@ -148,7 +146,7 @@ abstract class AbstractProvenanceBasedStorageFunTest(vararg listeners: TestListe
 
                 val readResult = storage.read(
                     scanResult1.provenance as KnownProvenance,
-                    ScannerCriteria.forDetails(scanResult1.scanner)
+                    ScannerMatcher.create(scanResult1.scanner)
                 )
 
                 readResult should containExactly(scanResult1)
@@ -158,13 +156,13 @@ abstract class AbstractProvenanceBasedStorageFunTest(vararg listeners: TestListe
                 val scanResult1 = createScanResult(scannerDetails = createScannerDetails(name = "name1"))
                 val scanResult2 = createScanResult(scannerDetails = createScannerDetails(name = "name2"))
                 val scanResult3 = createScanResult(scannerDetails = createScannerDetails(name = "other name"))
-                val criteria = ScannerCriteria.forDetails(scanResult1.scanner).copy(regScannerName = "name.+")
+                val matcher = ScannerMatcher.create(scanResult1.scanner).copy(regScannerName = "name.+")
 
                 storage.write(scanResult1)
                 storage.write(scanResult2)
                 storage.write(scanResult3)
 
-                val readResult = storage.read(scanResult1.provenance as KnownProvenance, criteria)
+                val readResult = storage.read(scanResult1.provenance as KnownProvenance, matcher)
 
                 readResult should containExactlyInAnyOrder(scanResult1, scanResult2)
             }
@@ -175,14 +173,14 @@ abstract class AbstractProvenanceBasedStorageFunTest(vararg listeners: TestListe
                 val scanResultCompatible2 =
                     createScanResult(scannerDetails = createScannerDetails(version = "1.0.1-alpha.1"))
                 val scanResultIncompatible = createScanResult(scannerDetails = createScannerDetails(version = "2.0.0"))
-                val criteria = ScannerCriteria.forDetails(scanResult.scanner, Semver.VersionDiff.PATCH)
+                val matcher = ScannerMatcher.create(scanResult.scanner)
 
                 storage.write(scanResult)
                 storage.write(scanResultCompatible1)
                 storage.write(scanResultCompatible2)
                 storage.write(scanResultIncompatible)
 
-                val readResult = storage.read(scanResult.provenance as KnownProvenance, criteria)
+                val readResult = storage.read(scanResult.provenance as KnownProvenance, matcher)
 
                 readResult should containExactlyInAnyOrder(scanResult, scanResultCompatible1, scanResultCompatible2)
             }
@@ -220,13 +218,12 @@ private fun createScanResult(
     provenance: Provenance = createKnownProvenance(),
     scannerDetails: ScannerDetails = createScannerDetails(),
     license: String = "Apache-2.0"
-) =
-    ScanResult(
-        provenance,
-        scannerDetails,
-        ScanSummary.EMPTY.copy(
-            licenseFindings = sortedSetOf(
-                LicenseFinding(license, TextLocation("file.txt", 1, 2))
-            )
+) = ScanResult(
+    provenance,
+    scannerDetails,
+    ScanSummary.EMPTY.copy(
+        licenseFindings = setOf(
+            LicenseFinding(license, TextLocation("file.txt", 1, 2))
         )
     )
+)

@@ -27,8 +27,8 @@ import org.ossreviewtoolkit.model.config.CopyrightGarbage
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.utils.ort.CopyrightStatementsProcessor
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
+import org.ossreviewtoolkit.utils.spdx.SpdxLicenseChoice
 import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
-import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
 
 /**
  * Resolved license information about a package (or project).
@@ -59,7 +59,7 @@ data class ResolvedLicenseInfo(
      * All copyright findings that could not be matched to a license finding, mapped to the [Provenance] where they were
      * detected.
      */
-    val unmatchedCopyrights: Map<Provenance, Set<CopyrightFinding>>
+    val unmatchedCopyrights: Map<Provenance, Set<ResolvedCopyrightFinding>>
 ) : Iterable<ResolvedLicense> by licenses {
     operator fun get(license: SpdxSingleLicenseExpression): ResolvedLicense? = find { it.license == license }
 
@@ -72,13 +72,17 @@ data class ResolvedLicenseInfo(
     fun effectiveLicense(licenseView: LicenseView, vararg licenseChoices: List<SpdxLicenseChoice>): SpdxExpression? {
         val resolvedLicenseInfo = filter(licenseView, filterSources = true)
 
-        return resolvedLicenseInfo.licenses.flatMap { resolvedLicense ->
+        val resolvedLicenses = resolvedLicenseInfo.licenses.flatMap { resolvedLicense ->
             resolvedLicense.originalExpressions.map { it.expression }
-        }.toSet()
-            .reduceOrNull(SpdxExpression::and)
-            ?.applyChoices(licenseChoices.asList().flatten())
-            ?.validChoices()
-            ?.reduceOrNull(SpdxExpression::or)
+        }.toSet().reduceOrNull(SpdxExpression::and)
+
+        val choices = licenseChoices.asList().flatten()
+
+        return if (choices.isEmpty()) {
+            resolvedLicenses
+        } else {
+            resolvedLicenses?.applyChoices(choices)?.validChoices()?.reduceOrNull(SpdxExpression::or)
+        }
     }
 
     /**
@@ -145,5 +149,5 @@ data class ResolvedLicenseInfo(
 fun List<ResolvedLicense>.filterExcluded() =
     mapNotNull { it.filterExcludedOriginalExpressions() }.filter { resolvedLicense ->
         resolvedLicense.sources != setOf(LicenseSource.DETECTED) ||
-                resolvedLicense.locations.any { it.matchingPathExcludes.isEmpty() }
+            resolvedLicense.locations.any { it.matchingPathExcludes.isEmpty() }
     }.map { it.filterExcludedCopyrights() }

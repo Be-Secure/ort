@@ -44,6 +44,7 @@ import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.model.utils.PackageCurationProvider
 import org.ossreviewtoolkit.plugins.packagecurationproviders.api.PackageCurationProviderFactory
+import org.ossreviewtoolkit.utils.common.Options
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
@@ -52,15 +53,15 @@ class Sw360PackageCurationProviderFactory : PackageCurationProviderFactory<Sw360
 
     override fun create(config: Sw360StorageConfiguration) = Sw360PackageCurationProvider(config)
 
-    override fun parseConfig(config: Map<String, String>) =
+    override fun parseConfig(options: Options, secrets: Options) =
         Sw360StorageConfiguration(
-            restUrl = config.getValue("restUrl"),
-            authUrl = config.getValue("authUrl"),
-            username = config.getValue("username"),
-            password = config["password"].orEmpty(),
-            clientId = config.getValue("clientId"),
-            clientPassword = config["clientPassword"].orEmpty(),
-            token = config["token"].orEmpty()
+            restUrl = options.getValue("restUrl"),
+            authUrl = options.getValue("authUrl"),
+            username = secrets.getValue("username"),
+            password = secrets["password"].orEmpty(),
+            clientId = secrets.getValue("clientId"),
+            clientPassword = secrets["clientPassword"].orEmpty(),
+            token = secrets["token"].orEmpty()
         )
 }
 

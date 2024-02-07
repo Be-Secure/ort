@@ -36,7 +36,7 @@ import org.ossreviewtoolkit.model.utils.FileArchiver
 import org.ossreviewtoolkit.model.utils.FindingCurationMatcher
 import org.ossreviewtoolkit.model.utils.FindingsMatcher
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
-import org.ossreviewtoolkit.model.utils.prependPath
+import org.ossreviewtoolkit.model.utils.prependedPath
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
 
@@ -75,8 +75,7 @@ class LicenseInfoResolver(
 
         val resolvedLicenses = mutableMapOf<SpdxSingleLicenseExpression, ResolvedLicenseBuilder>()
 
-        fun SpdxSingleLicenseExpression.builder() =
-            resolvedLicenses.getOrPut(this) { ResolvedLicenseBuilder(this) }
+        fun SpdxSingleLicenseExpression.builder() = resolvedLicenses.getOrPut(this) { ResolvedLicenseBuilder(this) }
 
         // Handle concluded licenses.
         concludedLicenses.forEach { license ->
@@ -125,7 +124,7 @@ class LicenseInfoResolver(
         val filteredDetectedLicenseInfo =
             licenseInfo.detectedLicenseInfo.filterCopyrightGarbage(copyrightGarbageFindings)
 
-        val unmatchedCopyrights = mutableMapOf<Provenance, MutableSet<CopyrightFinding>>()
+        val unmatchedCopyrights = mutableMapOf<Provenance, MutableSet<ResolvedCopyrightFinding>>()
         val resolvedLocations = resolveLocations(filteredDetectedLicenseInfo, unmatchedCopyrights)
         val detectedLicenses = licenseInfo.detectedLicenseInfo.findings.flatMapTo(mutableSetOf()) { findings ->
             FindingCurationMatcher().applyAll(
@@ -136,7 +135,7 @@ class LicenseInfoResolver(
                 val licenseFinding = curationResult.curatedFinding ?: return@mapNotNull null
 
                 licenseFinding.license to findings.pathExcludes.any { pathExclude ->
-                    pathExclude.matches(licenseFinding.location.prependPath(findings.relativeFindingsPath))
+                    pathExclude.matches(licenseFinding.location.prependedPath(findings.relativeFindingsPath))
                 }
             }
         }.groupBy(keySelector = { it.first }, valueTransform = { it.second }).mapValues { (_, excluded) ->
@@ -179,7 +178,7 @@ class LicenseInfoResolver(
 
     private fun resolveLocations(
         detectedLicenseInfo: DetectedLicenseInfo,
-        unmatchedCopyrights: MutableMap<Provenance, MutableSet<CopyrightFinding>>
+        unmatchedCopyrights: MutableMap<Provenance, MutableSet<ResolvedCopyrightFinding>>
     ): Map<SpdxSingleLicenseExpression, Set<ResolvedLicenseLocation>> {
         val resolvedLocations = mutableMapOf<SpdxSingleLicenseExpression, MutableSet<ResolvedLicenseLocation>>()
         val curationMatcher = FindingCurationMatcher()
@@ -211,7 +210,7 @@ class LicenseInfoResolver(
                     licenseCurationResults.getValue(licenseFinding).originalFindings.firstOrNull()?.second
 
                 val matchingPathExcludes = findings.pathExcludes.filter {
-                    it.matches(licenseFinding.location.prependPath(findings.relativeFindingsPath))
+                    it.matches(licenseFinding.location.prependedPath(findings.relativeFindingsPath))
                 }
 
                 licenseFinding.license.decompose().forEach { singleLicense ->
@@ -225,7 +224,11 @@ class LicenseInfoResolver(
                 }
             }
 
-            unmatchedCopyrights.getOrPut(findings.provenance) { mutableSetOf() } += matchResult.unmatchedCopyrights
+            unmatchedCopyrights.getOrPut(findings.provenance) { mutableSetOf() } += resolveCopyrights(
+                copyrightFindings = matchResult.unmatchedCopyrights,
+                pathExcludes = findings.pathExcludes,
+                relativeFindingsPath = findings.relativeFindingsPath
+            )
         }
 
         return resolvedLocations
@@ -238,7 +241,7 @@ class LicenseInfoResolver(
     ): Set<ResolvedCopyrightFinding> =
         copyrightFindings.mapTo(mutableSetOf()) { finding ->
             val matchingPathExcludes = pathExcludes.filter {
-                it.matches(finding.location.prependPath(relativeFindingsPath))
+                it.matches(finding.location.prependedPath(relativeFindingsPath))
             }
 
             ResolvedCopyrightFinding(finding.statement, finding.location, matchingPathExcludes)

@@ -22,7 +22,7 @@
 //
 // Use this rule like:
 //
-// $ ort evaluate -i scanner/src/funTest/assets/dummy-expected-output-for-analyzer-result.yml --rules-resource /rules/osadl.rules.kts
+// $ ort evaluate -i scanner/src/funTest/assets/scanner-integration-expected-ort-result.yml --rules-resource /rules/osadl.rules.kts
 
 import org.ossreviewtoolkit.evaluator.osadl.Compatibility
 import org.ossreviewtoolkit.evaluator.osadl.CompatibilityMatrix
@@ -37,11 +37,18 @@ val ruleSet = ruleSet(ortResult, licenseInfoResolver) {
             -isExcluded()
         }
 
-        val projectLicenseInfo = licenseInfoResolver.resolveLicenseInfo(project.id).filter(licenseView)
+        val projectLicenseInfo = licenseInfoResolver.resolveLicenseInfo(project.id).filterExcluded()
+            .applyChoices(ortResult.getRepositoryLicenseChoices(), licenseView)
+
         val outboundLicenses = projectLicenseInfo.licenses.map { it.license }
 
         // Define a rule that is executed for each license of the dependency.
         licenseRule("OSADL_PROJECT_LICENSE_COMPATIBILITY", licenseView) {
+            // Requirements for the rule to trigger a violation.
+            require {
+                -isExcluded()
+            }
+
             outboundLicenses.forEach { outboundLicense ->
                 val compatibilityInfo = CompatibilityMatrix
                     // Be conservative and use the simple license string without the exception string for lookup.

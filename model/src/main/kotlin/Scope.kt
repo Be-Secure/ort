@@ -19,7 +19,9 @@
 
 package org.ossreviewtoolkit.model
 
-import java.util.SortedSet
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
+
+import org.ossreviewtoolkit.model.utils.PackageReferenceSortedSetConverter
 
 /**
  * The scope class puts package dependencies into context.
@@ -39,8 +41,9 @@ data class Scope(
      * dependencies would not be test dependencies of the test dependencies, but compile dependencies of test
      * dependencies.
      */
-    val dependencies: SortedSet<PackageReference> = sortedSetOf()
-) : Comparable<Scope> {
+    @JsonSerialize(converter = PackageReferenceSortedSetConverter::class)
+    val dependencies: Set<PackageReference> = emptySet()
+) {
     /**
      * Return the set of package [Identifier]s in this [Scope], up to and including a depth of [maxDepth] where counting
      * starts at 0 (for the [Scope] itself) and 1 are direct dependencies etc. A value below 0 means to not limit the
@@ -59,11 +62,6 @@ data class Scope(
                 }
             }
         }
-
-    /**
-     * A comparison function to sort scopes by their name.
-     */
-    override fun compareTo(other: Scope) = compareValuesBy(this, other) { it.name }
 
     /**
      * Return whether the package identified by [id] is contained as a (transitive) dependency in this scope.

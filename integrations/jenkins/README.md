@@ -6,8 +6,11 @@ This example allows you to run ORT in a [Jenkins](https://www.jenkins.io/)
 ## Getting Started
 
 Please follow the regular [installation instructions](https://www.jenkins.io/doc/book/installing/) and additionally
-ensure to have the [Pipeline Utility Steps](https://plugins.jenkins.io/pipeline-utility-steps) and
-[Docker Pipeline](https://plugins.jenkins.io/docker-workflow) plugins installed.
+ensure to have the following Jenkins plugins installed:
+
+* [Docker Pipeline](https://plugins.jenkins.io/docker-workflow)
+* [File Parameter](https://plugins.jenkins.io/file-parameters/)
+* [Pipeline Utility Steps](https://plugins.jenkins.io/pipeline-utility-steps)
 
 Also ensure that [Docker is installed](https://docs.docker.com/engine/install/) on your system with
 [BuildKit enabled](https://docs.docker.com/develop/develop-images/build_enhancements/#to-enable-buildkit-builds), and
@@ -32,7 +35,7 @@ but just configure the pipeline parameters and its stages. Note that this first 
 After this run, there will be a new *Build with Parameters* entry in the job menu. Clicking on it will show the job
 parameter form. For a start, leave all the defaults and click on *Build* at the bottom. This first run will take quite a
 long time in the "Build ORT Docker image" stage as the Docker image is built from scratch. However, unless changes to
-the `Dockerfile` are done, subsequent runs will be *much* faster. Also the "Run ORT scanner" stage will take a bit
+`Dockerfile-legacy` are done, subsequent runs will be *much* faster. Also, the "Run ORT scanner" stage will take a bit
 longer, but again subsequent scans will be faster thanks to the use of stored scan results.
 
 Once the pipeline run completes you will see that the "Run ORT evaluator" stage is actually yellow and marked as
@@ -42,6 +45,6 @@ and the report formats are published as build artifacts. All in all, a pipeline 
 
 ![ORT Pipeline Stage View](pipeline.png)
 
-Now the pipeline is properly configured / initialized and you can click again on *Build with Parameters* to run it
+Now the pipeline is properly configured / initialized, and you can click again on *Build with Parameters* to run it
 against VCS repositories Jenkins has (read-)access to. Of course, you can also programmatically trigger the ORT pipeline
 from your application build pipelines.

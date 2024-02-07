@@ -29,6 +29,8 @@ import com.github.ajalt.clikt.parameters.options.split
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
+import org.apache.logging.log4j.kotlin.logger
+
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
@@ -36,11 +38,10 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.regexp
 import org.jetbrains.exposed.sql.compoundAnd
 import org.jetbrains.exposed.sql.compoundOr
 import org.jetbrains.exposed.sql.deleteWhere
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 
 import org.ossreviewtoolkit.helper.utils.ORTH_NAME
 import org.ossreviewtoolkit.helper.utils.execAndMap
-import org.ossreviewtoolkit.helper.utils.logger
 import org.ossreviewtoolkit.model.SourceCodeOrigin
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.config.PostgresStorageConfiguration
@@ -66,7 +67,7 @@ internal class DeleteCommand : CliktCommand(
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
+            "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     private val sourceCodeOrigins by option(
@@ -134,14 +135,14 @@ internal class DeleteCommand : CliktCommand(
 
         if (dryRun) {
             val count = database.transaction {
-                ScanResults.select { condition }.count()
+                ScanResults.selectAll().where { condition }.count()
             }
 
             println("Would delete $count scan result(s).")
 
             if (logger.delegate.isDebugEnabled) {
                 database.transaction {
-                    ScanResults.slice(ScanResults.identifier).select { condition }
+                    ScanResults.select(ScanResults.identifier).where { condition }
                         .forEach(logger::debug)
                 }
             }
@@ -159,8 +160,8 @@ internal class DeleteCommand : CliktCommand(
             ?: throw IllegalArgumentException("postgresStorage not configured.")
 
         logger.info {
-            "Using Postgres storage with URL '${storageConfig.connection.url}' and schema " +
-                    "'${storageConfig.connection.schema}'."
+            "Using Postgres storage with URL ${storageConfig.connection.url} and schema " +
+                "'${storageConfig.connection.schema}'."
         }
 
         val dataSource = DatabaseUtils.createHikariDataSource(

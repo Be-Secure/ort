@@ -21,9 +21,8 @@ package org.ossreviewtoolkit.downloader
 
 import java.io.File
 import java.io.IOException
-import java.util.ServiceLoader
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.VcsInfo
@@ -31,6 +30,7 @@ import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.utils.common.CommandLineTool
+import org.ossreviewtoolkit.utils.common.Plugin
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.uppercaseFirstChar
 import org.ossreviewtoolkit.utils.ort.ORT_REPO_CONFIG_FILENAME
@@ -44,24 +44,22 @@ abstract class VersionControlSystem(
      * the version control system is available.
      */
     private val commandLineTool: CommandLineTool? = null
-) {
-    companion object : Logging {
-        private val LOADER = ServiceLoader.load(VersionControlSystem::class.java)
-
+) : Plugin {
+    companion object {
         /**
-         * The set of all available [Version Control Systems][VersionControlSystem] in the classpath, sorted by
-         * priority.
+         * All [version control systems][VersionControlSystem] available in the classpath, sorted by their priority.
          */
-        val ALL: Set<VersionControlSystem> by lazy {
-            LOADER.iterator().asSequence().toSortedSet(compareByDescending { it.priority })
+        val ALL by lazy {
+            Plugin.getAll<VersionControlSystem>().toList().sortedByDescending { (_, vcs) -> vcs.priority }.toMap()
         }
 
         /**
          * Return the applicable VCS for the given [vcsType], or null if none is applicable.
          */
-        fun forType(vcsType: VcsType) = ALL.find {
-            it.isAvailable() && it.isApplicableType(vcsType)
-        }
+        fun forType(vcsType: VcsType) =
+            ALL.values.find {
+                it.isAvailable() && it.isApplicableType(vcsType)
+            }
 
         /**
          * A map to cache the [VersionControlSystem], if any, for previously queried URLs. This helps to speed up
@@ -84,7 +82,7 @@ abstract class VersionControlSystem(
                 when (val type = VcsHost.parseUrl(vcsUrl).type) {
                     VcsType.UNKNOWN -> {
                         // ...then eventually try to determine the type also dynamically.
-                        ALL.find {
+                        ALL.values.find {
                             it.isAvailable() && it.isApplicableUrl(vcsUrl)
                         }
                     }
@@ -110,7 +108,7 @@ abstract class VersionControlSystem(
             return if (absoluteVcsDirectory in dirToVcsMap) {
                 dirToVcsMap[absoluteVcsDirectory]
             } else {
-                ALL.asSequence().mapNotNull {
+                ALL.values.asSequence().mapNotNull {
                     if (it is CommandLineTool && !it.isInPath()) {
                         null
                     } else {
@@ -124,7 +122,7 @@ abstract class VersionControlSystem(
 
                         logger.debug {
                             "Exception while validating ${it.vcsType} working tree, treating it as non-applicable: " +
-                                    e.collectMessages()
+                                e.collectMessages()
                         }
 
                         false
@@ -155,7 +153,7 @@ abstract class VersionControlSystem(
         /**
          * Return glob patterns for files that should be checkout out in addition to explicit sparse checkout paths.
          */
-        internal fun getSparseCheckoutGlobPatterns(): List<String> {
+        fun getSparseCheckoutGlobPatterns(): List<String> {
             val globPatterns = mutableListOf("*$ORT_REPO_CONFIG_FILENAME")
             val licensePatterns = LicenseFilePatterns.getInstance()
             return licensePatterns.allLicenseFilenames.generateCapitalizationVariants().mapTo(globPatterns) { "**/$it" }
@@ -164,11 +162,6 @@ abstract class VersionControlSystem(
         private fun Collection<String>.generateCapitalizationVariants() =
             flatMap { listOf(it, it.uppercase(), it.uppercaseFirstChar()) }
     }
-
-    /**
-     * The [VcsType] of this [VersionControlSystem].
-     */
-    abstract val type: VcsType
 
     /**
      * The priority in which this VCS should be probed. A higher value means a higher priority.
@@ -198,7 +191,7 @@ abstract class VersionControlSystem(
     /**
      * Return true if this VCS can handle the given [vcsType].
      */
-    fun isApplicableType(vcsType: VcsType) = vcsType == type
+    fun isApplicableType(vcsType: VcsType) = type in vcsType.aliases
 
     /**
      * Return true if this [VersionControlSystem] can be used to download from the provided [vcsUrl]. First, try to find
@@ -208,7 +201,7 @@ abstract class VersionControlSystem(
     fun isApplicableUrl(vcsUrl: String): Boolean {
         if (vcsUrl.isBlank() || vcsUrl.endsWith(".html")) return false
 
-        return VcsHost.parseUrl(vcsUrl).type == type || isApplicableUrlInternal(vcsUrl)
+        return isApplicableType(VcsHost.parseUrl(vcsUrl).type) || isApplicableUrlInternal(vcsUrl)
     }
 
     /**
@@ -246,7 +239,7 @@ abstract class VersionControlSystem(
         }
 
         val revisionCandidates = getRevisionCandidates(workingTree, pkg, allowMovingRevisions).getOrElse {
-            throw DownloadException("$type failed to get revisions from URL '${pkg.vcsProcessed.url}'.", it)
+            throw DownloadException("$type failed to get revisions from URL ${pkg.vcsProcessed.url}.", it)
         }
 
         val results = mutableListOf<Result<String>>()
@@ -258,14 +251,14 @@ abstract class VersionControlSystem(
         }
 
         val workingTreeRevision = results.last().getOrElse {
-            throw DownloadException("$type failed to download from URL '${pkg.vcsProcessed.url}'.", it)
+            throw DownloadException("$type failed to download from URL ${pkg.vcsProcessed.url}.", it)
         }
 
         pkg.vcsProcessed.path.let {
             if (it.isNotBlank() && !workingTree.workingDir.resolve(it).exists()) {
                 throw DownloadException(
                     "The $type working directory at '${workingTree.workingDir}' does not contain the requested path " +
-                            "'$it'."
+                        "'$it'."
                 )
             }
         }
@@ -307,7 +300,7 @@ abstract class VersionControlSystem(
                     if (it !in revisionCandidates) {
                         logger.info {
                             "Adding $type revision '$it' (guessed from package '$project' and version '$version') as " +
-                                    "a candidate."
+                                "a candidate."
                         }
 
                         revisionCandidates += it
@@ -316,7 +309,7 @@ abstract class VersionControlSystem(
             }.onFailure {
                 logger.info {
                     "No $type revision for package '$project' and version '$version' found: " +
-                            it.collectMessages()
+                        it.collectMessages()
                 }
 
                 emptyRevisionCandidatesException.addSuppressed(it)
@@ -362,7 +355,7 @@ abstract class VersionControlSystem(
 
         addMetadataRevision(pkg.vcsProcessed.revision)
 
-        if (type == VcsType.GIT && pkg.vcsProcessed.revision == "master") {
+        if (type in VcsType.GIT.aliases && pkg.vcsProcessed.revision == "master") {
             // Also try with Git's upcoming default branch name in case the repository is already using it.
             addMetadataRevision("main")
         }
@@ -400,8 +393,8 @@ abstract class VersionControlSystem(
     fun isFixedRevision(workingTree: WorkingTree, revision: String): Result<Boolean> =
         runCatching {
             revision.isNotBlank()
-                    && revision !in latestRevisionNames
-                    && (revision !in workingTree.listRemoteBranches() || revision in workingTree.listRemoteTags())
+                && revision !in latestRevisionNames
+                && (revision !in workingTree.listRemoteBranches() || revision in workingTree.listRemoteTags())
         }
 
     /**
@@ -409,6 +402,6 @@ abstract class VersionControlSystem(
      */
     fun isAtLeastVersion(expectedVersion: String): Boolean {
         val actualVersion = Semver.coerce(getVersion())
-        return actualVersion.isGreaterThanOrEqualTo(Semver.coerce(expectedVersion))
+        return Semver.coerce(expectedVersion)?.let { actualVersion?.isGreaterThanOrEqualTo(it) } == true
     }
 }

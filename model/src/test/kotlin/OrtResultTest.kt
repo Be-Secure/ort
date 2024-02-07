@@ -46,12 +46,10 @@ import org.ossreviewtoolkit.utils.test.readOrtResult
 class OrtResultTest : WordSpec({
     "collectDependencies" should {
         "be able to get all direct dependencies of a package" {
-            val ortResult = readOrtResult(
-                "../analyzer/src/funTest/assets/projects/external/sbt-multi-project-example-expected-output.yml"
-            )
-
+            val ortResult = readOrtResult("src/test/assets/sbt-multi-project-example-expected-output.yml")
             val id = Identifier("Maven:com.typesafe.akka:akka-stream_2.12:2.5.6")
-            val dependencies = ortResult.collectDependencies(id, 1).map { it.toCoordinates() }
+
+            val dependencies = ortResult.getDependencies(id, 1).map { it.toCoordinates() }
 
             dependencies should containExactlyInAnyOrder(
                 "Maven:com.typesafe.akka:akka-actor_2.12:2.5.6",
@@ -64,8 +62,8 @@ class OrtResultTest : WordSpec({
     "collectProjectsAndPackages" should {
         "be able to get all ids except for ones for sub-projects" {
             val ortResult = readOrtResult("src/test/assets/gradle-all-dependencies-expected-result.yml")
-            val ids = ortResult.collectProjectsAndPackages()
-            val idsWithoutSubProjects = ortResult.collectProjectsAndPackages(includeSubProjects = false)
+            val ids = ortResult.getProjectsAndPackages()
+            val idsWithoutSubProjects = ortResult.getProjectsAndPackages(includeSubProjects = false)
             val actualIds = ids - idsWithoutSubProjects
 
             ids should haveSize(9)
@@ -148,29 +146,26 @@ class OrtResultTest : WordSpec({
     "getOpenIssues" should {
         "omit resolved issues" {
             val ortResult = OrtResult.EMPTY.copy(
-                repository = Repository.EMPTY.copy(
-                    config = RepositoryConfiguration(
-                        resolutions = Resolutions(
-                            issues = listOf(
-                                IssueResolution(
-                                    "Issue message to resolve",
-                                    IssueResolutionReason.CANT_FIX_ISSUE,
-                                    "comment"
-                                )
-                            )
-                        )
-                    )
-                ),
                 analyzer = AnalyzerRun.EMPTY.copy(
                     result = AnalyzerResult(
                         projects = emptySet(),
                         packages = emptySet(),
                         issues = mapOf(
-                            Identifier("Maven:org.oss-review-toolkit:example:1.0") to
-                                    listOf(
-                                        Issue(message = "Issue message to resolve", source = ""),
-                                        Issue(message = "Non-resolved issue", source = "")
-                                    )
+                            Identifier("Maven:org.oss-review-toolkit:example:1.0") to listOf(
+                                Issue(message = "Issue message to resolve", source = ""),
+                                Issue(message = "Non-resolved issue", source = "")
+                            )
+                        )
+                    )
+                ),
+                resolvedConfiguration = ResolvedConfiguration(
+                    resolutions = Resolutions(
+                        issues = listOf(
+                            IssueResolution(
+                                "Issue message to resolve",
+                                IssueResolutionReason.CANT_FIX_ISSUE,
+                                "comment"
+                            )
                         )
                     )
                 )
@@ -192,18 +187,18 @@ class OrtResultTest : WordSpec({
                         packages = emptySet(),
                         issues = mapOf(
                             Identifier("Maven:org.oss-review-toolkit:example:1.0") to
-                                    listOf(
-                                        Issue(
-                                            message = "Issue with severity 'warning'",
-                                            source = "",
-                                            severity = Severity.WARNING
-                                        ),
-                                        Issue(
-                                            message = "Issue with severity 'hint'.",
-                                            source = "",
-                                            severity = Severity.HINT
-                                        )
+                                listOf(
+                                    Issue(
+                                        message = "Issue with severity 'warning'",
+                                        source = "",
+                                        severity = Severity.WARNING
+                                    ),
+                                    Issue(
+                                        message = "Issue with severity 'hint'.",
+                                        source = "",
+                                        severity = Severity.HINT
                                     )
+                                )
                         )
                     )
                 )
@@ -243,9 +238,9 @@ class OrtResultTest : WordSpec({
                         packages = emptySet(),
                         issues = mapOf(
                             Identifier("Maven:org.oss-review-toolkit:excluded:1.0") to
-                                    listOf(Issue(message = "Excluded issue", source = "")),
+                                listOf(Issue(message = "Excluded issue", source = "")),
                             Identifier("Maven:org.oss-review-toolkit:included:1.0") to
-                                    listOf(Issue(message = "Included issue", source = ""))
+                                listOf(Issue(message = "Included issue", source = ""))
                         )
                     )
                 )
@@ -262,9 +257,7 @@ class OrtResultTest : WordSpec({
 
     "dependencyNavigator" should {
         "return a navigator for the dependency tree" {
-            val ortResult = readOrtResult(
-                "../analyzer/src/funTest/assets/projects/external/sbt-multi-project-example-expected-output.yml"
-            )
+            val ortResult = readOrtResult("src/test/assets/sbt-multi-project-example-expected-output.yml")
 
             ortResult.dependencyNavigator shouldBe DependencyTreeNavigator
         }
@@ -313,19 +306,6 @@ class OrtResultTest : WordSpec({
 
         "drop resolved rule violations if omitResolved is true" {
             val ortResult = OrtResult.EMPTY.copy(
-                repository = Repository.EMPTY.copy(
-                    config = RepositoryConfiguration(
-                        resolutions = Resolutions(
-                            ruleViolations = listOf(
-                                RuleViolationResolution(
-                                    "Rule violation message to resolve",
-                                    RuleViolationResolutionReason.EXAMPLE_OF_EXCEPTION,
-                                    "comment"
-                                )
-                            )
-                        )
-                    )
-                ),
                 evaluator = EvaluatorRun.EMPTY.copy(
                     violations = listOf(
                         RuleViolation(
@@ -354,6 +334,17 @@ class OrtResultTest : WordSpec({
                             severity = Severity.HINT,
                             message = "Message without any resolution",
                             howToFix = ""
+                        )
+                    )
+                ),
+                resolvedConfiguration = ResolvedConfiguration(
+                    resolutions = Resolutions(
+                        ruleViolations = listOf(
+                            RuleViolationResolution(
+                                "Rule violation message to resolve",
+                                RuleViolationResolutionReason.EXAMPLE_OF_EXCEPTION,
+                                "comment"
+                            )
                         )
                     )
                 )

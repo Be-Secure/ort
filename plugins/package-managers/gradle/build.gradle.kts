@@ -18,32 +18,27 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
-}
-
-repositories {
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.gradle.org/gradle/libs-releases/")
-        }
-
-        filter {
-            includeGroup("org.gradle")
-        }
-    }
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":analyzer"))
+    api(projects.analyzer)
+    api(projects.model)
 
-    implementation(project(":downloader"))
-    implementation(project(":plugins:package-managers:gradle-model"))
+    implementation(projects.downloader)
+    implementation(projects.plugins.packageManagers.gradleModel)
+    implementation(projects.plugins.packageManagers.mavenPackageManager)
+    implementation(projects.utils.commonUtils)
+    implementation(projects.utils.ortUtils)
 
     implementation("org.gradle:gradle-tooling-api:${gradle.gradleVersion}")
-    implementation(libs.mavenCore)
+    implementation(libs.maven.core)
+    implementation(libs.maven.resolver.api)
 
-    funTestImplementation(testFixtures(project(":analyzer")))
+    funTestImplementation(testFixtures(projects.analyzer))
+
+    testImplementation(projects.utils.spdxUtils)
 
     testImplementation(libs.mockk)
 }

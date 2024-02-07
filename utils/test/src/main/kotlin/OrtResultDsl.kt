@@ -19,8 +19,6 @@
 
 package org.ossreviewtoolkit.utils.test
 
-import java.util.SortedSet
-
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
 import org.ossreviewtoolkit.model.Identifier
@@ -55,8 +53,8 @@ class OrtResultBuilder {
             return pkg
         }
 
-        private fun getDependencies(ids: Set<String>): SortedSet<PackageReference> =
-            ids.mapTo(sortedSetOf()) {
+        private fun getDependencies(ids: Set<String>): Set<PackageReference> =
+            ids.mapTo(mutableSetOf()) {
                 PackageReference(
                     id = Identifier(it),
                     dependencies = getDependencies(this@OrtResultBuilder.parentChildIds[it].orEmpty())
@@ -75,7 +73,7 @@ class OrtResultBuilder {
                 id = Identifier(id),
                 declaredLicenses = declaredLicenses,
                 declaredLicensesProcessed = DeclaredLicenseProcessor.process(declaredLicenses),
-                scopeDependencies = sortedSetOf(scope)
+                scopeDependencies = setOf(scope)
             )
         }
     }

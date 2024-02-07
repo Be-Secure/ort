@@ -21,10 +21,9 @@ import de.undercouch.gradle.tasks.download.Download
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 
     // Apply third-party plugins.
     alias(libs.plugins.download)
@@ -32,12 +31,12 @@ plugins {
 }
 
 dependencies {
-    api(project(":model"))
-    api(project(":utils:scripting-utils"))
+    api(projects.model)
+    api(projects.utils.scriptingUtils)
 
-    implementation(project(":downloader"))
-    implementation(project(":utils:ort-utils"))
-    implementation(project(":utils:spdx-utils"))
+    implementation(projects.downloader)
+    implementation(projects.utils.ortUtils)
+    implementation(projects.utils.spdxUtils)
 
     implementation("org.jetbrains.kotlin:kotlin-scripting-common")
     implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host")
@@ -51,12 +50,15 @@ tasks.withType<KotlinCompile>().configureEach {
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
     )
 
-    kotlinOptions {
-        freeCompilerArgs = freeCompilerArgs + customCompilerArgs
+    compilerOptions {
+        freeCompilerArgs.addAll(customCompilerArgs)
     }
 }
 
-tasks.register("updateOsadlMatrix", Download::class).configure {
+tasks.register<Download>("updateOsadlMatrix") {
+    description = "Download the OSADL matrix in JSON format and add it as a resource."
+    group = "OSADL"
+
     src("https://www.osadl.org/fileadmin/checklists/matrixseqexpl.json")
     dest("src/main/resources/rules/matrixseqexpl.json")
 }

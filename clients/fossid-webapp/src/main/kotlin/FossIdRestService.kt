@@ -41,7 +41,7 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.clients.fossid.model.Project
 import org.ossreviewtoolkit.clients.fossid.model.Scan
@@ -67,7 +67,7 @@ import retrofit2.http.POST
 private const val READ_TIMEOUT_HEADER = "READ_TIMEOUT"
 
 interface FossIdRestService {
-    companion object : Logging {
+    companion object {
         /**
          * The mapper for JSON (de-)serialization used by this service.
          */
@@ -131,10 +131,13 @@ interface FossIdRestService {
          * A class to modify the standard Jackson deserialization to deal with inconsistencies in responses
          * sent by the FossID server.
          * When deleting a scan, FossId returns the scan id as String in the 'data' property of the response. If no scan
-         * could be found, it returns an empty array.
+         * could be found, it returns an empty array. Starting with FossID version 2023.1, the return type of the
+         * [deleteScan] function is now a map of strings to strings. Creating a special [FossIdServiceWithVersion]
+         * implementation for this call is an overkill as ORT does not even use the return value. Therefore, this change
+         * is also handled by the [PolymorphicIntDeserializer].
          * This custom deserializer streamlines the result: everything is converted to Int and empty array is converted
-         * to `null`. This deserializer also accepts primitive integers and arrays containing integers, which will
-         * be also mapped to Int.
+         * to `null`. This deserializer also accepts primitive integers and arrays containing integers and maps of
+         * strings to strings containing a single entry with an integer value.
          */
         private class PolymorphicIntDeserializer :
             StdDeserializer<PolymorphicInt>(PolymorphicInt::class.java) {
@@ -152,6 +155,18 @@ interface FossIdRestService {
                         val array = JSON_MAPPER.readValue(p, IntArray::class.java)
                         val value = if (array.isEmpty()) null else array.first()
                         PolymorphicInt(value)
+                    }
+                    JsonToken.START_OBJECT -> {
+                        val mapType = JSON_MAPPER.typeFactory.constructMapType(
+                            LinkedHashMap::class.java,
+                            String::class.java,
+                            String::class.java
+                        )
+                        val map = JSON_MAPPER.readValue<Map<Any, Any>>(p, mapType)
+                        if (map.size != 1) {
+                            error("A map representing a polymorphic integer should have one value!")
+                        }
+                        PolymorphicInt(map.values.first().toString().toInt())
                     }
                     else -> error("FossID returned a type not handled by this deserializer!")
                 }
@@ -239,6 +254,7 @@ interface FossIdRestService {
     suspend fun listSnippets(@Body body: PostRequestBody): PolymorphicResponseBody<Snippet>
 
     @POST("api.php")
+    @Headers("$READ_TIMEOUT_HEADER:${5 * 60 * 1000}")
     suspend fun listMatchedLines(@Body body: PostRequestBody): EntityResponseBody<MatchedLines>
 
     @POST("api.php")
@@ -246,8 +262,9 @@ interface FossIdRestService {
     suspend fun listIdentifiedFiles(@Body body: PostRequestBody): PolymorphicResponseBody<IdentifiedFile>
 
     @POST("api.php")
-    suspend fun listMarkedAsIdentifiedFiles(@Body body: PostRequestBody):
-            PolymorphicResponseBody<MarkedAsIdentifiedFile>
+    suspend fun listMarkedAsIdentifiedFiles(
+        @Body body: PostRequestBody
+    ): PolymorphicResponseBody<MarkedAsIdentifiedFile>
 
     @POST("api.php")
     suspend fun listIgnoredFiles(@Body body: PostRequestBody): PolymorphicResponseBody<IgnoredFile>
@@ -263,6 +280,21 @@ interface FossIdRestService {
 
     @POST("api.php")
     suspend fun generateReport(@Body body: PostRequestBody): Response<ResponseBody>
+
+    @POST("api.php")
+    suspend fun markAsIdentified(@Body body: PostRequestBody): EntityResponseBody<Nothing>
+
+    @POST("api.php")
+    suspend fun unmarkAsIdentified(@Body body: PostRequestBody): EntityResponseBody<Nothing>
+
+    @POST("api.php")
+    suspend fun addLicenseIdentification(@Body body: PostRequestBody): EntityResponseBody<Nothing>
+
+    @POST("api.php")
+    suspend fun addComponentIdentification(@Body body: PostRequestBody): EntityResponseBody<Nothing>
+
+    @POST("api.php")
+    suspend fun addFileComment(@Body body: PostRequestBody): EntityResponseBody<Nothing>
 
     @GET("index.php?form=login")
     suspend fun getLoginPage(): ResponseBody

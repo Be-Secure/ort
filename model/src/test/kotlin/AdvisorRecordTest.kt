@@ -25,43 +25,22 @@ import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.collections.containExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.should
-import io.kotest.matchers.shouldBe
 
 import java.net.URI
 import java.time.Instant
 
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
+import org.ossreviewtoolkit.model.vulnerabilities.VulnerabilityReference
 import org.ossreviewtoolkit.utils.common.enumSetOf
 
 class AdvisorRecordTest : WordSpec({
-    "hasIssues" should {
-        "return false given the record has no issues" {
-            val record = advisorRecordOf(
-                langId to listOf(createResult())
-            )
-
-            record.hasIssues shouldBe false
-        }
-
-        "return true given the record has issues" {
-            val record = advisorRecordOf(
-                queryId to listOf(
-                    createResult(
-                        issues = listOf(Issue(source = "Advisor", message = "Failure"))
-                    )
-                )
-            )
-
-            record.hasIssues shouldBe true
-        }
-    }
-
     "collectIssues" should {
         "return a map which does not contain entries for IDs without any issues" {
             val record = advisorRecordOf(
                 langId to listOf(createResult())
             )
 
-            val issues = record.collectIssues()
+            val issues = record.getIssues()
 
             issues.keys shouldNotContain langId
         }
@@ -75,7 +54,7 @@ class AdvisorRecordTest : WordSpec({
                 queryId to listOf(createResult(issues = listOf(issue1, issue2)))
             )
 
-            val issues = record.collectIssues()
+            val issues = record.getIssues()
 
             issues.keys should containExactlyInAnyOrder(langId, queryId)
             issues[langId] should containExactly(issue3)
@@ -331,8 +310,7 @@ private fun createVulnerability(
 /**
  * Construct a [Defect] based on the given [id].
  */
-private fun createDefect(id: String): Defect =
-    Defect(id, URI("https://defects.example.org/$id"), "Defect $id")
+private fun createDefect(id: String): Defect = Defect(id, URI("https://defects.example.org/$id"), "Defect $id")
 
 /**
  * Create an [AdvisorResult] for an advisor with the given [advisorIndex] which has the given [capability], with the
@@ -355,7 +333,4 @@ private fun createResult(
     return AdvisorResult(details, summary, defects, vulnerabilities)
 }
 
-private fun advisorRecordOf(vararg results: Pair<Identifier, List<AdvisorResult>>): AdvisorRecord =
-    AdvisorRecord(
-        advisorResults = sortedMapOf(*results)
-    )
+private fun advisorRecordOf(vararg results: Pair<Identifier, List<AdvisorResult>>) = AdvisorRecord(results.toMap())

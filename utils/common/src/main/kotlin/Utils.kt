@@ -25,9 +25,16 @@ import java.security.MessageDigest
 import java.util.EnumSet
 
 /**
- * A list of directories used by version control systems to store metadata.
+ * A comparator that sorts parent paths before child paths.
  */
-val VCS_DIRECTORIES = listOf(
+val PATH_STRING_COMPARATOR = compareBy<String>({ path -> path.count { it == '/' } }, { it })
+
+/**
+ * A set of directories used by version control systems to store metadata. The list covers also version control systems
+ * not supported by ORT, because such directories should never be considered.
+ */
+val VCS_DIRECTORIES = setOf(
+    ".bzr",
     ".git",
     ".hg",
     ".repo",
@@ -95,7 +102,7 @@ fun getCommonParentFile(files: Collection<File>): File =
     files.map {
         it.normalize().parent
     }.reduceOrNull { prefix, path ->
-        prefix?.commonPrefixWith(path.orEmpty())
+        prefix?.commonPrefixWith(path.orEmpty(), ignoreCase = Os.isWindows)
     }.orEmpty().let {
         File(it)
     }

@@ -29,11 +29,14 @@ formatting:
     active: false
   ChainWrapping:
     active: false
+  CommentWrapping:
+    active: false
   FinalNewline:
     active: false
+  FunctionSignature:
+    active: true
+    functionBodyExpressionWrapping: multiline
   ImportOrdering:
-    active: false
-  Indentation:
     active: false
   MaximumLineLength:
     active: false
@@ -45,6 +48,12 @@ formatting:
     active: false
   SpacingBetweenDeclarationsWithAnnotations:
     active: false
+  TrailingCommaOnCallSite:
+    active: true
+    useTrailingCommaOnCallSite: false
+  TrailingCommaOnDeclarationSite:
+    active: true
+    useTrailingCommaOnDeclarationSite: false
 
 naming:
   ConstructorParameterNaming:
@@ -78,12 +87,16 @@ style:
   WildcardImport:
     excludes: ''
     excludeImports:
-      - org.ossreviewtoolkit.analyzer.managers.*
       - org.ossreviewtoolkit.helper.commands.*
       - org.ossreviewtoolkit.utils.spdx.SpdxLicense.*
       - org.ossreviewtoolkit.utils.spdx.SpdxLicenseException.*
       - kotlinx.html.*
       - kotlinx.html.dom.*
+
+potential-bugs:
+  MissingPackageDeclaration:
+    active: true
+    excludes: ["**/GradleModel.kt", "**/build.gradle.kts"]
 
 ORT:
   OrtImportOrder:

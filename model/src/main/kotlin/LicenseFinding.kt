@@ -48,48 +48,23 @@ data class LicenseFinding(
      * 100.0 means that the scanner is 100% confident that the finding is correct.
      */
     val score: Float? = null
-) : Comparable<LicenseFinding> {
+) {
     companion object {
-        private val COMPARATOR = compareBy<LicenseFinding>({ it.license.toString() }, { it.location })
+        val COMPARATOR = compareBy<LicenseFinding>({ it.license.toString() }, { it.location })
             .thenByDescending { it.score }
-
-        /**
-         * Create a [LicenseFinding] with [detectedLicenseMapping]s applied.
-         */
-        fun createAndMap(
-            license: String,
-            location: TextLocation,
-            score: Float? = null,
-            detectedLicenseMapping: Map<String, String>
-        ): LicenseFinding = LicenseFinding(
-            license = if (detectedLicenseMapping.isEmpty()) {
-                license
-            } else {
-                license.applyDetectedLicenseMapping(detectedLicenseMapping)
-            }.toSpdx(),
-            location = location,
-            score = score
-        )
     }
 
     constructor(license: String, location: TextLocation, score: Float? = null) : this(license.toSpdx(), location, score)
-
-    override fun compareTo(other: LicenseFinding) = COMPARATOR.compare(this, other)
 }
 
 /**
- * Apply [detectedLicenseMapping] from the [org.ossreviewtoolkit.model.config.ScannerConfiguration] to any license
- * String.
+ * Apply [mapping] from the [org.ossreviewtoolkit.model.config.ScannerConfiguration] to any license String.
  */
-private fun String.applyDetectedLicenseMapping(detectedLicenseMapping: Map<String, String>): String {
-    var result = this
-    detectedLicenseMapping.forEach { (from, to) ->
+fun String.mapLicense(mapping: Map<String, String>): String =
+    mapping.entries.fold(this) { result, (from, to) ->
         val regex = """(^| |\()(${Regex.escape(from)})($| |\))""".toRegex()
 
-        result = regex.replace(result) {
-            "${it.groupValues[1]}${to}${it.groupValues[3]}"
+        regex.replace(result) {
+            "${it.groupValues[1]}$to${it.groupValues[3]}"
         }
     }
-
-    return result
-}

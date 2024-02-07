@@ -27,6 +27,9 @@ import java.util.Base64
 import okio.buffer
 import okio.sink
 
+import org.apache.logging.log4j.kotlin.logger
+
+import org.ossreviewtoolkit.clients.fossid.model.identification.common.LicenseMatchType
 import org.ossreviewtoolkit.clients.fossid.model.report.ReportType
 import org.ossreviewtoolkit.clients.fossid.model.report.SelectionType
 import org.ossreviewtoolkit.clients.fossid.model.result.MatchedLines
@@ -49,12 +52,12 @@ fun <B : EntityResponseBody<T>, T> B?.checkResponse(operation: String, withDataC
     requireNotNull(this)
 
     require(error == null) {
-        "Could not '$operation'. Additional information : $error"
+        "Could not '$operation'. Additional information: $error"
     }
 
     if (withDataCheck) {
         requireNotNull(data) {
-            "No Payload received for '$operation'. Additional information: $error"
+            "No Payload received for '$operation'."
         }
     }
 
@@ -120,20 +123,19 @@ suspend fun FossIdRestService.createProject(
     projectCode: String,
     projectName: String,
     comment: String = "Created by ORT"
-) =
-    createProject(
-        PostRequestBody(
-            "create",
-            PROJECT_GROUP,
-            user,
-            apiKey,
-            mapOf(
-                "project_code" to projectCode,
-                "project_name" to projectName,
-                "comment" to comment
-            )
+) = createProject(
+    PostRequestBody(
+        "create",
+        PROJECT_GROUP,
+        user,
+        apiKey,
+        mapOf(
+            "project_code" to projectCode,
+            "project_name" to projectName,
+            "comment" to comment
         )
     )
+)
 
 /**
  * Create a new scan of [gitRepoUrl]/[gitBranch] for the given [projectCode].
@@ -206,7 +208,7 @@ suspend fun FossIdRestService.deleteScan(user: String, apiKey: String, scanCode:
                 "scan_code" to scanCode,
                 "delete_identifications" to "1"
             )
-         )
+        )
     )
 
 /**
@@ -281,7 +283,7 @@ suspend fun FossIdRestService.listMatchedLines(
     apiKey: String,
     scanCode: String,
     path: String,
-    snippetId: Int,
+    snippetId: Int
 ): EntityResponseBody<MatchedLines> {
     val base64Path = base64Encoder.encodeToString(path.toByteArray())
     return listMatchedLines(
@@ -371,21 +373,20 @@ suspend fun FossIdRestService.createIgnoreRule(
     type: RuleType,
     value: String,
     scope: RuleScope
-) =
-    createIgnoreRule(
-        PostRequestBody(
-            "ignore_rules_add",
-            SCAN_GROUP,
-            user,
-            apiKey,
-            mapOf(
-                "scan_code" to scanCode,
-                "type" to type.name.lowercase(),
-                "value" to value,
-                "apply_to" to scope.name.lowercase()
-            )
+) = createIgnoreRule(
+    PostRequestBody(
+        "ignore_rules_add",
+        SCAN_GROUP,
+        user,
+        apiKey,
+        mapOf(
+            "scan_code" to scanCode,
+            "type" to type.name.lowercase(),
+            "value" to value,
+            "apply_to" to scope.name.lowercase()
         )
     )
+)
 
 /**
  * Ask the FossID server to generate a [reportType] report containing [selectionType]. The report will be generated in
@@ -425,7 +426,7 @@ suspend fun FossIdRestService.generateReport(
             contentDisposition?.split(';')?.firstNotNullOfOrNull {
                 it.trim().withoutPrefix("filename=")?.removeSurrounding("\"")
             } ?: return Result.failure<File>(IllegalStateException("Cannot determine name of the report")).also {
-                FossIdRestService.logger.error {
+                logger.error {
                     "Cannot determine name of the report with raw headers '$contentDisposition'."
                 }
             }
@@ -448,6 +449,162 @@ suspend fun FossIdRestService.generateReport(
             )
         )
     }
+}
+
+/**
+ * Mark the given file with [path] as identified for the given [scanCode].
+ *
+ * The HTTP request is sent with [user] and [apiKey] as credentials.
+ */
+suspend fun FossIdRestService.markAsIdentified(
+    user: String,
+    apiKey: String,
+    scanCode: String,
+    path: String,
+    isDirectory: Boolean
+): EntityResponseBody<Nothing> {
+    val base64Path = base64Encoder.encodeToString(path.toByteArray())
+    val directoryFlag = if (isDirectory) "1" else "0"
+    return markAsIdentified(
+        PostRequestBody(
+            "mark_as_identified",
+            FILES_AND_FOLDERS_GROUP,
+            user,
+            apiKey,
+            mapOf("scan_code" to scanCode, "path" to base64Path, "is_directory" to directoryFlag)
+        )
+    )
+}
+
+/**
+ * Unmark the given file with [path] as identified for the given [scanCode].
+ *
+ * The HTTP request is sent with [user] and [apiKey] as credentials.
+ */
+suspend fun FossIdRestService.unmarkAsIdentified(
+    user: String,
+    apiKey: String,
+    scanCode: String,
+    path: String,
+    isDirectory: Boolean
+): EntityResponseBody<Nothing> {
+    val base64Path = base64Encoder.encodeToString(path.toByteArray())
+    val directoryFlag = if (isDirectory) "1" else "0"
+    return unmarkAsIdentified(
+        PostRequestBody(
+            "unmark_as_identified",
+            FILES_AND_FOLDERS_GROUP,
+            user,
+            apiKey,
+            mapOf("scan_code" to scanCode, "path" to base64Path, "is_directory" to directoryFlag)
+        )
+    )
+}
+
+/**
+ * Add license identification [licenseIdentifier] to file with [path] for the given [scanCode].
+ *
+ * The HTTP request is sent with [user] and [apiKey] as credentials.
+ */
+suspend fun FossIdRestService.addLicenseIdentification(
+    user: String,
+    apiKey: String,
+    scanCode: String,
+    path: String,
+    licenseIdentifier: String,
+    identificationOn: LicenseMatchType,
+    isDirectory: Boolean
+): EntityResponseBody<Nothing> {
+    val base64Path = base64Encoder.encodeToString(path.toByteArray())
+    val directoryFlag = if (isDirectory) "1" else "0"
+    return addLicenseIdentification(
+        PostRequestBody(
+            "add_license_identification",
+            FILES_AND_FOLDERS_GROUP,
+            user,
+            apiKey,
+            mapOf(
+                "scan_code" to scanCode,
+                "path" to base64Path,
+                "license_identifier" to licenseIdentifier,
+                "identification_on" to identificationOn.name.lowercase(),
+                "is_directory" to directoryFlag
+            )
+        )
+    )
+}
+
+/**
+ * Add component identification for component [componentName]/[componentVersion] to file with [path] for the given
+ * [scanCode]. If [preserveExistingIdentifications] is true, identification is appended, otherwise it replaces existing
+ * identifications.
+ *
+ * The HTTP request is sent with [user] and [apiKey] as credentials.
+ */
+@Suppress("LongParameterList")
+suspend fun FossIdRestService.addComponentIdentification(
+    user: String,
+    apiKey: String,
+    scanCode: String,
+    path: String,
+    componentName: String,
+    componentVersion: String,
+    isDirectory: Boolean,
+    preserveExistingIdentifications: Boolean = true
+): EntityResponseBody<Nothing> {
+    val base64Path = base64Encoder.encodeToString(path.toByteArray())
+    val directoryFlag = if (isDirectory) "1" else "0"
+    val preserveExistingIdentificationsFlag = if (preserveExistingIdentifications) "1" else "0"
+    return addComponentIdentification(
+        PostRequestBody(
+            "set_identification_component",
+            FILES_AND_FOLDERS_GROUP,
+            user,
+            apiKey,
+            mapOf(
+                "scan_code" to scanCode,
+                "path" to base64Path,
+                "is_directory" to directoryFlag,
+                "component_name" to componentName,
+                "component_version" to componentVersion,
+                "preserve_existing_identifications" to preserveExistingIdentificationsFlag
+            )
+        )
+    )
+}
+
+/**
+ * Add a [comment] to file with [path] for the given [scanCode].
+ *
+ * The HTTP request is sent with [user] and [apiKey] as credentials.
+ */
+suspend fun FossIdRestService.addFileComment(
+    user: String,
+    apiKey: String,
+    scanCode: String,
+    path: String,
+    comment: String,
+    isImportant: Boolean = false,
+    includeInReport: Boolean = false
+): EntityResponseBody<Nothing> {
+    val base64Path = base64Encoder.encodeToString(path.toByteArray())
+    val isImportantFlag = if (isImportant) "1" else "0"
+    val includeInReportFlag = if (includeInReport) "1" else "0"
+    return addFileComment(
+        PostRequestBody(
+            "add_file_comment",
+            FILES_AND_FOLDERS_GROUP,
+            user,
+            apiKey,
+            mapOf(
+                "scan_code" to scanCode,
+                "path" to base64Path,
+                "comment" to comment,
+                "is_important" to isImportantFlag,
+                "include_in_report" to includeInReportFlag
+            )
+        )
+    )
 }
 
 /**

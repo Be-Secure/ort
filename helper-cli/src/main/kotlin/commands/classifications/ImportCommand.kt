@@ -25,17 +25,19 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.optionalValueLazy
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
-import java.net.URL
+import java.net.URI
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.licenses.LicenseCategorization
 import org.ossreviewtoolkit.model.licenses.LicenseCategory
 import org.ossreviewtoolkit.model.licenses.LicenseClassifications
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
@@ -45,14 +47,13 @@ internal class ImportCommand : CliktCommand(
 ) {
     private val provider by argument(
         help = "The name of the provider to import license classifications from. Must be one of " +
-                "${enumValues<LicenseClassificationProvider>().map { it.name }}."
+            "${LicenseClassificationProvider.entries.map { it.name }}."
     ).enum<LicenseClassificationProvider>()
 
-    // TODO: Make this default to the provider name with clikt 4, see https://github.com/ajalt/clikt/issues/381.
     private val prefix by option(
         "--prefix", "-p",
         help = "A prefix to use for all category names declared by the provider's classifications."
-    )
+    ).optionalValueLazy { provider.name }
 
     private val licenseClassificationsFile by option(
         "--output", "-o",
@@ -66,7 +67,7 @@ internal class ImportCommand : CliktCommand(
             prefix?.let { prefixCategoryNames(it) } ?: this
         }.sort()
 
-        val yaml = yamlMapper.writeValueAsString(classifications)
+        val yaml = classifications.toYaml()
 
         licenseClassificationsFile?.run {
             writeText(yaml)
@@ -80,13 +81,13 @@ private data class EclipseLicenses(
     val restricted: Map<String, String>
 )
 
-private enum class LicenseClassificationProvider(val url: String) : Logging {
+private enum class LicenseClassificationProvider(val url: String) {
     DOUBLE_OPEN("https://github.com/doubleopen-project/policy-configuration/raw/main/license-classifications.yml") {
-        override fun getClassifications(): LicenseClassifications = yamlMapper.readValue(URL(url))
+        override fun getClassifications(): LicenseClassifications = yamlMapper.readValue(URI.create(url).toURL())
     },
     ECLIPSE("https://www.eclipse.org/legal/licenses.json") {
         override fun getClassifications(): LicenseClassifications {
-            val json = jsonMapper.readValue<EclipseLicenses>(URL(url))
+            val json = jsonMapper.readValue<EclipseLicenses>(URI.create(url).toURL())
 
             logger.info { "Importing Eclipse license classifications dated ${json.meta["updated"]}." }
 
@@ -109,7 +110,7 @@ private enum class LicenseClassificationProvider(val url: String) : Logging {
         }
     },
     LDB_COLLECTOR("https://github.com/maxhbr/LDBcollector/raw/generated/ort/license-classifications.yml") {
-        override fun getClassifications(): LicenseClassifications = yamlMapper.readValue(URL(url))
+        override fun getClassifications(): LicenseClassifications = yamlMapper.readValue(URI.create(url).toURL())
     };
 
     abstract fun getClassifications(): LicenseClassifications

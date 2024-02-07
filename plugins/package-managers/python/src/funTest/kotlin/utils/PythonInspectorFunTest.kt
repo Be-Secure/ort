@@ -34,10 +34,11 @@ class PythonInspectorFunTest : StringSpec({
         val workingDir = definitionFile.parentFile
 
         val result = try {
-            PythonInspector.run(
+            PythonInspector.inspect(
                 workingDir = workingDir,
                 definitionFile = definitionFile,
-                pythonVersion = "27"
+                pythonVersion = "27",
+                operatingSystem = "linux"
             )
         } finally {
             workingDir.resolve(".cache").safeDeleteRecursively(force = true)
@@ -45,6 +46,6 @@ class PythonInspectorFunTest : StringSpec({
 
         result.projects should haveSize(2)
         result.resolvedDependenciesGraph should haveSize(1)
-        result.packages should haveSize(10)
+        result.packages should haveSize(11)
     }
 })

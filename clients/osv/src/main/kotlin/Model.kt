@@ -36,16 +36,14 @@ import kotlinx.serialization.json.JsonObject
 // 3. https://github.com/Kotlin/kotlinx.serialization/issues/1058
 
 /**
- * Implementation of the "Open Source Vulnerability format" according to schema version 1.3.0 (March 24, 2022), see
- * https://ossf.github.io/osv-schema/ which links to
- * https://github.com/ossf/osv-schema/blob/11524982426be469795b9c684ba340c5c90895d0/validation/schema.json which was
- * used as a reference.
+ * Implementation of the "Open Source Vulnerability format" according to schema version 1.6.0 (Aug 11, 2023), see
+ * https://github.com/ossf/osv-schema/blob/v1.6.0/validation/schema.json, also referenced from
+ * https://ossf.github.io/osv-schema/.
  *
  * For the documentation of all entities and properties please refer to above links.
  */
 @Serializable
 data class Vulnerability(
-    @SerialName("schema_version")
     val schemaVersion: String = "1.0.0",
     val id: String,
     @Serializable(InstantSerializer::class)
@@ -68,7 +66,6 @@ data class Vulnerability(
 
     val affected: Set<Affected> = emptySet(),
     val references: Set<Reference> = emptySet(),
-    @SerialName("database_specific")
     val databaseSpecific: JsonObject? = null,
     val credits: Set<Credit> = emptySet()
 )
@@ -76,13 +73,11 @@ data class Vulnerability(
 @Serializable
 data class Affected(
     @SerialName("package")
-    val pkg: Package,
+    val pkg: Package? = null,
     val ranges: List<Range> = emptyList(),
     val severity: Set<Severity> = emptySet(),
     val versions: List<String> = emptyList(),
-    @SerialName("ecosystem_specific")
     val ecosystemSpecific: JsonObject? = null,
-    @SerialName("database_specific")
     val databaseSpecific: JsonObject? = null
 )
 
@@ -90,7 +85,20 @@ data class Affected(
 data class Credit(
     val name: String,
     val contact: List<String> = emptyList()
-)
+) {
+    enum class Type {
+        ANALYST,
+        COORDINATOR,
+        FINDER,
+        OTHER,
+        REMEDIATION_DEVELOPER,
+        REMEDIATION_REVIEWER,
+        REMEDIATION_VERIFIER,
+        REPORTER,
+        SPONSOR,
+        TOOL
+    }
+}
 
 /**
  * Defined package ecosystem values, see https://ossf.github.io/osv-schema/#affectedpackage-field.
@@ -103,6 +111,7 @@ object Ecosystem {
     const val DEBIAN = "Debian"
     const val GIHUB_ACTIONS = "GitHub Actions"
     const val GO = "Go"
+    const val HACKAGE = "Hackage"
     const val HEX = "Hex"
     const val LINUX = "Linux"
     const val MAVEN = "Maven"
@@ -141,7 +150,6 @@ data class Range(
     val type: Type,
     val repo: String? = null,
     val events: List<Event>,
-    @SerialName("database_specific")
     val databaseSpecific: JsonObject? = null
 ) {
     enum class Type {
@@ -169,7 +177,12 @@ data class Reference(
     enum class Type {
         ADVISORY,
         ARTICLE,
+        DETECTION,
+        DISCUSSION,
+        EVIDENCE,
         FIX,
+        GIT,
+        INTRODUCED,
         PACKAGE,
         REPORT,
         WEB
@@ -182,6 +195,13 @@ data class Severity(
     val score: String
 ) {
     enum class Type {
+        CVSS_V2,
         CVSS_V3
     }
 }
+
+@Serializable
+data class ErrorResponse(
+    val code: Int,
+    val message: String
+)

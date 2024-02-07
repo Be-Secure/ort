@@ -18,17 +18,23 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":analyzer"))
+    api(projects.analyzer)
+    api(projects.model)
 
-    implementation(project(":downloader"))
+    implementation(projects.downloader)
+    implementation(projects.utils.commonUtils)
+    implementation(projects.utils.ortUtils)
+    implementation(projects.utils.spdxUtils)
 
-    implementation(libs.jacksonModuleKotlin)
+    implementation(libs.jackson.core)
+    implementation(libs.jackson.databind)
+    implementation(libs.jackson.dataformat.yaml)
     implementation(libs.jruby)
 
-    funTestImplementation(testFixtures(project(":analyzer")))
+    funTestImplementation(testFixtures(projects.analyzer))
 }

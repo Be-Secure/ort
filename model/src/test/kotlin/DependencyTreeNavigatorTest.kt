@@ -24,9 +24,8 @@ import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 
 class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
-    override val resultFileName: String = RESULT_FILE
-
-    override val resultWithIssuesFileName: String = RESULT_WITH_ISSUES_FILE
+    override val resultFileName = "src/test/assets/sbt-multi-project-example-expected-output.yml"
+    override val resultWithIssuesFileName = "src/test/assets/result-with-issues-scopes.yml"
 
     init {
         "getShortestPaths" should {
@@ -35,7 +34,7 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
                 // various corner cases.
                 val scope = Scope(
                     name = "test",
-                    dependencies = sortedSetOf(
+                    dependencies = setOf(
                         pkg("A"),
                         pkg("B") {
                             pkg("A")
@@ -64,7 +63,7 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
                     )
                 )
 
-                val project = Project.EMPTY.copy(scopeDependencies = sortedSetOf(scope))
+                val project = Project.EMPTY.copy(scopeDependencies = setOf(scope))
                 val paths = navigator.getShortestPaths(project).getValue(scope.name)
 
                 paths should containExactly(
@@ -84,7 +83,7 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
         "dependencyTreeDepth" should {
             "return 0 if the scope does not contain any package" {
                 val scope = Scope(name = "test", dependencies = sortedSetOf())
-                val project = Project.EMPTY.copy(scopeDependencies = sortedSetOf(scope))
+                val project = Project.EMPTY.copy(scopeDependencies = setOf(scope))
 
                 navigator.dependencyTreeDepth(project, scope.name) shouldBe 0
             }
@@ -92,12 +91,12 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
             "return 1 if the scope contains only direct dependencies" {
                 val scope = Scope(
                     name = "test",
-                    dependencies = sortedSetOf(
+                    dependencies = setOf(
                         PackageReference(id = Identifier("a")),
                         PackageReference(id = Identifier("b"))
                     )
                 )
-                val project = Project.EMPTY.copy(scopeDependencies = sortedSetOf(scope))
+                val project = Project.EMPTY.copy(scopeDependencies = setOf(scope))
 
                 navigator.dependencyTreeDepth(project, scope.name) shouldBe 1
             }
@@ -105,13 +104,13 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
             "return 2 if the scope contains a tree of height 2" {
                 val scope = Scope(
                     name = "test",
-                    dependencies = sortedSetOf(
+                    dependencies = setOf(
                         pkg("a") {
                             pkg("a1")
                         }
                     )
                 )
-                val project = Project.EMPTY.copy(scopeDependencies = sortedSetOf(scope))
+                val project = Project.EMPTY.copy(scopeDependencies = setOf(scope))
 
                 navigator.dependencyTreeDepth(project, scope.name) shouldBe 2
             }
@@ -119,7 +118,7 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
             "return 3 if it contains a tree of height 3" {
                 val scope = Scope(
                     name = "test",
-                    dependencies = sortedSetOf(
+                    dependencies = setOf(
                         pkg("a") {
                             pkg("a1") {
                                 pkg("a11")
@@ -129,7 +128,7 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
                         pkg("b")
                     )
                 )
-                val project = Project.EMPTY.copy(scopeDependencies = sortedSetOf(scope))
+                val project = Project.EMPTY.copy(scopeDependencies = setOf(scope))
 
                 navigator.dependencyTreeDepth(project, scope.name) shouldBe 3
             }
@@ -137,16 +136,9 @@ class DependencyTreeNavigatorTest : AbstractDependencyNavigatorTest() {
     }
 }
 
-/** Name of a file with a more complex ORT result that is used by multiple test cases. */
-private const val RESULT_FILE =
-    "../analyzer/src/funTest/assets/projects/external/sbt-multi-project-example-expected-output.yml"
-
-/** Name of the file with a result that contains some issues. */
-private const val RESULT_WITH_ISSUES_FILE = "src/test/assets/result-with-issues-scopes.yml"
-
 private class PackageRefBuilder(id: String) {
     private val id = Identifier(id)
-    private val dependencies = sortedSetOf<PackageReference>()
+    private val dependencies = mutableSetOf<PackageReference>()
 
     fun pkg(id: String, block: PackageRefBuilder.() -> Unit = {}) {
         dependencies += PackageRefBuilder(id).apply { block() }.build()

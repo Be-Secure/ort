@@ -19,7 +19,7 @@
 
 package org.ossreviewtoolkit.scanner
 
-import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
 import org.ossreviewtoolkit.model.config.FileBasedStorageConfiguration
@@ -62,9 +62,10 @@ class ScanStorages(
         fun createFromConfig(config: ScannerConfiguration): ScanStorages {
             val storages = config.storages.orEmpty().mapValues { createStorage(it.value) }
 
-            fun resolve(name: String): ScanStorage = requireNotNull(storages[name]) {
-                "Could not resolve storage '$name'."
-            }
+            fun resolve(name: String): ScanStorage =
+                requireNotNull(storages[name]) {
+                    "Could not resolve storage '$name'."
+                }
 
             val defaultStorage by lazy { createDefaultStorage() }
 
@@ -79,11 +80,11 @@ class ScanStorages(
     }
 
     /**
-     * Read all [ScanResult]s for the provided [id]. Returns an empty list if no stored scan results or no stored
-     * provenance can be found.
+     * Read all [ScanResult]s for the provided [package][pkg]. Returns an empty list if no stored scan results or no
+     * stored provenance can be found.
      */
-    fun read(id: Identifier): List<ScanResult> {
-        val packageProvenances = packageProvenanceStorage.readProvenances(id)
+    fun read(pkg: Package): List<ScanResult> {
+        val packageProvenances = packageProvenanceStorage.readProvenances(pkg.id)
 
         val nestedProvenances = packageProvenances.mapNotNull { result ->
             when (result) {
@@ -103,11 +104,11 @@ class ScanStorages(
 
         nestedProvenances.forEach { nestedProvenance ->
             results += readers.filterIsInstance<PackageBasedScanStorageReader>().flatMap { reader ->
-                reader.read(id, nestedProvenance).flatMap { it.merge() }
+                reader.read(pkg, nestedProvenance).flatMap { it.merge() }
             }
 
             results += readers.filterIsInstance<ProvenanceBasedScanStorageReader>().mapNotNull { reader ->
-                val scanResults = nestedProvenance.getProvenances().associateWith { reader.read(it) }
+                val scanResults = nestedProvenance.allProvenances.associateWith { reader.read(it) }
                 NestedProvenanceScanResult(nestedProvenance, scanResults).takeIf { it.isComplete() }?.merge()
             }.flatten()
         }

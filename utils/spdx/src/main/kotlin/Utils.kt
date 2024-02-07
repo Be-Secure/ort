@@ -27,17 +27,13 @@ import java.net.URL
 import java.security.MessageDigest
 
 import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.PATH_STRING_COMPARATOR
 import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
 import org.ossreviewtoolkit.utils.common.calculateHash
 import org.ossreviewtoolkit.utils.common.encodeHex
 import org.ossreviewtoolkit.utils.common.isSymbolicLink
 import org.ossreviewtoolkit.utils.common.realFile
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants.LICENSE_REF_PREFIX
-
-/**
- * A comparator that sorts parent paths before child paths.
- */
-internal val PATH_STRING_COMPARATOR = compareBy<String>({ path -> path.count { it == '/' } }, { it })
 
 /**
  * A mapper to read license mapping from YAML resource files.
@@ -94,21 +90,20 @@ fun calculatePackageVerificationCode(files: Sequence<File>, excludes: Sequence<S
  */
 @JvmName("calculatePackageVerificationCodeForDirectory")
 fun calculatePackageVerificationCode(directory: File): String {
-    val allFiles = directory.walk().onEnter { !it.isSymbolicLink() }.filter { !it.isSymbolicLink() && it.isFile }
+    val allFiles = directory.walk()
+        .onEnter { !it.isSymbolicLink() && it.name !in VCS_DIRECTORIES }
+        .filter { !it.isSymbolicLink() && it.isFile }
+
+    // Filter twice instead of using "partition" as the latter does not return sequences.
     val spdxFiles = allFiles.filter { it.extension == "spdx" }
     val files = allFiles.filter { it.extension != "spdx" }
 
     // Sort the list of files to show the files in a directory before the files in its subdirectories. This can be
-    // omitted once breadth-first search is available in Kotlin: https://github.com/JetBrains/kotlin/pull/2232
-    val filteredFiles = files.filter {
-        val relativePath = it.relativeTo(directory).invariantSeparatorsPath
-        VCS_DIRECTORIES.none { vcs -> relativePath.startsWith("$vcs/") }
-    }
-
+    // omitted once breadth-first search is available in Kotlin: https://youtrack.jetbrains.com/issue/KT-18629
     val sortedExcludes = spdxFiles.map { "./${it.relativeTo(directory).invariantSeparatorsPath}" }
-            .sortedWith(PATH_STRING_COMPARATOR)
+        .sortedWith(PATH_STRING_COMPARATOR)
 
-    return calculatePackageVerificationCode(filteredFiles, sortedExcludes)
+    return calculatePackageVerificationCode(files, sortedExcludes)
 }
 
 /**
@@ -122,12 +117,6 @@ fun getLicenseText(
     licenseTextDirectories: List<File> = emptyList()
 ): String? = getLicenseTextReader(id, handleExceptions, addScanCodeLicenseTextsDir(licenseTextDirectories))?.invoke()
 
-fun hasLicenseText(
-    id: String,
-    handleExceptions: Boolean = false,
-    licenseTextDirectories: List<File> = emptyList()
-): Boolean = getLicenseTextReader(id, handleExceptions, addScanCodeLicenseTextsDir(licenseTextDirectories)) != null
-
 fun getLicenseTextReader(
     id: String,
     handleExceptions: Boolean = false,
@@ -135,8 +124,12 @@ fun getLicenseTextReader(
 ): (() -> String)? {
     return if (id.startsWith(LICENSE_REF_PREFIX)) {
         getLicenseTextResource(id)?.let { { it.readText() } }
-            ?: addScanCodeLicenseTextsDir(licenseTextDirectories).firstNotNullOfOrNull {
-                getLicenseTextFile(id, it)?.let { file -> { file.readText() } }
+            ?: addScanCodeLicenseTextsDir(licenseTextDirectories).firstNotNullOfOrNull { dir ->
+                getLicenseTextFile(id, dir)?.let { file ->
+                    {
+                        file.readText().removeYamlFrontMatter()
+                    }
+                }
             }
     } else {
         SpdxLicense.forId(id.removeSuffix("+"))?.let { { it.text } }
@@ -144,16 +137,15 @@ fun getLicenseTextReader(
     }
 }
 
-private fun getLicenseTextResource(id: String): URL? =
-    object {}.javaClass.getResource("/licenserefs/$id")
+private fun getLicenseTextResource(id: String): URL? = object {}.javaClass.getResource("/licenserefs/$id")
 
-private val LICENSE_REF_FILENAME_REGEX by lazy { Regex("^LicenseRef-\\w+-") }
+private val LICENSE_REF_FILENAME_REGEX by lazy { Regex("^$LICENSE_REF_PREFIX\\w+-") }
 
 private fun getLicenseTextFile(id: String, dir: File): File? =
     id.replace(LICENSE_REF_FILENAME_REGEX, "").let { idWithoutLicenseRefNamespace ->
         listOfNotNull(
             id,
-            id.removePrefix("LicenseRef-"),
+            id.removePrefix(LICENSE_REF_PREFIX),
             idWithoutLicenseRefNamespace,
             "$idWithoutLicenseRefNamespace.LICENSE",
             "x11-xconsortium_veillard.LICENSE".takeIf {
@@ -164,6 +156,16 @@ private fun getLicenseTextFile(id: String, dir: File): File? =
             dir.resolve(filename).takeIf { it.isFile }
         }
     }
+
+internal fun String.removeYamlFrontMatter(): String {
+    val lines = lines()
+
+    // Remove any YAML front matter enclosed by "---" from ScanCode license files.
+    val licenseLines = lines.takeUnless { it.first() == "---" }
+        ?: lines.drop(1).dropWhile { it != "---" }.drop(1)
+
+    return licenseLines.dropWhile { it.isEmpty() }.joinToString("\n").trimEnd()
+}
 
 private fun addScanCodeLicenseTextsDir(licenseTextDirectories: List<File>): List<File> =
     (listOfNotNull(scanCodeLicenseTextDir) + licenseTextDirectories).distinct()

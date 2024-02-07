@@ -18,13 +18,13 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":clients:clearly-defined-client"))
-    api(project(":plugins:package-curation-providers:package-curation-provider-api"))
+    api(projects.clients.clearlyDefinedClient)
+    api(projects.plugins.packageCurationProviders.packageCurationProviderApi)
 
     testImplementation(libs.wiremock)
 }

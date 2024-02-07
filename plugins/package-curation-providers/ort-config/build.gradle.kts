@@ -18,12 +18,12 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":plugins:package-curation-providers:package-curation-provider-api"))
+    api(projects.plugins.packageCurationProviders.packageCurationProviderApi)
 
-    implementation(project(":downloader"))
+    implementation(projects.downloader)
 }

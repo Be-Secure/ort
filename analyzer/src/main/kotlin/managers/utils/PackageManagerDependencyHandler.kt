@@ -19,12 +19,9 @@
 
 package org.ossreviewtoolkit.analyzer.managers.utils
 
-import com.fasterxml.jackson.module.kotlin.readValue
-
-import kotlin.contracts.ExperimentalContracts
 import kotlin.contracts.contract
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.DependencyGraphNavigator
@@ -35,7 +32,6 @@ import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageLinkage
 import org.ossreviewtoolkit.model.PackageReference
 import org.ossreviewtoolkit.model.Project
-import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.utils.DependencyHandler
 
 private const val TYPE = "PackageManagerDependency"
@@ -58,23 +54,20 @@ class PackageManagerDependencyHandler(
             PackageReference(
                 id = Identifier(
                     type = TYPE,
-                    namespace = "",
-                    name = jsonMapper.writeValueAsString(
-                        PackageManagerDependency(
-                            packageManager,
-                            definitionFile,
-                            scope,
-                            linkage
-                        )
-                    ).encode(),
-                    version = ""
+                    namespace = packageManager,
+                    name = definitionFile.encodeColon(),
+                    version = "$linkage@$scope"
                 )
             )
 
         private fun getPackageManagerDependency(node: DependencyNode): PackageManagerDependency? =
-            when (node.id.type) {
-                TYPE -> jsonMapper.readValue<PackageManagerDependency>(node.id.name.decode())
-                else -> null
+            node.id.type.takeIf { it == TYPE }?.let {
+                PackageManagerDependency(
+                    packageManager = node.id.namespace,
+                    definitionFile = node.id.name.decodeColon(),
+                    scope = node.id.version.substringAfter('@'),
+                    linkage = PackageLinkage.valueOf(node.id.version.substringBefore('@'))
+                )
             }
     }
 
@@ -107,7 +100,7 @@ class PackageManagerDependencyHandler(
                     id = project.id,
                     linkage = packageManagerDependency.linkage,
                     issues = emptyList(),
-                    dependencies = dependencies.map { it.getStableReference() }.toList().asSequence()
+                    dependencies = dependencies.map { it.getStableReference() }
                 )
             }
         } ?: listOf(DependencyNodeDelegate(dependency.getStableReference()))
@@ -119,8 +112,6 @@ private data class PackageManagerDependency(
     val scope: String,
     val linkage: PackageLinkage
 ) {
-    companion object : Logging
-
     fun findProjects(analyzerResult: AnalyzerResult): List<Project> =
         analyzerResult.projects.filter { it.definitionFilePath == definitionFile }.also { projects ->
             if (projects.isEmpty()) {
@@ -130,7 +121,6 @@ private data class PackageManagerDependency(
             projects.forEach { verify(it) }
         }
 
-    @ExperimentalContracts
     fun verify(project: Project?) {
         contract {
             returns() implies (project != null)
@@ -142,18 +132,18 @@ private data class PackageManagerDependency(
 
         require(project.id.type == packageManager) {
             "The project '${project.id.toCoordinates()}' from definition file '$definitionFile' uses the wrong " +
-                    "package manager '${project.id.type}', expected is '$packageManager'."
+                "package manager '${project.id.type}', expected is '$packageManager'."
         }
 
         requireNotNull(project.scopeNames) {
             "The project '${project.id.toCoordinates()}' from definition file '$definitionFile' does not use a " +
-                    "dependency graph."
+                "dependency graph."
         }
 
         if (scope !in project.scopeNames.orEmpty()) {
             logger.warn {
                 "The project '${project.id.toCoordinates()}' from definition file '$definitionFile' does not contain " +
-                        "the requested scope '$scope'."
+                    "the requested scope '$scope'."
             }
         }
     }
@@ -177,5 +167,5 @@ class DependencyNodeDelegate(private val node: DependencyNode) : ResolvableDepen
     override fun <T> visitDependencies(block: (Sequence<DependencyNode>) -> T): T = node.visitDependencies(block)
 }
 
-private fun String.encode() = replace(":", "__")
-private fun String.decode() = replace("__", ":")
+private fun String.encodeColon() = replace(':', '\u0000')
+private fun String.decodeColon() = replace('\u0000', ':')

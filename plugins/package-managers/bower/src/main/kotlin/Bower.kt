@@ -24,7 +24,6 @@ package org.ossreviewtoolkit.plugins.packagemanagers.bower
 import com.fasterxml.jackson.databind.JsonNode
 
 import java.io.File
-import java.util.SortedSet
 import java.util.Stack
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
@@ -105,7 +104,7 @@ class Bower(
                 vcs = projectPackage.vcs,
                 vcsProcessed = processProjectVcs(workingDir, projectPackage.vcs, projectPackage.homepageUrl),
                 homepageUrl = projectPackage.homepageUrl,
-                scopeDependencies = sortedSetOf(dependenciesScope, devDependenciesScope)
+                scopeDependencies = setOf(dependenciesScope, devDependenciesScope)
             )
 
             return listOf(ProjectAnalyzerResult(project, packages.values.toSet()))
@@ -147,7 +146,7 @@ private fun parseVcsInfo(node: JsonNode) =
     )
 
 private fun parseDeclaredLicenses(node: JsonNode): Set<String> =
-    mutableSetOf<String>().apply {
+    buildSet {
         val license = node["pkgMeta"]["license"].textValueOrEmpty()
         if (license.isNotEmpty()) add(license)
     }
@@ -158,7 +157,7 @@ private fun parseDeclaredLicenses(node: JsonNode): Set<String> =
  * strings or objects are inside an array.
  */
 private fun parseAuthors(node: JsonNode): Set<String> =
-    mutableSetOf<String>().apply {
+    buildSet {
         node["pkgMeta"]["authors"]?.mapNotNull { authorNode ->
             when {
                 authorNode.isObject -> authorNode["name"]?.textValue()
@@ -241,7 +240,7 @@ private fun parseDependencyTree(
     node: JsonNode,
     scopeName: String,
     alternativeNodes: Map<String, JsonNode> = getNodesWithCompleteDependencies(node)
-): SortedSet<PackageReference> {
+): Set<PackageReference> {
     val result = mutableSetOf<PackageReference>()
 
     if (!hasCompleteDependencies(node, scopeName)) {
@@ -265,5 +264,5 @@ private fun parseDependencyTree(
         result += packageReference
     }
 
-    return result.toSortedSet()
+    return result
 }

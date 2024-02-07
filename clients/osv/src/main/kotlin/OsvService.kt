@@ -39,9 +39,7 @@ class OsvService(serverUrl: String? = null, httpClient: OkHttpClient? = null) {
     /**
      * Get the vulnerabilities for the package matching the given [request].
      */
-    fun getVulnerabilitiesForPackage(
-        request: VulnerabilitiesForPackageRequest
-    ): Result<List<Vulnerability>> {
+    fun getVulnerabilitiesForPackage(request: VulnerabilitiesForPackageRequest): Result<List<Vulnerability>> {
         val response = client.getVulnerabilitiesForPackage(request).execute()
         val body = response.body()
 
@@ -55,9 +53,7 @@ class OsvService(serverUrl: String? = null, httpClient: OkHttpClient? = null) {
     /**
      * Return the vulnerability IDs for the respective package matched by the given [requests].
      */
-    fun getVulnerabilityIdsForPackages(
-        requests: List<VulnerabilitiesForPackageRequest>
-    ): Result<List<List<String>>> {
+    fun getVulnerabilityIdsForPackages(requests: List<VulnerabilitiesForPackageRequest>): Result<List<List<String>>> {
         if (requests.isEmpty()) return Result.success(emptyList())
 
         val result = mutableListOf<MutableList<String>>()
@@ -67,7 +63,14 @@ class OsvService(serverUrl: String? = null, httpClient: OkHttpClient? = null) {
             val response = client.getVulnerabilityIdsForPackages(batchRequest).execute()
             val body = response.body()
 
-            if (!response.isSuccessful || body == null) return Result.failure(IOException(response.message()))
+            if (!response.isSuccessful || body == null) {
+                val errorMessage = response.errorBody()?.string()?.let {
+                    val errorResponse = OsvApiClient.JSON.decodeFromString<ErrorResponse>(it)
+                    "Error code ${errorResponse.code}: ${errorResponse.message}"
+                } ?: with(response) { "HTTP code ${code()}: ${message()}" }
+
+                return Result.failure(IOException(errorMessage))
+            }
 
             result += body.results.map { batchResponse ->
                 batchResponse.vulnerabilities.mapTo(mutableListOf()) { it.id }
@@ -111,7 +114,8 @@ class OsvService(serverUrl: String? = null, httpClient: OkHttpClient? = null) {
                 }
 
                 override fun onFailure(call: Call<Vulnerability>, t: Throwable) {
-                    failureThrowable.set(t)
+                    val exception = IOException("Could not get vulnerability information for '$id'.", t)
+                    failureThrowable.set(exception)
                     latch.countDown()
                 }
             })

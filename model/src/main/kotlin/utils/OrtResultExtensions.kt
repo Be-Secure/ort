@@ -27,25 +27,41 @@ import org.ossreviewtoolkit.model.licenses.DefaultLicenseInfoProvider
 import org.ossreviewtoolkit.model.licenses.LicenseInfoResolver
 
 /**
- * Add all package configurations from [packageConfigurationProvider] that match any scan result in this [OrtResult] to
- * [OrtResult.resolvedConfiguration], overwriting any previously contained package configurations.
+ * Replace the package configurations in [OrtResult.resolvedConfiguration] with the ones obtained from
+ * [packageConfigurationProvider].
  */
-fun OrtResult.addPackageConfigurations(packageConfigurationProvider: PackageConfigurationProvider): OrtResult {
-    val packageConfigurations = getUncuratedPackages().flatMap { pkg ->
-        getScanResultsForId(pkg.id).flatMap { scanResult ->
-            packageConfigurationProvider.getPackageConfigurations(pkg.id, scanResult.provenance)
-        }
-    }.distinct()
+fun OrtResult.setPackageConfigurations(packageConfigurationProvider: PackageConfigurationProvider): OrtResult {
+    val packageConfigurations = ConfigurationResolver.resolvePackageConfigurations(
+        identifiers = getUncuratedPackages().mapTo(mutableSetOf()) { it.id },
+        scanResultProvider = { id -> getScanResultsForId(id) },
+        packageConfigurationProvider = packageConfigurationProvider
+    )
 
     return copy(resolvedConfiguration = resolvedConfiguration.copy(packageConfigurations = packageConfigurations))
 }
 
 /**
- * Add all resolutions from [resolutionProvider] that match the content of this [OrtResult] to
- * [OrtResult.resolvedConfiguration], overwriting any previously contained resolutions.
+ * Replace the package curations in [OrtResult.resolvedConfiguration] with the ones obtained from
+ * [packageCurationProviders]. The [packageCurationProviders] must be ordered highest-priority-first.
  */
-fun OrtResult.addResolutions(resolutionProvider: ResolutionProvider): OrtResult {
-    val resolutions = resolutionProvider.getResolutionsFor(this)
+fun OrtResult.setPackageCurations(packageCurationProviders: List<Pair<String, PackageCurationProvider>>): OrtResult {
+    val packageCurations =
+        ConfigurationResolver.resolvePackageCurations(getUncuratedPackages(), packageCurationProviders)
+
+    return copy(resolvedConfiguration = resolvedConfiguration.copy(packageCurations = packageCurations))
+}
+
+/**
+ * Replace the resolutions in [OrtResult.resolvedConfiguration] with the ones obtained from [resolutionProvider].
+ */
+fun OrtResult.setResolutions(resolutionProvider: ResolutionProvider): OrtResult {
+    val resolutions = ConfigurationResolver.resolveResolutions(
+        issues = getIssues().values.flatten(),
+        ruleViolations = getRuleViolations(),
+        vulnerabilities = getVulnerabilities().values.flatten(),
+        resolutionProvider = resolutionProvider
+    )
+
     return copy(resolvedConfiguration = resolvedConfiguration.copy(resolutions = resolutions))
 }
 
@@ -54,17 +70,16 @@ fun OrtResult.addResolutions(resolutionProvider: ResolutionProvider): OrtResult 
  * instead of calling this function multiple times for better performance.
  */
 fun OrtResult.createLicenseInfoResolver(
-    packageConfigurationProvider: PackageConfigurationProvider = PackageConfigurationProvider.EMPTY,
     copyrightGarbage: CopyrightGarbage = CopyrightGarbage(),
     addAuthorsToCopyrights: Boolean = false,
     archiver: FileArchiver? = null
 ) = LicenseInfoResolver(
-        DefaultLicenseInfoProvider(this, packageConfigurationProvider),
-        copyrightGarbage,
-        addAuthorsToCopyrights,
-        archiver,
-        LicenseFilePatterns.getInstance()
-    )
+    DefaultLicenseInfoProvider(this),
+    copyrightGarbage,
+    addAuthorsToCopyrights,
+    archiver,
+    LicenseFilePatterns.getInstance()
+)
 
 /**
  * Return the path where the repository given by [provenance] is linked into the source tree.

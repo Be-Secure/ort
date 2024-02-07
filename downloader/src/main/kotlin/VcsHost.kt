@@ -80,10 +80,10 @@ enum class VcsHost(
             }.orEmpty()
 
             return "https://dev.azure.com/$userOrOrg/$team/_apis/git/repositories/" +
-                    "$project/items?path=/" +
-                    "&versionDescriptor[version]=${vcsInfo.revision}" +
-                    "&versionDescriptor[versionType]=commit" +
-                    "&\$format=zip&download=true"
+                "$project/items?path=/" +
+                "&versionDescriptor[version]=${vcsInfo.revision}" +
+                "&versionDescriptor[versionType]=commit" +
+                "&\$format=zip&download=true"
         }
 
         override fun toRawDownloadUrlInternal(userOrOrg: String, project: String, vcsInfo: VcsInfo): String {
@@ -93,7 +93,7 @@ enum class VcsHost(
             }.orEmpty()
 
             return "https://dev.azure.com/$userOrOrg/$team/_apis/git/repositories/$project/items" +
-                    "?scopePath=/${vcsInfo.path}"
+                "?scopePath=/${vcsInfo.path}"
         }
 
         /**
@@ -307,11 +307,11 @@ enum class VcsHost(
 
         override fun toArchiveDownloadUrlInternal(userOrOrg: String, project: String, vcsInfo: VcsInfo) =
             "https://${vcsInfo.type.toString().lowercase()}.$hostname/~$userOrOrg/$project/archive/" +
-                    "${vcsInfo.revision}.tar.gz"
+                "${vcsInfo.revision}.tar.gz"
 
         override fun toRawDownloadUrlInternal(userOrOrg: String, project: String, vcsInfo: VcsInfo) =
             "https://${vcsInfo.type.toString().lowercase()}.$hostname/~$userOrOrg/$project/blob/${vcsInfo.revision}/" +
-                    vcsInfo.path
+                vcsInfo.path
     };
 
     companion object {
@@ -323,7 +323,7 @@ enum class VcsHost(
         /**
          * Return the applicable [VcsHost] for the given [url], or null if no applicable host is found.
          */
-        fun fromUrl(url: URI): VcsHost? = values().find { host -> host.isApplicable(url) }
+        fun fromUrl(url: URI): VcsHost? = entries.find { host -> host.isApplicable(url) }
 
         /**
          * Return the applicable [VcsHost] for the given [url], or null if no applicable host is found.
@@ -338,8 +338,8 @@ enum class VcsHost(
             val unknownVcsInfo = VcsInfo.EMPTY.copy(url = projectUrl)
             val projectUri = projectUrl.toUri().getOrElse { return unknownVcsInfo }
 
-            fun URI.isTfsGitUrl() = path != null && host != null &&
-                    ("/tfs/" in path || ".visualstudio.com" in host) && "/_git/" in path
+            fun URI.isTfsGitUrl() =
+                path != null && host != null && ("/tfs/" in path || ".visualstudio.com" in host) && "/_git/" in path
 
             // Fall back to generic URL detection for unknown VCS hosts.
             val svnBranchOrTagMatch = SVN_BRANCH_OR_TAG_PATTERN.matchEntire(projectUrl)
@@ -415,7 +415,7 @@ enum class VcsHost(
          */
         fun toPermalink(vcsInfo: VcsInfo, startLine: Int = -1, endLine: Int = -1): String? {
             if (!isValidLineRange(startLine, endLine)) return null
-            return values().find { host -> host.isApplicable(vcsInfo) }
+            return entries.find { host -> host.isApplicable(vcsInfo) }
                 ?.toPermalinkInternal(vcsInfo.normalize(), startLine, endLine)
         }
 
@@ -425,7 +425,7 @@ enum class VcsHost(
          */
         fun toArchiveDownloadUrl(vcsInfo: VcsInfo): String? {
             val normalizedVcsInfo = vcsInfo.normalize()
-            val host = values().find { it.isApplicable(normalizedVcsInfo) } ?: return null
+            val host = entries.find { it.isApplicable(normalizedVcsInfo) } ?: return null
 
             return normalizedVcsInfo.url.toUri {
                 val userOrOrg = host.getUserOrOrgInternal(it) ?: return@toUri null
@@ -439,7 +439,7 @@ enum class VcsHost(
          * determined.
          */
         fun toRawDownloadUrl(fileUrl: String): String? {
-            val host = values().find { it.isApplicable(fileUrl) } ?: return null
+            val host = entries.find { it.isApplicable(fileUrl) } ?: return null
             return fileUrl.toUri {
                 val userOrOrg = host.getUserOrOrgInternal(it) ?: return@toUri null
                 val project = host.getProjectInternal(it) ?: return@toUri null
@@ -453,7 +453,7 @@ enum class VcsHost(
          * e.g. an on-premises Git server).
          */
         fun getProject(projectUrl: String): String? {
-            val host = values().find { it.isApplicable(projectUrl) }
+            val host = entries.find { it.isApplicable(projectUrl) }
                 ?: return GIT_PROJECT_NAME.find(projectUrl)?.groupValues?.getOrNull(1)
             return projectUrl.toUri { host.getProjectInternal(it) }.getOrNull()
         }
@@ -587,8 +587,13 @@ private fun gitProjectUrlToVcsInfo(projectUrl: URI, pathParser: (String, Iterato
 }
 
 private fun toGitPermalink(
-    vcsUrl: URI, revision: String, path: String, startLine: Int, endLine: Int,
-    startLineMarker: String, endLineMarker: String
+    vcsUrl: URI,
+    revision: String,
+    path: String,
+    startLine: Int,
+    endLine: Int,
+    startLineMarker: String,
+    endLineMarker: String
 ): String {
     var permalink = "https://${vcsUrl.host}${vcsUrl.path.removeSuffix(".git")}"
 

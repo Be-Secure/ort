@@ -18,23 +18,26 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":model"))
+    api(projects.model)
+    api(projects.plugins.versionControlSystems.gitVersionControlSystem)
 
-    api(libs.kotestAssertionsCore)
-    api(libs.kotestFrameworkApi)
+    api(libs.kotest.assertions.core)
+    api(libs.kotest.framework.api)
 
-    implementation(project(":downloader"))
-    implementation(project(":utils:ort-utils"))
+    implementation(projects.downloader)
+    implementation(projects.utils.ortUtils)
 
-    implementation(libs.jacksonModuleKotlin)
-    implementation(libs.kotestExtensionsJunitXml)
-    implementation(libs.kotestFrameworkEngine)
-    implementation(libs.log4jApiToSlf4j)
-    implementation(libs.logbackClassic)
+    implementation(libs.diffUtils)
+    implementation(libs.jackson.module.kotlin)
+    implementation(libs.kotest.extensions.junitXml)
+    implementation(libs.kotest.framework.engine)
     implementation(libs.postgresEmbedded)
+
+    runtimeOnly(libs.log4j.api.slf4j)
+    runtimeOnly(libs.logbackClassic)
 }

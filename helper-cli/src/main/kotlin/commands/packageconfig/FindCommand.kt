@@ -33,7 +33,7 @@ import org.ossreviewtoolkit.utils.common.expandTilde
 
 internal class FindCommand : CliktCommand(
     help = "Searches the given directory for a package configuration file matching the given identifier." +
-            "If found the absolute path is written to the output."
+        "If found the absolute path is written to the output."
 ) {
     private val packageId by option(
         "--package-id",
@@ -41,9 +41,10 @@ internal class FindCommand : CliktCommand(
     ).convert { Identifier(it) }
         .required()
 
-    private val packageConfigurationDir by option(
-        "--package-configuration-dir",
-        help = "The package configurations directory."
+    private val packageConfigurationsDir by option(
+        "--package-configurations-dir",
+        help = "A directory that is searched recursively for package configuration files. Each file must only " +
+            "contain a single package configuration."
     ).convert { it.expandTilde() }
         .file(mustExist = false, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = false)
         .convert { it.absoluteFile.normalize() }
@@ -51,7 +52,7 @@ internal class FindCommand : CliktCommand(
 
     override fun run() {
         // TODO: There could be multiple package configurations matching the given identifier which is not handled.
-        FileFormat.findFilesWithKnownExtensions(packageConfigurationDir).find {
+        FileFormat.findFilesWithKnownExtensions(packageConfigurationsDir).find {
             it.readValue<PackageConfiguration>().id == packageId
         }?.let {
             println(it.absolutePath)

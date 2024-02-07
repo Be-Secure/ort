@@ -92,9 +92,10 @@ class IntListToCsvStringConverter : StdConverter<List<Int>, String>() {
 }
 
 class CsvStringToIntListConverter : StdConverter<String, List<Int>>() {
-    override fun convert(value: String): List<Int> = value
-        .split(',')
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .map { it.toInt() }
+    override fun convert(value: String): List<Int> =
+        value
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { it.toInt() }
 }

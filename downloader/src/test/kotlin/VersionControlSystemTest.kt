@@ -30,11 +30,10 @@ import java.io.File
 import java.io.IOException
 import java.lang.UnsupportedOperationException
 
-import org.ossreviewtoolkit.downloader.vcs.Git
-import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
+import org.ossreviewtoolkit.plugins.versioncontrolsystems.git.Git
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 
 class VersionControlSystemTest : WordSpec({
@@ -77,10 +76,9 @@ class VersionControlSystemTest : WordSpec({
     "getRevisionCandidates()" should {
         "prefer a matching tag name over a branch name from metadata" {
             val pkg = Package.EMPTY.copy(
-                id = Identifier("Gem::google-cloud-core:1.6.0"),
                 vcsProcessed = VcsInfo(
                     type = VcsType.GIT,
-                    url = "https://github.com/googleapis/google-cloud-ruby.git",
+                    url = "",
                     revision = "master"
                 )
             )
@@ -96,12 +94,10 @@ class VersionControlSystemTest : WordSpec({
 
         "add 'main' as a candidate for Git if otherwise 'master' is the only one" {
             val pkg = Package.EMPTY.copy(
-                id = Identifier("NuGet::Microsoft.NETFramework.ReferenceAssemblies.net40:1.0.0-preview.2"),
                 vcsProcessed = VcsInfo(
                     type = VcsType.GIT,
-                    url = "https://github.com/Microsoft/dotnet.git",
-                    revision = "master",
-                    path = "releases/reference-assemblies"
+                    url = "",
+                    revision = "master"
                 )
             )
 
@@ -155,7 +151,7 @@ class VersionControlSystemTest : WordSpec({
  */
 private class VersionControlSystemTestImpl(
     tool: CommandLineTool?,
-    override val type: VcsType = VcsType.UNKNOWN,
+    override val type: String = VcsType.UNKNOWN.toString(),
     override val latestRevisionNames: List<String> = emptyList()
 ) : VersionControlSystem(tool) {
     override fun getVersion(): String = "0"

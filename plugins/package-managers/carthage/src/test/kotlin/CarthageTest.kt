@@ -31,7 +31,7 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 
 import java.io.File
-import java.net.URL
+import java.net.URI
 
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
@@ -81,8 +81,8 @@ class CarthageTest : WordSpec() {
 
             "parse a binary dependency url" {
                 mockkStatic("kotlin.io.TextStreamsKt")
-                every { URL("https://host.tld/path/to/binary/spec.json").readBytes() } returns
-                        File("src/test/assets/Carthage-binary-specification.json").readText().toByteArray()
+                every { URI.create("https://host.tld/path/to/binary/spec.json").toURL().readBytes() } returns
+                    File("src/test/assets/Carthage-binary-specification.json").readText().toByteArray()
 
                 val cartfile = File("src/test/assets/Cartfile-binary.resolved")
 
@@ -99,8 +99,8 @@ class CarthageTest : WordSpec() {
 
             "parse mixed dependencies" {
                 mockkStatic("kotlin.io.TextStreamsKt")
-                every { URL("https://host.tld/path/to/binary/spec.json").readBytes() } returns
-                        File("src/test/assets/Carthage-binary-specification.json").readText().toByteArray()
+                every { URI.create("https://host.tld/path/to/binary/spec.json").toURL().readBytes() } returns
+                    File("src/test/assets/Carthage-binary-specification.json").readText().toByteArray()
 
                 val cartfile = File("src/test/assets/Cartfile-mixed.resolved")
 

@@ -31,41 +31,56 @@ ort:
   enableRepositoryPackageConfigurations: true
   enableRepositoryPackageCurations: true
 
+  # Force overwriting of any existing output files.
+  forceOverwrite: true
+
   licenseFilePatterns:
     licenseFilenames: ['license*']
     patentFilenames: ['patents']
     rootLicenseFilenames: ['readme*']
 
-  # Providers are listed from highest to lower priority. Technically, they are applied in reverse order: The provider
-  # with the highest priority is applied last, so it can overwrite any previously applied curations.
+  # Package configurations have to be unique by ID and provenance. Ensure that different providers do not provide
+  # configurations for the same package, see https://github.com/oss-review-toolkit/ort/issues/6972 for details.
+  packageConfigurationProviders:
+  - type: DefaultDir
+  - type: Dir
+    id: SomeConfigDir
+    options:
+      path: '/some-path/'
+      mustExist: true
+  - type: OrtConfig
+
+  # Package curation providers are listed from highest to lowest priority. Technically, they are applied in reverse
+  # order: The provider with the highest priority is applied last, so it can overwrite any previously applied curations.
   packageCurationProviders:
-    - type: DefaultFile
-    - type: DefaultDir
-    - type: File
-      id: SomeCurationsFile
-      config:
-        path: '/some-path/curations.yml'
-        mustExist: true
-    - type: File
-      id: SomeCurationsDir
-      config:
-        path: '/some-path/curations-dir'
-        mustExist: false
-    - type: OrtConfig
-      enabled: '${USE_ORT_CONFIG_CURATIONS:-true}'
-    - type: ClearlyDefined
-      config:
-        serverUrl: 'https://api.clearlydefined.io'
-        minTotalLicenseScore: 80
-    - type: SW360
-      config:
-        restUrl: 'https://your-sw360-rest-url'
-        authUrl: 'https://your-authentication-url'
-        username: username
-        password: password
-        clientId: clientId
-        clientPassword: clientPassword
-        token: token
+  - type: DefaultFile
+  - type: DefaultDir
+  - type: File
+    id: SomeCurationsFile
+    options:
+      path: '/some-path/curations.yml'
+      mustExist: true
+  - type: File
+    id: SomeCurationsDir
+    options:
+      path: '/some-path/curations-dir'
+      mustExist: false
+  - type: OrtConfig
+    enabled: '${USE_ORT_CONFIG_CURATIONS:-true}'
+  - type: ClearlyDefined
+    options:
+      serverUrl: 'https://api.clearlydefined.io'
+      minTotalLicenseScore: 80
+  - type: SW360
+    options:
+      restUrl: 'https://your-sw360-rest-url'
+      authUrl: 'https://your-authentication-url'
+    secrets:
+      username: username
+      password: password
+      clientId: clientId
+      clientPassword: clientPassword
+      token: token
 
   severeIssueThreshold: ERROR
   severeRuleViolationThreshold: ERROR
@@ -74,7 +89,7 @@ ort:
     allowDynamicVersions: true
 
     # A list of enabled package managers.
-    enabledPackageManagers: [DotNet, Gradle]
+    enabledPackageManagers: [Gradle]
 
     # A list of disabled package managers. Disabling a package manager here overrides enabling it in
     # `enabledPackageManagers`.
@@ -89,12 +104,6 @@ ort:
         # another package manager generates files that this package manager requires to run correctly.
         mustRunAfter: [NPM]
 
-      # Some package managers provide custom configuration options that are documented in the package manager class. At
-      # the example of DotNet, these can be set like:
-      DotNet:
-        options:
-          directDependenciesOnly: true
-
       Yarn2:
         options:
           # If set to true, disable verification of HTTPS certificate of remote registries. Useful when using a proxy to
@@ -108,30 +117,44 @@ ort:
           lockfileName: "lockfile.lock"
 
   advisor:
-    nexusIq:
-      serverUrl: 'https://rest-api-url-of-your-nexus-iq-server'
-      browseUrl: 'https://web-browsing-url-of-your-nexus-iq-server'
-      username: username
-      password: password
+    # A flag to control whether excluded scopes and paths should be skipped when giving the advice.
+    skipExcluded: true
 
-    vulnerableCode:
-      serverUrl: 'http://localhost:8000'
-      apiKey: 0123456789012345678901234567890123456789
+    config:
+      GitHubDefects:
+        options:
+          endpointUrl: 'https://api.github.com/graphql'
+          labelFilter: '!duplicate, !enhancement, !invalid, !question, !documentation, *'
+          maxNumberOfIssuesPerRepository: 50
+          parallelRequests: 5
+        secrets:
+          token: githubAccessToken
 
-    gitHubDefects:
-      token: githubAccessToken
-      labelFilter: ['!duplicate', '!enhancement', '!invalid', '!question', '!documentation', '*']
-      maxNumberOfIssuesPerRepository: 50
-      parallelRequests: 5
+      NexusIQ:
+        options:
+          serverUrl: 'https://rest-api-url-of-your-nexus-iq-server'
+          browseUrl: 'https://web-browsing-url-of-your-nexus-iq-server'
+        secrets:
+          username: username
+          password: password
 
-    osv:
-      serverUrl: 'https://api.osv.dev'
+      OssIndex:
+        options:
+          serverUrl: 'https://ossindex.sonatype.org/'
+        secrets:
+          username: username
+          password: password
 
-    options:
-      # A map of maps from advice provider names to provider-specific key-value pairs. This map can be used to provide
-      # configuration information for external advisor plugins.
-      CustomAdvisor:
-        apiKey: '<some_api_key>'
+      OSV:
+        options:
+          serverUrl: 'https://api.osv.dev'
+
+      VulnerableCode:
+        options:
+          serverUrl: 'http://localhost:8000'
+          readTimeout: 40
+        secrets:
+          apiKey: 0123456789012345678901234567890123456789
 
   downloader:
     allowMovingRevisions: true
@@ -141,10 +164,14 @@ ort:
       - 'category-a'
       - 'category-b'
 
+    # A flag to control whether excluded scopes and paths should be skipped during the download.
+    skipExcluded: true
+
     sourceCodeOrigins: [VCS, ARTIFACT]
 
   scanner:
     skipConcluded: true
+    skipExcluded: true
 
     archive:
       enabled: true
@@ -174,40 +201,75 @@ ort:
       BSD (Three Clause License): 'BSD-3-clause'
       LicenseRef-scancode-generic-cla: 'NOASSERTION'
 
-    options:
-      # A map of maps from scanner class names to scanner-specific key-value pairs.
-      ScanCode:
-        commandLine: '--copyright --license --info --strip-root --timeout 300'
-        parseLicenseExpressions: true
+    fileListStorage:
+      fileStorage:
+        localFileStorage:
+          directory: ~/.ort/scanner/file-lists
+          compression: false
 
-        # Criteria for matching stored scan results. These can be configured for any scanner that uses semantic
-        # versioning. Note that the 'maxVersion' is exclusive and not part of the range of accepted versions.
-        minVersion: '3.2.1-rc2'
-        maxVersion: '32.0.0'
+      postgresStorage:
+        connection:
+          url: 'jdbc:postgresql://your-postgresql-server:5444/your-database'
+          schema: public
+          username: username
+          password: password
+          sslmode: required
+          sslcert: /defaultdir/postgresql.crt
+          sslkey: /defaultdir/postgresql.pk8
+          sslrootcert: /defaultdir/root.crt
+          parallelTransactions: 5
+
+    config:
+      # A map from scanner plugin types to the plugin configuration.
+      ScanCode:
+        options:
+          # Command line options that affect the ScanCode output. If changed, stored scan results that were created with
+          # different options are not reused.
+          commandLine: '--copyright --license --info --strip-root --timeout 300'
+
+          # Command line options that do not affect the ScanCode output.
+          commandLineNonConfig: '--processes 4'
+
+          # Use per-file license findings instead of per-line ones.
+          preferFileLicense: false
+
+          # Criteria for matching stored scan results. These can be configured for any scanner that uses semantic
+          # versioning. Note that the 'maxVersion' is exclusive and not part of the range of accepted versions.
+          minVersion: '3.2.1-rc2'
+          maxVersion: '32.0.0'
 
       FossId:
-        serverUrl: 'https://fossid.example.com/instance/'
-        user: user
-        apiKey: XYZ
+        options:
+          serverUrl: 'https://fossid.example.com/instance/'
 
-        namingProjectPattern: '$Var1_$Var2'
-        namingScanPattern: '$Var1_#projectBaseCode_$Var3'
-        namingVariableVar1: myOrg
-        namingVariableVar2: myTeam
-        namingVariableVar3: myUnit
+          namingProjectPattern: '$Var1_$Var2'
+          namingScanPattern: '$Var1_#projectBaseCode_$Var3'
+          namingVariableVar1: myOrg
+          namingVariableVar2: myTeam
+          namingVariableVar3: myUnit
 
-        waitForResult: false
+          waitForResult: false
 
-        keepFailedScans: false
-        deltaScans: true
-        deltaScanLimit: 10
+          keepFailedScans: false
+          deltaScans: true
+          deltaScanLimit: 10
 
-        detectLicenseDeclarations: true
-        detectCopyrightStatements: true
+          detectLicenseDeclarations: true
+          detectCopyrightStatements: true
 
-        timeout: 60
+          timeout: 60
 
-        urlMappingExample: "https://my-repo.example.org(?<repoPath>.*) -> ssh://my-mapped-repo.example.org${repoPath}"
+          urlMappingExample: "https://my-repo.example.org(?<repoPath>.*) -> ssh://my-mapped-repo.example.org${repoPath}"
+
+        secrets:
+          user: user
+          apiKey: XYZ
+
+      SCANOSS:
+        options:
+          apiUrl: 'https://osskb.org/api/'
+        secrets:
+          apiKey: 'your API key'
 
     storages:
       local:
@@ -224,6 +286,16 @@ ort:
             headers:
               key1: value1
               key2: value2
+
+      aws:
+        backend:
+          s3FileStorage:
+            accessKeyId: "accessKey"
+            awsRegion: "us-east-1"
+            bucketName: "ort-scan-results"
+            compression: false
+            customEndpoint: "http://localhost:4567"
+            secretAccessKey: "secret"
 
       clearlyDefined:
         serverUrl: 'https://api.clearlydefined.io'
@@ -250,7 +322,7 @@ ort:
         token: token
 
     # Storage readers are listed from highest to lower priority, i.e. the first match wins.
-    storageReaders: [local, postgres, http, clearlyDefined]
+    storageReaders: [local, postgres, http, aws, clearlyDefined]
 
     # For storage writers no priority is implied by the order; scan results are stored for all writers.
     storageWriters: [postgres]
@@ -275,11 +347,13 @@ ort:
           sslrootcert: /defaultdir/root.crt
 
   reporter:
-    options:
+    config:
       FossId:
-        serverUrl: 'https://fossid.example.com/instance/'
-        user: user
-        apiKey: XYZ
+        options:
+          serverUrl: 'https://fossid.example.com/instance/'
+        secrets:
+          user: user
+          apiKey: XYZ
 
   notifier:
     mail:

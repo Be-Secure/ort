@@ -20,6 +20,7 @@
 package org.ossreviewtoolkit.evaluator
 
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.shouldBe
 
 import java.io.File
@@ -35,16 +36,15 @@ import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
-import org.ossreviewtoolkit.model.ScannerRun
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
-import org.ossreviewtoolkit.utils.test.createSpecTempDir
+import org.ossreviewtoolkit.utils.test.scannerRunOf
 
 class ProjectSourceRuleTest : WordSpec({
     "projectSourceHasFile()" should {
         "return true if at least one file matches the given glob pattern" {
-            val dir = createSpecTempDir().apply {
+            val dir = tempdir().apply {
                 addFiles(
                     "README.md",
                     "module/docs/LICENSE.txt"
@@ -61,7 +61,7 @@ class ProjectSourceRuleTest : WordSpec({
         }
 
         "return false if only a directory matches the given glob pattern" {
-            val dir = createSpecTempDir().apply {
+            val dir = tempdir().apply {
                 addDirs("README.md")
             }
             val rule = createRule(dir)
@@ -70,7 +70,7 @@ class ProjectSourceRuleTest : WordSpec({
         }
 
         "return false if neither any file nor directory matches the given glob pattern" {
-            val dir = createSpecTempDir()
+            val dir = tempdir()
             val rule = createRule(dir)
 
             rule.projectSourceHasFile("README.md").matches() shouldBe false
@@ -79,7 +79,7 @@ class ProjectSourceRuleTest : WordSpec({
 
     "projectSourceHasDirectory()" should {
         "return true if at least one directory matches the given glob pattern" {
-            val dir = createSpecTempDir().apply {
+            val dir = tempdir().apply {
                 addDirs("a/b/c")
             }
             val rule = createRule(dir)
@@ -93,7 +93,7 @@ class ProjectSourceRuleTest : WordSpec({
         }
 
         "return false if only a file matches the given glob pattern" {
-            val dir = createSpecTempDir().apply {
+            val dir = tempdir().apply {
                 addFiles("a")
             }
             val rule = createRule(dir)
@@ -102,7 +102,7 @@ class ProjectSourceRuleTest : WordSpec({
         }
 
         "return false if no directory matches the given glob pattern" {
-            val dir = createSpecTempDir().apply {
+            val dir = tempdir().apply {
                 addDirs("b")
             }
             val rule = createRule(dir)
@@ -113,7 +113,7 @@ class ProjectSourceRuleTest : WordSpec({
 
     "projectSourceHasFileWithContent()" should {
         "return true if there is a file matching the given glob pattern with its content matching the given regex" {
-            val dir = createSpecTempDir().apply {
+            val dir = tempdir().apply {
                 addFiles(
                     "README.md",
                     content = """
@@ -132,7 +132,7 @@ class ProjectSourceRuleTest : WordSpec({
     "projectSourceGetDetectedLicensesByFilePath()" should {
         "return the detected licenses for the file matching the pattern" {
             val rule = createRule(
-                createSpecTempDir(),
+                tempdir(),
                 ortResultWithDetectedLicenses(
                     "LICENSE" to setOf("Apache-2.0", "MIT"),
                     "README.md" to setOf("BSD-2-Clause")
@@ -148,7 +148,7 @@ class ProjectSourceRuleTest : WordSpec({
     "projectSourceHasVcsType" should {
         "return true if and only if any of the given VCS types match the VCS type of the project's code repository" {
             val rule = createRule(
-                createSpecTempDir(),
+                tempdir(),
                 createOrtResult(projectVcsType = VcsType.GIT)
             )
 
@@ -201,7 +201,7 @@ private fun createOrtResult(
         url = "https://github.com/oss-review-toolkit/example.git",
         revision = "0000000000000000000000000000000000000000"
     )
-    val licenseFindings = detectedLicensesForFilePath.flatMapTo(sortedSetOf()) { (filePath, licenses) ->
+    val licenseFindings = detectedLicensesForFilePath.flatMapTo(mutableSetOf()) { (filePath, licenses) ->
         licenses.map { license ->
             LicenseFinding(license, TextLocation(filePath, startLine = 1, endLine = 2))
         }
@@ -219,16 +219,13 @@ private fun createOrtResult(
                 )
             )
         ),
-        scanner = ScannerRun.EMPTY.copy(
-            scanResults = sortedMapOf(
-                id to listOf(
-                    ScanResult(
-                        provenance = RepositoryProvenance(vcsInfo, vcsInfo.revision),
-                        scanner = ScannerDetails.EMPTY,
-                        summary = ScanSummary.EMPTY.copy(
-                            licenseFindings = licenseFindings,
-                            packageVerificationCode = "0000000000000000000000000000000000000000"
-                        )
+        scanner = scannerRunOf(
+            id to listOf(
+                ScanResult(
+                    provenance = RepositoryProvenance(vcsInfo, vcsInfo.revision),
+                    scanner = ScannerDetails.EMPTY,
+                    summary = ScanSummary.EMPTY.copy(
+                        licenseFindings = licenseFindings
                     )
                 )
             )

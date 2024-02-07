@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.utils.ort
 
 import java.io.File
 import java.io.IOException
+import java.lang.invoke.MethodHandles
 import java.time.Duration
 import java.util.concurrent.ConcurrentHashMap
 
@@ -43,7 +44,8 @@ import okhttp3.ResponseBody
 import okio.buffer
 import okio.sink
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
+import org.apache.logging.log4j.kotlin.loggerOf
 
 import org.ossreviewtoolkit.utils.common.ArchiveType
 import org.ossreviewtoolkit.utils.common.collectMessages
@@ -54,61 +56,15 @@ import org.ossreviewtoolkit.utils.common.withoutPrefix
 typealias BuilderConfiguration = OkHttpClient.Builder.() -> Unit
 
 /**
- * An HTTP-specific download error that enriches an [IOException] with an additional HTTP error code.
- */
-class HttpDownloadError(val code: Int, message: String) : IOException("$message (HTTP code $code)")
-
-/**
  * A helper class to manage OkHttp instances backed by distinct cache directories.
  */
-object OkHttpClientHelper : Logging {
+object OkHttpClientHelper {
     /**
      * A constant for the "too many requests" HTTP code as HttpURLConnection has none.
      */
     const val HTTP_TOO_MANY_REQUESTS = 429
 
-    private const val CACHE_DIRECTORY = "cache/http"
-    private val MAX_CACHE_SIZE_IN_BYTES = 1.gibibytes
-    private const val READ_TIMEOUT_IN_SECONDS = 30L
-
     private val clients = ConcurrentHashMap<BuilderConfiguration, OkHttpClient>()
-
-    private val defaultClient by lazy {
-        OrtAuthenticator.install()
-        OrtProxySelector.install()
-
-        val cacheDirectory = ortDataDirectory.resolve(CACHE_DIRECTORY)
-        val cache = Cache(cacheDirectory, MAX_CACHE_SIZE_IN_BYTES)
-        val specs = listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.COMPATIBLE_TLS, ConnectionSpec.CLEARTEXT)
-
-        // OkHttp uses Java's global ProxySelector by default, but the Authenticator for a proxy needs to be set
-        // explicitly. Also note that the (non-proxy) authenticator is set here and is primarily intended for "reactive"
-        // authentication, but most often "preemptive" authentication via headers is required. For proxy authentication,
-        // OkHttp emulates preemptive authentication by sending a fake "OkHttp-Preemptive" response to the reactive
-        // proxy authenticator.
-        OkHttpClient.Builder()
-            .addNetworkInterceptor { chain ->
-                val request = chain.request()
-                val requestWithUserAgent = request.takeUnless { it.header("User-Agent") == null }
-                    ?: request.newBuilder().header("User-Agent", Environment.ORT_USER_AGENT).build()
-
-                runCatching {
-                    chain.proceed(requestWithUserAgent)
-                }.onFailure {
-                    it.showStackTrace()
-
-                    logger.error {
-                        "HTTP request to '${request.url}' failed with an exception: ${it.collectMessages()}"
-                    }
-                }.getOrThrow()
-            }
-            .cache(cache)
-            .connectionSpecs(specs)
-            .readTimeout(Duration.ofSeconds(READ_TIMEOUT_IN_SECONDS))
-            .authenticator(Authenticator.JAVA_NET_AUTHENTICATOR)
-            .proxyAuthenticator(Authenticator.JAVA_NET_AUTHENTICATOR)
-            .build()
-    }
 
     /**
      * Build a preconfigured client that uses a cache directory inside the [ORT data directory][ortDataDirectory].
@@ -116,39 +72,59 @@ object OkHttpClientHelper : Logging {
      */
     fun buildClient(block: BuilderConfiguration? = null): OkHttpClient =
         block?.let {
-            clients.getOrPut(it) { defaultClient.newBuilder().apply(block).build() }
-        } ?: defaultClient
+            clients.getOrPut(it) { okHttpClient.newBuilder().apply(block).build() }
+        } ?: okHttpClient
+}
 
-    /**
-     * Execute a [request] using the default client.
-     */
-    fun execute(request: Request): Response = defaultClient.execute(request)
+/**
+ * An HTTP-specific download error that enriches an [IOException] with an additional HTTP error code.
+ */
+class HttpDownloadError(val code: Int, message: String) : IOException("$message (HTTP code $code)")
 
-    /**
-     * Asynchronously enqueue a [request] using the default client and await its response.
-     */
-    suspend fun await(request: Request): Response = defaultClient.await(request)
+private val logger = loggerOf(MethodHandles.lookup().lookupClass())
 
-    /**
-     * Download from [url] using the default client with optional [acceptEncoding] and return a [Result] with the
-     * [Response] and non-nullable [ResponseBody] on success, or a [Result] wrapping an [IOException] (which might be a
-     * [HttpDownloadError]) on failure.
-     */
-    fun download(url: String, acceptEncoding: String? = null): Result<Pair<Response, ResponseBody>> =
-        defaultClient.download(url, acceptEncoding)
+private const val CACHE_DIRECTORY = "cache/http"
+private val MAX_CACHE_SIZE_IN_BYTES = 1.gibibytes
+private const val READ_TIMEOUT_IN_SECONDS = 30L
 
-    /**
-     * Download from [url] using the default client and return a [Result] with a string representing the response body
-     * content on success, or a [Result] wrapping an [IOException] (which might be a [HttpDownloadError]) on failure.
-     */
-    fun downloadText(url: String): Result<String> = defaultClient.downloadText(url)
+/**
+ * The default [OkHttpClient] for ORT to use.
+ */
+val okHttpClient: OkHttpClient by lazy {
+    OrtAuthenticator.install()
+    OrtProxySelector.install()
 
-    /**
-     * Download from [url] using the default client and return a [Result] with a file inside [directory] that holds the
-     * response body content on success, or a [Result] wrapping an [IOException] (which might be a [HttpDownloadError])
-     * on failure.
-     */
-    fun downloadFile(url: String, directory: File): Result<File> = defaultClient.downloadFile(url, directory)
+    val cacheDirectory = ortDataDirectory.resolve(CACHE_DIRECTORY)
+    val cache = Cache(cacheDirectory, MAX_CACHE_SIZE_IN_BYTES)
+    val specs = listOf(ConnectionSpec.MODERN_TLS, ConnectionSpec.COMPATIBLE_TLS, ConnectionSpec.CLEARTEXT)
+
+    // OkHttp uses Java's global ProxySelector by default, but the Authenticator for a proxy needs to be set
+    // explicitly. Also note that the (non-proxy) authenticator is set here and is primarily intended for "reactive"
+    // authentication, but most often "preemptive" authentication via headers is required. For proxy authentication,
+    // OkHttp emulates preemptive authentication by sending a fake "OkHttp-Preemptive" response to the reactive
+    // proxy authenticator.
+    OkHttpClient.Builder()
+        .addNetworkInterceptor { chain ->
+            val request = chain.request()
+            val requestWithUserAgent = request.takeUnless { it.header("User-Agent") == null }
+                ?: request.newBuilder().header("User-Agent", Environment.ORT_USER_AGENT).build()
+
+            runCatching {
+                chain.proceed(requestWithUserAgent)
+            }.onFailure {
+                it.showStackTrace()
+
+                logger.error {
+                    "HTTP request to ${request.url} failed with an exception: ${it.collectMessages()}"
+                }
+            }.getOrThrow()
+        }
+        .cache(cache)
+        .connectionSpecs(specs)
+        .readTimeout(Duration.ofSeconds(READ_TIMEOUT_IN_SECONDS))
+        .authenticator(Authenticator.JAVA_NET_AUTHENTICATOR)
+        .proxyAuthenticator(Authenticator.JAVA_NET_AUTHENTICATOR)
+        .build()
 }
 
 /**
@@ -246,11 +222,19 @@ fun OkHttpClient.download(url: String, acceptEncoding: String? = null): Result<P
     }
 
 /**
+ * Execute a HEAD-request against [url] to ping for its existence.
+ */
+fun OkHttpClient.ping(url: String): Response =
+    Request.Builder().head().url(url).build().let { request ->
+        execute(request)
+    }
+
+/**
  * Execute a [request] using the client.
  */
 fun OkHttpClient.execute(request: Request): Response =
     newCall(request).execute().also { response ->
-        OkHttpClientHelper.logger.debug {
+        logger.debug {
             if (response.cacheResponse != null) {
                 "Retrieved ${response.request.url} from local cache."
             } else {
@@ -262,8 +246,7 @@ fun OkHttpClient.execute(request: Request): Response =
 /**
  * Asynchronously enqueue a [request] using the client and await its response.
  */
-suspend fun OkHttpClient.await(request: Request): Response =
-    newCall(request).await()
+suspend fun OkHttpClient.await(request: Request): Response = newCall(request).await()
 
 /**
  * Asynchronously enqueue the [Call]'s request and await its [Response].

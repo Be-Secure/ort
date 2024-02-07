@@ -19,6 +19,8 @@
 
 package org.ossreviewtoolkit.model
 
+import java.io.File
+
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -27,7 +29,7 @@ import kotlin.math.min
  */
 data class TextLocation(
     /**
-     * The path of the file that contains the text.
+     * The path (with invariant separators) of the file that contains the text.
      */
     val path: String,
 
@@ -43,6 +45,8 @@ data class TextLocation(
 ) : Comparable<TextLocation> {
     companion object {
         const val UNKNOWN_LINE = -1
+
+        // This comparator is consistent with `equals()` as all properties are taken into account.
         private val COMPARATOR = compareBy<TextLocation>({ it.path }, { it.startLine }, { it.endLine })
     }
 
@@ -88,4 +92,20 @@ data class TextLocation(
             linesOverlapWith(other) -> 0
             else -> min(abs(other.startLine - endLine), abs(startLine - other.endLine))
         }
+
+    /**
+     * Return a [TextLocation] whose path is relative to [basePath], or throw an [IllegalArgumentException] if the paths
+     * have different roots.
+     */
+    fun withRelativePath(basePath: File): TextLocation {
+        val pathAsFile = File(path)
+
+        val relativePath = when {
+            !pathAsFile.isAbsolute -> pathAsFile
+            basePath.isFile -> pathAsFile.relativeTo(basePath.parentFile)
+            else -> pathAsFile.relativeTo(basePath)
+        }
+
+        return copy(path = relativePath.invariantSeparatorsPath)
+    }
 }

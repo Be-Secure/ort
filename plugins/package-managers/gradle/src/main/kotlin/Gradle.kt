@@ -26,7 +26,7 @@ import java.io.File
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.eclipse.aether.artifact.Artifact
 import org.eclipse.aether.repository.RemoteRepository
@@ -40,8 +40,6 @@ import org.gradle.tooling.internal.consumer.DefaultGradleConnector
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
 import org.ossreviewtoolkit.analyzer.PackageManagerResult
-import org.ossreviewtoolkit.analyzer.managers.utils.MavenSupport
-import org.ossreviewtoolkit.analyzer.managers.utils.identifier
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.Identifier
@@ -55,8 +53,10 @@ import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
 import org.ossreviewtoolkit.model.utils.DependencyGraphBuilder
-import org.ossreviewtoolkit.plugins.packagemanagers.gradle.utils.GradleDependencyHandler
+import org.ossreviewtoolkit.plugins.packagemanagers.maven.utils.MavenSupport
+import org.ossreviewtoolkit.plugins.packagemanagers.maven.utils.identifier
 import org.ossreviewtoolkit.utils.common.Os
+import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.common.splitOnWhitespace
 import org.ossreviewtoolkit.utils.common.temporaryProperties
 import org.ossreviewtoolkit.utils.ort.createOrtTempFile
@@ -82,7 +82,7 @@ class Gradle(
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig) {
-    companion object : Logging {
+    companion object {
         /**
          * The name of the option to specify the Gradle version.
          */
@@ -222,20 +222,18 @@ class Gradle(
                 if (stdout.size() > 0) {
                     logger.debug {
                         "Analyzing the project in '$projectDir' produced the following standard output:\n" +
-                                stdout.toString().prependIndent("\t")
+                            stdout.toString().prependIndent("\t")
                     }
                 }
 
                 if (stderr.size() > 0) {
                     logger.warn {
                         "Analyzing the project in '$projectDir' produced the following error output:\n" +
-                                stderr.toString().prependIndent("\t")
+                            stderr.toString().prependIndent("\t")
                     }
                 }
 
-                if (!initScriptFile.delete()) {
-                    logger.warn { "Init script file '$initScriptFile' could not be deleted." }
-                }
+                initScriptFile.parentFile.safeDeleteRecursively(force = true)
 
                 val repositories = dependencyTreeModel.repositories.map {
                     // TODO: Also handle authentication and snapshot policy.

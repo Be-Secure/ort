@@ -24,11 +24,12 @@ import com.github.ajalt.clikt.core.subcommands
 
 import org.ossreviewtoolkit.model.licenses.LicenseClassifications
 
-class LicenseClassificationsCommand : NoOpCliktCommand(
+internal class LicenseClassificationsCommand : NoOpCliktCommand(
     help = "Commands for working with license classifications."
 ) {
     init {
         subcommands(
+            FilterCommand(),
             ImportCommand(),
             MergeCommand()
         )

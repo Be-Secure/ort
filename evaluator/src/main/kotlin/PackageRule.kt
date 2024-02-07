@@ -29,6 +29,8 @@ import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.licenses.LicenseView
 import org.ossreviewtoolkit.model.licenses.ResolvedLicense
 import org.ossreviewtoolkit.model.licenses.ResolvedLicenseInfo
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
+import org.ossreviewtoolkit.model.vulnerabilities.VulnerabilityReference
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 import org.ossreviewtoolkit.utils.spdx.SpdxLicenseReferenceExpression
 
@@ -77,7 +79,8 @@ open class PackageRule(
     }
 
     /**
-     * A [RuleMatcher] that checks whether any vulnerability for the [package][pkg] has a score that equals or is
+     * A [RuleMatcher] that checks whether any vulnerability for the [package][pkg] has a
+     * [reference][Vulnerability.references] with a [severity][VulnerabilityReference.severity] that equals or is
      * greater than [threshold] according to the [scoringSystem] and the belonging [severityComparator].
      */
     fun hasVulnerability(threshold: String, scoringSystem: String, severityComparator: (String, String) -> Boolean) =
@@ -215,7 +218,7 @@ open class PackageRule(
         fun pkg() = pkg
 
         override val description = "\tEvaluating license rule '$name' for $licenseSource license " +
-                "'${resolvedLicense.license}'."
+            "'${resolvedLicense.license}'."
 
         override fun issueSource() =
             "$name - ${pkg.metadata.id.toCoordinates()} - ${resolvedLicense.license} ($licenseSource)"
@@ -252,8 +255,7 @@ open class PackageRule(
         /**
          * Add a [hint][Severity.HINT] to the list of [violations].
          */
-        fun hint(message: String, howToFix: String) =
-            hint(pkg.metadata.id, license, licenseSource, message, howToFix)
+        fun hint(message: String, howToFix: String) = hint(pkg.metadata.id, license, licenseSource, message, howToFix)
 
         /**
          * Add a [warning][Severity.WARNING] to the list of [violations].
@@ -264,7 +266,6 @@ open class PackageRule(
         /**
          * Add an [error][Severity.ERROR] to the list of [violations].
          */
-        fun error(message: String, howToFix: String) =
-            error(pkg.metadata.id, license, licenseSource, message, howToFix)
+        fun error(message: String, howToFix: String) = error(pkg.metadata.id, license, licenseSource, message, howToFix)
     }
 }

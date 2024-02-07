@@ -28,7 +28,7 @@ enum class PackageProvider(
     /**
      * The regular expression patterns that match all URLs for a specific provider.
      */
-    vararg urlPatterns: String,
+    vararg urlPatterns: String
 ) {
     COCOAPODS(
         "^https?://cocoapods\\.org/pods/"
@@ -115,7 +115,7 @@ enum class PackageProvider(
          * Return the [PackageProvider] as determined from the given [url], or null if there is no match.
          */
         fun get(url: String): PackageProvider? =
-            enumValues<PackageProvider>().find { provider ->
+            PackageProvider.entries.find { provider ->
                 provider.urlRegexes.any { it.containsMatchIn(url) }
             }
 

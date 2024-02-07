@@ -28,7 +28,7 @@ import javax.sql.DataSource
 
 import kotlinx.coroutines.Deferred
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Transaction
@@ -38,7 +38,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.ossreviewtoolkit.model.config.PostgresConnection
 import org.ossreviewtoolkit.utils.ort.ORT_FULL_NAME
 
-object DatabaseUtils : Logging {
+object DatabaseUtils {
     /**
      * This map holds the [HikariDataSource] based on the [PostgresConnection].
      */
@@ -116,8 +116,7 @@ object DatabaseUtils : Logging {
     /**
      * Start a new transaction to execute the given [statement] on this [Database].
      */
-    fun <T> Database.transaction(statement: Transaction.() -> T): T =
-        transaction(this, statement)
+    fun <T> Database.transaction(statement: Transaction.() -> T): T = transaction(this, statement)
 
     /**
      * Start a new asynchronous transaction to execute the given [statement] on this [Database].

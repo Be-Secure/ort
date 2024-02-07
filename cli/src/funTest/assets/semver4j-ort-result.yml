@@ -151,7 +151,6 @@ analyzer:
         url: ""
         revision: ""
         path: ""
-    has_issues: false
 scanner:
   start_time: "2020-10-26T20:00:50.163356Z"
   end_time: "2020-10-26T20:00:59.349366Z"
@@ -170,7 +169,7 @@ scanner:
     tool_versions: {}
   config:
     archive: null
-    options: null
+    config: null
     storages:
       postgresStorage: !<.PostgresStorageConfiguration>
         connection:
@@ -185,129 +184,180 @@ scanner:
     - "postgresStorage"
     storage_writers:
     - "postgresStorage"
+  provenances:
+  - id: "Maven:com.vdurmont:semver4j:3.1.0"
+    package_provenance:
+      vcs_info:
+        type: "Git"
+        url: "https://github.com/vdurmont/semver4j.git"
+        revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
+        path: ""
+      resolved_revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
+  - id: "Maven:junit:junit:4.12"
+    package_provenance:
+      vcs_info:
+        type: "Git"
+        url: "https://github.com/junit-team/junit.git"
+        revision: "r4.12"
+        path: ""
+      resolved_revision: "64155f8a9babcfcf4263cf4d08253a1556e75481"
+  scanners:
+    "Maven:com.vdurmont:semver4j:3.1.0":
+    - "ScanCode"
+    "Maven:junit:junit:4.12":
+    - "ScanCode"
+    "Maven:org.hamcrest:hamcrest-core:1.3":
+    - "ScanCode"
+    "Maven:org.mockito:mockito-all:1.10.19":
+    - "ScanCode"
   scan_results:
-    Maven:com.vdurmont:semver4j:3.1.0:
-    - provenance:
-        vcs_info:
-          type: "Git"
-          url: "https://github.com/vdurmont/semver4j.git"
-          revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
-          path: ""
-        resolved_revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
-      scanner:
-        name: "ScanCode"
-        version: "3.2.1-rc2"
-        configuration: "--copyright --license --ignore *.ort.yml --info --strip-root\
-          \ --timeout 300 --ignore META-INF/DEPENDENCIES --json-pp"
-      summary:
-        start_time: "2020-09-30T09:27:12.023451Z"
-        end_time: "2020-09-30T09:28:20.525647Z"
-        package_verification_code: "48ba11487d53ce933b5d4db1d069b70a803ff19b"
-        licenses:
-        - license: "BSD-3-Clause"
-          location:
-            path: "pom.xml"
-            start_line: 28
-            end_line: 34
-        - license: "MIT"
-          location:
-            path: "LICENSE.md"
-            start_line: 1
-            end_line: 1
-        - license: "MIT"
-          location:
-            path: "LICENSE.md"
-            start_line: 5
-            end_line: 21
-        - license: "MIT"
-          location:
-            path: "pom.xml"
-            start_line: 30
-            end_line: 31
-        copyrights:
-        - statement: "Copyright (c) 2015-present Vincent DURMONT <vdurmont@gmail.com>"
-          location:
-            path: "LICENSE.md"
-            start_line: 3
-            end_line: 3
-    Maven:junit:junit:4.12:
-    - provenance:
-        vcs_info:
-          type: "Git"
-          url: "https://github.com/junit-team/junit.git"
-          revision: "r4.12"
-          path: ""
-        resolved_revision: "64155f8a9babcfcf4263cf4d08253a1556e75481"
-      scanner:
-        name: "ScanCode"
-        version: "3.2.1-rc2"
-        configuration: "--copyright --license --ignore *.ort.yml --info --strip-root\
-          \ --timeout 300 --ignore META-INF/DEPENDENCIES --json-pp"
-      summary:
-        start_time: "2020-09-30T09:28:32.817956Z"
-        end_time: "2020-09-30T09:29:02.889213Z"
-        package_verification_code: "2acb4f0b06b706fa94e9159c2f9abc1397c46ba0"
-        licenses:
-        - license: "Apache-2.0"
-          location:
-            path: "pom.xml"
-            start_line: 19
-            end_line: 23
-        - license: "Apache-2.0"
-          location:
-            path: "src/site/resources/css/hopscotch-0.1.2.min.css"
-            start_line: 5
-            end_line: 15
-        - license: "Apache-2.0"
-          location:
-            path: "src/site/resources/scripts/hopscotch-0.1.2.min.js"
-            start_line: 5
-            end_line: 15
-        - license: "EPL-1.0"
-          location:
-            path: "LICENSE-junit.txt"
-            start_line: 3
-            end_line: 213
-        - license: "EPL-1.0"
-          location:
-            path: "epl-v10.html"
-            start_line: 7
-            end_line: 257
-        - license: "EPL-1.0"
-          location:
-            path: "pom.xml"
-            start_line: 18
-            end_line: 20
-        - license: "EPL-1.0"
-          location:
-            path: "src/site/fml/faq.fml"
-            start_line: 157
-            end_line: 157
-        - license: "EPL-2.0"
-          location:
-            path: "pom.xml"
-            start_line: 19
-            end_line: 23
-        - license: "NOASSERTION"
-          location:
-            path: "src/site/fml/faq.fml"
-            start_line: 156
-            end_line: 156
-        copyrights:
-        - statement: "Copyright 2013 LinkedIn Corp."
-          location:
-            path: "src/site/resources/css/hopscotch-0.1.2.min.css"
-            start_line: 3
-            end_line: 3
-        - statement: "Copyright 2013 LinkedIn Corp."
-          location:
-            path: "src/site/resources/scripts/hopscotch-0.1.2.min.js"
-            start_line: 3
-            end_line: 3
-  storage_stats:
-    num_reads: 4
-    num_hits: 4
-  has_issues: false
+  - provenance:
+      vcs_info:
+        type: "Git"
+        url: "https://github.com/junit-team/junit.git"
+        revision: "64155f8a9babcfcf4263cf4d08253a1556e75481"
+        path: ""
+      resolved_revision: "64155f8a9babcfcf4263cf4d08253a1556e75481"
+    scanner:
+      name: "ScanCode"
+      version: "3.2.1-rc2"
+      configuration: "--copyright --license --ignore *.ort.yml --info --strip-root\
+        \ --timeout 300 --ignore META-INF/DEPENDENCIES --json-pp"
+    summary:
+      start_time: "2020-09-30T09:28:32.817956Z"
+      end_time: "2020-09-30T09:29:02.889213Z"
+      licenses:
+      - license: "Apache-2.0"
+        location:
+          path: "pom.xml"
+          start_line: 19
+          end_line: 23
+      - license: "Apache-2.0"
+        location:
+          path: "src/site/resources/css/hopscotch-0.1.2.min.css"
+          start_line: 5
+          end_line: 15
+      - license: "Apache-2.0"
+        location:
+          path: "src/site/resources/scripts/hopscotch-0.1.2.min.js"
+          start_line: 5
+          end_line: 15
+      - license: "EPL-1.0"
+        location:
+          path: "LICENSE-junit.txt"
+          start_line: 3
+          end_line: 213
+      - license: "EPL-1.0"
+        location:
+          path: "epl-v10.html"
+          start_line: 7
+          end_line: 257
+      - license: "EPL-1.0"
+        location:
+          path: "pom.xml"
+          start_line: 18
+          end_line: 20
+      - license: "EPL-1.0"
+        location:
+          path: "src/site/fml/faq.fml"
+          start_line: 157
+          end_line: 157
+      - license: "EPL-2.0"
+        location:
+          path: "pom.xml"
+          start_line: 19
+          end_line: 23
+      - license: "NOASSERTION"
+        location:
+          path: "src/site/fml/faq.fml"
+          start_line: 156
+          end_line: 156
+      copyrights:
+      - statement: "Copyright 2013 LinkedIn Corp."
+        location:
+          path: "src/site/resources/css/hopscotch-0.1.2.min.css"
+          start_line: 3
+          end_line: 3
+      - statement: "Copyright 2013 LinkedIn Corp."
+        location:
+          path: "src/site/resources/scripts/hopscotch-0.1.2.min.js"
+          start_line: 3
+          end_line: 3
+  - provenance:
+      vcs_info:
+        type: "Git"
+        url: "https://github.com/vdurmont/semver4j.git"
+        revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
+        path: ""
+      resolved_revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
+    scanner:
+      name: "ScanCode"
+      version: "3.2.1-rc2"
+      configuration: "--copyright --license --ignore *.ort.yml --info --strip-root\
+        \ --timeout 300 --ignore META-INF/DEPENDENCIES --json-pp"
+    summary:
+      start_time: "2020-09-30T09:27:12.023451Z"
+      end_time: "2020-09-30T09:28:20.525647Z"
+      licenses:
+      - license: "BSD-3-Clause"
+        location:
+          path: "pom.xml"
+          start_line: 28
+          end_line: 34
+      - license: "MIT"
+        location:
+          path: "LICENSE.md"
+          start_line: 1
+          end_line: 1
+      - license: "MIT"
+        location:
+          path: "LICENSE.md"
+          start_line: 5
+          end_line: 21
+      - license: "MIT"
+        location:
+          path: "pom.xml"
+          start_line: 30
+          end_line: 31
+      copyrights:
+      - statement: "Copyright (c) 2015-present Vincent DURMONT <vdurmont@gmail.com>"
+        location:
+          path: "LICENSE.md"
+          start_line: 3
+          end_line: 3
+  files:
+  - provenance:
+      vcs_info:
+        type: "Git"
+        url: "https://github.com/junit-team/junit.git"
+        revision: "64155f8a9babcfcf4263cf4d08253a1556e75481"
+        path: ""
+      resolved_revision: "64155f8a9babcfcf4263cf4d08253a1556e75481"
+    files:
+    - path: "LICENSE-junit.txt"
+      sha1: "1dc94a80dbba8262f732e0b0d7235149861a1b57"
+    - path: "epl-v10.html"
+      sha1: "49f3f46520878abad864392fddf0da834c041bf8"
+    - path: "pom.xml"
+      sha1: "442292b8a7efeabbe4cc176709b833b1792140ec"
+    - path: "src/site/fml/faq.fml"
+      sha1: "220d7662a1fd7597e320e6e61589127349f9e5b0"
+    - path: "src/site/resources/css/hopscotch-0.1.2.min.css"
+      sha1: "ac230b8be930f5ee9b30a59562eda4cd27452b7e"
+    - path: "src/site/resources/scripts/hopscotch-0.1.2.min.js"
+      sha1: "8d68f8ccf1ae22b306e7cc0890df978e6c8a9abb"
+  - provenance:
+      vcs_info:
+        type: "Git"
+        url: "https://github.com/vdurmont/semver4j.git"
+        revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
+        path: ""
+      resolved_revision: "7653e418d610ffcd2811bcb55fd72d00d420950b"
+    files:
+    - path: "LICENSE.md"
+      sha1: "4a8486805915245bbbe2e3c8c1a9d680c6843a82"
+    - path: "pom.xml"
+      sha1: "442292b8a7efeabbe4cc176709b833b1792140ec"
 advisor:
   start_time: "2021-04-29T14:54:16.562951Z"
   end_time: "2021-04-29T14:54:18.969210Z"
@@ -323,16 +373,20 @@ advisor:
       GOPATH: "/go"
     tool_versions: {}
   config:
-    nexus_iq:
-      server_url: "https://oss-review-toolkit.org"
-      browse_url: "https://oss-review-toolkit.org"
-      username: "user"
+    config:
+      NexusIQ:
+        options:
+          server_url: "https://oss-review-toolkit.org"
+          browse_url: "https://oss-review-toolkit.org"
+        secrets:
+          username: "user"
   results:
     advisor_results:
       Maven:junit:junit:4.12:
       - advisor:
           name: "NexusIQ"
-          capabilities: []
+          capabilities:
+          - "VULNERABILITIES"
         summary:
           start_time: "2021-04-29T14:54:17.322191Z"
           end_time: "2021-04-29T14:54:18.966672Z"
@@ -343,7 +397,6 @@ advisor:
           - url: "http://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15250"
             scoring_system: "CVSS2"
             severity: "5.5"
-    has_issues: false
 evaluator: null
 resolved_configuration:
   package_curations:

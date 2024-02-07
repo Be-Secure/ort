@@ -26,25 +26,29 @@ import com.github.ajalt.clikt.completion.completionOption
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.context
 import com.github.ajalt.clikt.core.subcommands
-import com.github.ajalt.clikt.output.CliktHelpFormatter
-import com.github.ajalt.clikt.output.HelpFormatter
+import com.github.ajalt.clikt.output.MordantHelpFormatter
 import com.github.ajalt.clikt.parameters.options.associate
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.deprecated
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.switch
 import com.github.ajalt.clikt.parameters.options.versionOption
 import com.github.ajalt.clikt.parameters.types.file
-
-import java.io.File
+import com.github.ajalt.mordant.rendering.TextColors
+import com.github.ajalt.mordant.rendering.Theme
+import com.github.ajalt.mordant.rendering.VerticalAlign
+import com.github.ajalt.mordant.rendering.Widget
+import com.github.ajalt.mordant.table.ColumnWidth
+import com.github.ajalt.mordant.table.grid
 
 import kotlin.system.exitProcess
 
-import org.ossreviewtoolkit.cli.utils.logger
+import org.apache.logging.log4j.kotlin.logger
+
 import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.config.OrtConfiguration
+import org.ossreviewtoolkit.plugins.commands.api.OrtCommand
 import org.ossreviewtoolkit.utils.common.EnvironmentVariableFilter
 import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.expandTilde
@@ -60,13 +64,18 @@ import org.ossreviewtoolkit.utils.ort.printStackTrace
 
 import org.slf4j.LoggerFactory
 
-/**
- * Helper class for mutually exclusive command line options of different types.
- */
-sealed interface GroupTypes {
-    data class FileType(val file: File) : GroupTypes
-    data class StringType(val string: String) : GroupTypes
-}
+private const val REQUIRED_OPTION_MARKER = "*"
+
+// A priority value that is higher than any Clikt built-in value for allocating width.
+private const val HIGHEST_PRIORITY_FOR_WIDTH = 100
+
+private val ORT_LOGO = """
+     ______________________________
+    /        \_______   \__    ___/
+    |    |   | |       _/ |    |
+    |    |   | |    |   \ |    |
+    \________/ |____|___/ |____|
+""".trimIndent()
 
 /**
  * The entry point for the application with [args] being the list of arguments.
@@ -77,7 +86,11 @@ fun main(args: Array<String>) {
     exitProcess(0)
 }
 
-class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
+class OrtMain : CliktCommand(
+    name = ORT_NAME,
+    epilog = "$REQUIRED_OPTION_MARKER denotes required options.",
+    invokeWithoutSubcommand = true
+) {
     private val configFile by option("--config", "-c", help = "The path to a configuration file.")
         .convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
@@ -95,17 +108,8 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
+            "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
-
-    private val forceOverwrite by option(
-        "--force-overwrite",
-        help = "Overwrite any output files if they already exist."
-    ).flag().deprecated(
-        message = "--force-overwrite is deprecated, use -P ort.forceOverwrite=... on the ort " +
-                "command instead.",
-        tagValue = "use -P ort.forceOverwrite=... on the ort command instead"
-    )
 
     private val helpAll by option(
         "--help-all",
@@ -114,38 +118,12 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
 
     private val env = Environment()
 
-    private inner class OrtHelpFormatter : CliktHelpFormatter(requiredOptionMarker = "*", showDefaultValues = true) {
-        var headerShownBefore = false
-
-        override fun formatHelp(
-            prolog: String,
-            epilog: String,
-            parameters: List<HelpFormatter.ParameterHelp>,
-            programName: String
-        ) =
-            buildString {
-                // The header only needs to be shown for the root command, as for subcommands the header was already
-                // shown by the root command's run(). However, only show it if it has not been shown before as part of
-                // "--help-all" (note that we cannot safely access the "helpAll" variable here as it might not have been
-                // initialized yet.)
-                val isRootCommand = currentContext.invokedSubcommand == null
-                if (isRootCommand && !headerShownBefore) {
-                    appendLine(getOrtHeader(env.ortVersion))
-                    headerShownBefore = true
-                }
-
-                appendLine(super.formatHelp(prolog, epilog, parameters, programName))
-                appendLine()
-                appendLine("* denotes required options.")
-            }
-    }
-
     init {
         completionOption()
 
         context {
             expandArgumentFiles = false
-            helpFormatter = OrtHelpFormatter()
+            helpFormatter = { MordantHelpFormatter(context = it, REQUIRED_OPTION_MARKER, showDefaultValues = true) }
         }
 
         subcommands(OrtCommand.ALL.values)
@@ -168,13 +146,7 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
         printStackTrace = stacktrace
 
         // Make options available to subcommands and apply static configuration.
-        val ortConfig = OrtConfiguration.load(
-            args = buildMap {
-                if (forceOverwrite) put("ort.forceOverwrite", "true")
-                putAll(configArguments)
-            },
-            file = configFile
-        )
+        val ortConfig = OrtConfiguration.load(args = configArguments, file = configFile)
         currentContext.findOrSetObject { ortConfig }
         LicenseFilePatterns.configure(ortConfig.licenseFilePatterns)
 
@@ -185,45 +157,59 @@ class OrtMain : CliktCommand(name = ORT_NAME, invokeWithoutSubcommand = true) {
 
         if (helpAll) {
             registeredSubcommands().forEach {
-                println(it.getFormattedHelp())
+                echo(it.getFormattedHelp())
+                echo()
             }
         } else {
-            println(getOrtHeader(env.ortVersion))
-            println("Looking for ORT configuration in the following file:")
-            println("\t" + configFile.absolutePath + " (does not exist)".takeIf { !configFile.exists() }.orEmpty())
-            println()
+            echo(getOrtHeader(env.ortVersion))
+            echo("Looking for ORT configuration in the following file:")
+            echo("\t" + configFile.absolutePath + " (does not exist)".takeIf { !configFile.exists() }.orEmpty())
+            echo()
         }
     }
 
-    private fun getOrtHeader(version: String): String {
-        val variables = mutableListOf(
-            "$ORT_CONFIG_DIR_ENV_NAME = $ortConfigDirectory",
-            "$ORT_DATA_DIR_ENV_NAME = $ortDataDirectory"
-        )
+    private fun getOrtHeader(version: String): Widget =
+        grid {
+            column(0) {
+                width = ColumnWidth.Custom(width = null, expandWeight = null, priority = HIGHEST_PRIORITY_FOR_WIDTH)
+            }
 
-        env.variables.entries.mapTo(variables) { (key, value) -> "$key = $value" }
+            column(1) { verticalAlign = VerticalAlign.BOTTOM }
+            padding { bottom = 1 }
 
-        val commandName = currentContext.invokedSubcommand?.commandName
-        val command = commandName?.let { " '$commandName'" }.orEmpty()
-        val user = System.getProperty("user.name")
+            row {
+                cell(ORT_LOGO) { style = TextColors.cyan }
 
-        val header = mutableListOf<String>()
-        val maxMemInMib = env.maxMemory / 1.mebibytes
+                val commandName = currentContext.invokedSubcommand?.commandName
+                val command = commandName?.let { " '${TextColors.cyan(commandName)}'" }.orEmpty()
 
-        """
-             ______________________________
-            /        \_______   \__    ___/ The OSS Review Toolkit, version $version.
-            |    |   | |       _/ |    |
-            |    |   | |    |   \ |    |    Running$command as '$user' under Java ${env.javaVersion} on ${env.os}
-            \________/ |____|___/ |____|    with ${env.processors} CPUs and a maximum of $maxMemInMib MiB of memory.
+                val userName = System.getProperty("user.name").takeUnless { it == "?" } ?: Os.userHomeDirectory.name
+                val user = userName?.let { " as '${Theme.Default.warning(userName)}'" }.orEmpty()
 
-        """.trimIndent().lines().mapTo(header) { it.trimEnd() }
+                val maxMemInMib = env.maxMemory / 1.mebibytes
 
-        if (variables.isNotEmpty()) {
-            header += "Environment variables:"
-            header += variables
+                cell(
+                    """
+                        The OSS Review Toolkit, version ${Theme.Default.info(version)}.
+    
+                        Running$command$user under Java ${env.javaVersion} on ${env.os}
+                        with ${env.processors} CPUs and a maximum of $maxMemInMib MiB of memory.
+                    """.trimIndent()
+                )
+            }
+
+            row {
+                val content = mutableListOf("Environment variables:")
+
+                listOf(
+                    ORT_CONFIG_DIR_ENV_NAME to ortConfigDirectory.path,
+                    ORT_DATA_DIR_ENV_NAME to ortDataDirectory.path,
+                    *env.variables.toList().toTypedArray()
+                ).mapTo(content) { (key, value) ->
+                    "${Theme.Default.info(key)} = ${Theme.Default.warning(value)}"
+                }
+
+                cell(content.joinToString("\n")) { columnSpan = 2 }
+            }
         }
-
-        return header.joinToString("\n", postfix = "\n")
-    }
 }

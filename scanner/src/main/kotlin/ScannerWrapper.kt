@@ -27,49 +27,64 @@ import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
-import org.ossreviewtoolkit.model.config.Options
+import org.ossreviewtoolkit.model.config.PluginConfiguration
 import org.ossreviewtoolkit.model.config.ScannerConfiguration
-import org.ossreviewtoolkit.utils.common.Plugin
+import org.ossreviewtoolkit.scanner.provenance.NestedProvenance
 
 /**
- * The base interface for all types of scanners.
+ * The base interface for all types of wrappers for scanners.
  */
 sealed interface ScannerWrapper {
-    companion object {
-        /**
-         * All [scanner wrapper factories][ScannerWrapperFactory] available in the classpath, associated by their names.
-         */
-        val ALL by lazy { Plugin.getAll<ScannerWrapperFactory>() }
-    }
+    /**
+     * The name of the scanner.
+     */
+    val name: String
+
+    /**
+     * The version of the scanner.
+     */
+    val version: String
+
+    /**
+     * The configuration of the scanner.
+     */
+    val configuration: String
 
     /**
      * The details of the scanner.
      */
     val details: ScannerDetails
+        get() = ScannerDetails(name, version, configuration)
 
     /**
-     * The [ScannerCriteria] object to be used when looking up existing scan results from a scan storage. By default,
+     * The [ScannerMatcher] object to be used when looking up existing scan results from a scan storage. By default,
      * the properties of this object are initialized by the scanner implementation. These defaults can be overridden
-     * with the [ScannerConfiguration.options] property: Use properties of the form _scannerName.criteria.property_,
-     * where _scannerName_ is the name of the scanner and _property_ is the name of a property of the [ScannerCriteria]
-     * class. For instance, to specify that a specific minimum version of ScanCode is allowed, set this property:
-     * `options.ScanCode.criteria.minScannerVersion=3.0.2`.
+     * with the scanner-specific [options][PluginConfiguration.options] in [ScannerConfiguration.config]: Use properties
+     * of the form `scannerName.options.property`, where `scannerName` is the name of the scanner and `property` is the
+     * name of a property of the [ScannerMatcher] class. For instance, to specify that a specific minimum version of
+     * ScanCode is allowed, set this property: `config.ScanCode.options.minVersion=3.0.2`.
      *
-     * If this property is null it means that the results of this [ScannerWrapper] cannot be stored in a scan storage.
+     * If this property is null, it means that the results of this [ScannerWrapper] cannot be read from a scan storage.
      */
-    val criteria: ScannerCriteria?
+    val matcher: ScannerMatcher?
 
     /**
-     * Filter the scanner-specific options to remove / obfuscate any secrets, like credentials.
+     * If `true`, scan results for this scanner shall be read from the configured scan storages. Enabling this option
+     * requires that the [matcher] is not `null`.
      */
-    fun filterSecretOptions(options: Options): Options = options
+    val readFromStorage: Boolean
+
+    /**
+     * If `true`, scan results for this scanner shall be written to the configured scan storages.
+     */
+    val writeToStorage: Boolean
 }
 
 /**
  * A wrapper interface for scanners that operate on [Package]s and download the package source code themselves.
  */
 interface PackageScannerWrapper : ScannerWrapper {
-    fun scanPackage(pkg: Package, context: ScanContext): ScanResult
+    fun scanPackage(nestedProvenance: NestedProvenance?, context: ScanContext): ScanResult
 }
 
 /**

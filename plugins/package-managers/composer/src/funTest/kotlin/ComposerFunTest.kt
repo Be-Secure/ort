@@ -21,41 +21,40 @@ package org.ossreviewtoolkit.plugins.packagemanagers.composer
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.haveSubstring
 
+import org.ossreviewtoolkit.analyzer.managers.create
 import org.ossreviewtoolkit.analyzer.managers.resolveSingleProject
 import org.ossreviewtoolkit.model.Identifier
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
-import org.ossreviewtoolkit.utils.test.patchExpectedResult2
-import org.ossreviewtoolkit.utils.test.toYaml
+import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
 class ComposerFunTest : StringSpec({
     "Project dependencies are detected correctly" {
         val definitionFile = getAssetFile("projects/synthetic/lockfile/composer.json")
         val expectedResultFile = getAssetFile("projects/synthetic/composer-expected-output.yml")
 
-        val result = createComposer().resolveSingleProject(definitionFile)
+        val result = create("Composer").resolveSingleProject(definitionFile)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 
     "Error is shown when no lockfile is present" {
         val definitionFile = getAssetFile("projects/synthetic/no-lockfile/composer.json")
-        val result = createComposer().resolveSingleProject(definitionFile)
+        val result = create("Composer").resolveSingleProject(definitionFile)
 
         with(result) {
             project.id shouldBe Identifier(
                 "Composer::src/funTest/assets/projects/synthetic/no-lockfile/composer.json:"
             )
             project.definitionFilePath shouldBe "plugins/package-managers/composer/src/funTest/assets/projects/" +
-                    "synthetic/no-lockfile/composer.json"
+                "synthetic/no-lockfile/composer.json"
             packages should beEmpty()
-            issues.size shouldBe 1
+            issues shouldHaveSize 1
             issues.first().message should haveSubstring("IllegalArgumentException: No lockfile found in")
         }
     }
@@ -64,38 +63,35 @@ class ComposerFunTest : StringSpec({
         val definitionFile = getAssetFile("projects/synthetic/no-deps/composer.json")
         val expectedResultFile = getAssetFile("projects/synthetic/composer-expected-output-no-deps.yml")
 
-        val result = createComposer().resolveSingleProject(definitionFile)
+        val result = create("Composer").resolveSingleProject(definitionFile)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 
     "No composer.lock is required for projects with empty dependencies" {
         val definitionFile = getAssetFile("projects/synthetic/empty-deps/composer.json")
         val expectedResultFile = getAssetFile("projects/synthetic/composer-expected-output-no-deps.yml")
 
-        val result = createComposer().resolveSingleProject(definitionFile)
+        val result = create("Composer").resolveSingleProject(definitionFile)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 
     "Packages defined as provided are not reported as missing" {
         val definitionFile = getAssetFile("projects/synthetic/with-provide/composer.json")
         val expectedResultFile = getAssetFile("projects/synthetic/composer-expected-output-with-provide.yml")
 
-        val result = createComposer().resolveSingleProject(definitionFile)
+        val result = create("Composer").resolveSingleProject(definitionFile)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 
     "Packages defined as replaced are not reported as missing" {
         val definitionFile = getAssetFile("projects/synthetic/with-replace/composer.json")
         val expectedResultFile = getAssetFile("projects/synthetic/composer-expected-output-with-replace.yml")
 
-        val result = createComposer().resolveSingleProject(definitionFile)
+        val result = create("Composer").resolveSingleProject(definitionFile)
 
-        result.toYaml() shouldBe patchExpectedResult2(expectedResultFile, definitionFile)
+        result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
     }
 })
-
-private fun createComposer() =
-    Composer("Composer", USER_DIR, AnalyzerConfiguration(), RepositoryConfiguration())

@@ -20,8 +20,6 @@
 package org.ossreviewtoolkit.helper.commands
 
 import com.github.ajalt.clikt.core.CliktCommand
-import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
-import com.github.ajalt.clikt.parameters.groups.single
 import com.github.ajalt.clikt.parameters.options.associate
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
@@ -29,15 +27,15 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 
-import org.ossreviewtoolkit.helper.utils.PackageConfigurationOption
-import org.ossreviewtoolkit.helper.utils.createProvider
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.LicenseFinding
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.utils.FindingCurationMatcher
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
 import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.plugins.packageconfigurationproviders.dir.DirPackageConfigurationProvider
 import org.ossreviewtoolkit.scanner.ScanStorages
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
@@ -45,7 +43,7 @@ import org.ossreviewtoolkit.utils.ort.ortConfigDirectory
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
-class GetPackageLicensesCommand : CliktCommand(
+internal class GetPackageLicensesCommand : CliktCommand(
     help = "Shows the root license and the detected license for a package denoted by the given package identifier."
 ) {
     private val configFile by option(
@@ -59,7 +57,7 @@ class GetPackageLicensesCommand : CliktCommand(
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
+            "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     private val packageId by option(
@@ -68,25 +66,16 @@ class GetPackageLicensesCommand : CliktCommand(
     ).convert { Identifier(it) }
         .required()
 
-    private val packageConfigurationOption by mutuallyExclusiveOptions(
-        option(
-            "--package-configuration-dir",
-            help = "The directory containing the package configuration files to read as input. It is searched " +
-                    "recursively."
-        ).convert { it.expandTilde() }
-            .file(mustExist = true, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = true)
-            .convert { PackageConfigurationOption.Dir(it) },
-        option(
-            "--package-configuration-file",
-            help = "The file containing the package configurations to read as input."
-        ).convert { it.expandTilde() }
-            .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
-            .convert { PackageConfigurationOption.File(it) }
-    ).single()
+    private val packageConfigurationsDir by option(
+        "--package-configurations-dir",
+        help = "A directory that is searched recursively for package configuration files. Each file must only " +
+            "contain a single package configuration."
+    ).file(mustExist = true, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = true)
+        .convert { it.expandTilde() }
 
     override fun run() {
-        val scanResults = getStoredScanResults(packageId)
-        val packageConfigurationProvider = packageConfigurationOption.createProvider()
+        val scanResults = getStoredScanResults(Package.EMPTY.copy(id = packageId))
+        val packageConfigurationProvider = DirPackageConfigurationProvider(packageConfigurationsDir)
 
         val result = scanResults.firstOrNull()?.let { scanResult ->
             val packageConfigurations =
@@ -116,10 +105,10 @@ class GetPackageLicensesCommand : CliktCommand(
         println(result.toYaml())
     }
 
-    private fun getStoredScanResults(id: Identifier): List<ScanResult> {
+    private fun getStoredScanResults(pkg: Package): List<ScanResult> {
         val ortConfiguration = OrtConfiguration.load(configArguments, configFile)
         val scanStorages = ScanStorages.createFromConfig(ortConfiguration.scanner)
-        return runCatching { scanStorages.read(id) }.getOrDefault(emptyList())
+        return runCatching { scanStorages.read(pkg) }.getOrDefault(emptyList())
     }
 }
 

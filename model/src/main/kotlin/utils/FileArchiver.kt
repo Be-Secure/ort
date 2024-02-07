@@ -20,22 +20,21 @@
 package org.ossreviewtoolkit.model.utils
 
 import java.io.File
-import java.io.IOException
 
 import kotlin.time.measureTime
 import kotlin.time.measureTimedValue
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.KnownProvenance
 import org.ossreviewtoolkit.utils.common.FileMatcher
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.packZip
+import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.common.unpackZip
 import org.ossreviewtoolkit.utils.ort.createOrtTempFile
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
 import org.ossreviewtoolkit.utils.ort.showStackTrace
-import org.ossreviewtoolkit.utils.ort.storage.FileStorage
 
 /**
  * A class to archive files matched by provided patterns in a ZIP file that is stored in a [FileStorage][storage].
@@ -48,24 +47,11 @@ class FileArchiver(
     patterns: Collection<String>,
 
     /**
-     * The [FileArchiverStorage] to use for archiving files.
+     * The [ProvenanceFileStorage] to use for archiving files.
      */
-    internal val storage: FileArchiverStorage
+    private val storage: ProvenanceFileStorage
 ) {
-    constructor(
-        /**
-         * A collection of globs to match the paths of files that shall be archived. For details about the glob patterns
-         * see [FileMatcher].
-         */
-        patterns: Collection<String>,
-
-        /**
-         * The [FileStorage] to use for archiving files.
-         */
-        storage: FileStorage
-    ) : this(patterns, FileArchiverFileStorage(storage))
-
-    companion object : Logging {
+    companion object {
         val DEFAULT_ARCHIVE_DIR by lazy { ortDataDirectory.resolve("scanner/archive") }
     }
 
@@ -77,7 +63,7 @@ class FileArchiver(
     /**
      * Return whether an archive corresponding to [provenance] exists.
      */
-    fun hasArchive(provenance: KnownProvenance): Boolean = storage.hasArchive(provenance)
+    fun hasArchive(provenance: KnownProvenance): Boolean = storage.hasData(provenance)
 
     /**
      * Archive all files in [directory] matching any of the configured patterns in the [storage].
@@ -105,37 +91,33 @@ class FileArchiver(
 
         logger.info { "Archived directory '$directory' in $zipDuration." }
 
-        val writeDuration = measureTime { storage.addArchive(provenance, zipFile) }
+        val writeDuration = measureTime { storage.putData(provenance, zipFile.inputStream(), zipFile.length()) }
 
         logger.info { "Wrote archive of directory '$directory' to storage in $writeDuration." }
 
-        zipFile.delete()
+        zipFile.parentFile.safeDeleteRecursively(force = true)
     }
 
     /**
      * Unarchive the archive corresponding to [provenance].
      */
     fun unarchive(directory: File, provenance: KnownProvenance): Boolean {
-        val (zipFile, readDuration) = measureTimedValue { storage.getArchive(provenance) }
+        val (zipInputStream, readDuration) = measureTimedValue { storage.getData(provenance) }
 
         logger.info { "Read archive of directory '$directory' from storage in $readDuration." }
 
-        if (zipFile == null) return false
+        if (zipInputStream == null) return false
 
-        return try {
-            val unzipDuration = measureTime { zipFile.unpackZip(directory) }
+        return runCatching {
+            val unzipDuration = measureTime { zipInputStream.unpackZip(directory) }
 
-            logger.info { "Unarchived directory '$directory' in $unzipDuration." }
+            logger.info { "Unarchived data for $provenance to '$directory' in $unzipDuration." }
 
             true
-        } catch (e: IOException) {
-            e.showStackTrace()
+        }.onFailure {
+            it.showStackTrace()
 
-            logger.error { "Could not extract ${zipFile.absolutePath}: ${e.collectMessages()}" }
-
-            false
-        } finally {
-            zipFile.delete()
-        }
+            logger.error { "Failed to unarchive data for $provenance: ${it.collectMessages()}" }
+        }.isSuccess
     }
 }

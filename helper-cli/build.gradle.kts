@@ -17,82 +17,38 @@
  * License-Filename: LICENSE
  */
 
-import java.nio.charset.Charset
-
-@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
-    // Apply core plugins.
-    application
+    // Apply precompiled plugins.
+    id("ort-application-conventions")
 }
+
+configurations.dependencyScope("pluginClasspath")
+configurations["runtimeClasspath"].extendsFrom(configurations["pluginClasspath"])
 
 application {
     applicationName = "orth"
-    applicationDefaultJvmArgs = listOf(
-        "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
-        "--add-opens", "java.base/java.io=ALL-UNNAMED"
-    )
-    mainClass.set("org.ossreviewtoolkit.helper.HelperMainKt")
-}
-
-tasks.named<CreateStartScripts>("startScripts").configure {
-    doLast {
-        // Work around the command line length limit on Windows when passing the classpath to Java, see
-        // https://github.com/gradle/gradle/issues/1989#issuecomment-395001392.
-        val windowsScriptText = windowsScript.readText(Charset.defaultCharset())
-        windowsScript.writeText(
-            windowsScriptText.replace(
-                Regex("set CLASSPATH=%APP_HOME%\\\\lib\\\\.*"),
-                "set CLASSPATH=%APP_HOME%\\\\lib\\\\*;%APP_HOME%\\\\plugin\\\\*"
-            )
-        )
-
-        val unixScriptText = unixScript.readText(Charset.defaultCharset())
-        unixScript.writeText(
-            unixScriptText.replace(
-                Regex("CLASSPATH=\\\$APP_HOME/lib/.*"),
-                "CLASSPATH=\\\$APP_HOME/lib/*:\\\$APP_HOME/plugin/*"
-            )
-        )
-    }
-}
-
-repositories {
-    // Need to repeat the analyzer's custom repository definition here, see
-    // https://github.com/gradle/gradle/issues/4106.
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.gradle.org/gradle/libs-releases/")
-        }
-
-        filter {
-            includeGroup("org.gradle")
-        }
-    }
-
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.eclipse.org/content/repositories/sw360-releases/")
-        }
-
-        filter {
-            includeGroup("org.eclipse.sw360")
-        }
-    }
+    mainClass = "org.ossreviewtoolkit.helper.HelperMainKt"
 }
 
 dependencies {
-    implementation(project(":analyzer"))
-    implementation(project(":downloader"))
-    implementation(project(":plugins:package-curation-providers:file-package-curation-provider"))
-    implementation(project(":scanner"))
-    implementation(project(":utils:ort-utils"))
+    implementation(projects.analyzer)
+    implementation(projects.downloader)
+
+    // There are commands with a hard-coded compile-time dependency on these plugins.
+    implementation(projects.plugins.packageConfigurationProviders.dirPackageConfigurationProvider)
+    implementation(projects.plugins.packageCurationProviders.filePackageCurationProvider)
+
+    implementation(projects.scanner)
+    implementation(projects.utils.ortUtils)
 
     implementation(libs.clikt)
     implementation(libs.commonsCompress)
-    implementation(libs.exposedCore)
+    implementation(libs.exposed.core)
     implementation(libs.hikari)
-    implementation(libs.jacksonModuleKotlin)
+    implementation(libs.jackson.module.kotlin)
     implementation(libs.jslt)
-    implementation(libs.log4jApiToSlf4j)
-    implementation(libs.logbackClassic)
+    implementation(libs.log4j.api)
+    implementation(libs.slf4j)
+
+    "pluginClasspath"(platform(projects.plugins.versionControlSystems))
 }

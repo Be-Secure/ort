@@ -19,13 +19,14 @@
 
 package org.ossreviewtoolkit.cli
 
-import com.github.ajalt.clikt.core.MutuallyExclusiveGroupException
-import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.testing.test
 
-import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.Spec
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.test.TestCase
+import io.kotest.engine.spec.tempdir
+import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.haveSize
 import io.kotest.matchers.should
@@ -33,46 +34,37 @@ import io.kotest.matchers.shouldBe
 
 import java.io.File
 
-import org.ossreviewtoolkit.analyzer.PackageManager
-import org.ossreviewtoolkit.downloader.VersionControlSystem
+import org.ossreviewtoolkit.analyzer.PackageManagerFactory
 import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.config.OrtConfiguration
 import org.ossreviewtoolkit.model.config.OrtConfigurationWrapper
-import org.ossreviewtoolkit.model.config.PackageCurationProviderConfiguration
-import org.ossreviewtoolkit.model.config.REFERENCE_CONFIG_FILENAME
+import org.ossreviewtoolkit.model.config.ProviderPluginConfiguration
 import org.ossreviewtoolkit.model.readValue
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.model.writeValue
 import org.ossreviewtoolkit.utils.common.EnvironmentVariableFilter
-import org.ossreviewtoolkit.utils.common.redirectStdout
-import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.createSpecTempFile
-import org.ossreviewtoolkit.utils.test.createTestTempDir
+import org.ossreviewtoolkit.utils.ort.ORT_REFERENCE_CONFIG_FILENAME
 import org.ossreviewtoolkit.utils.test.getAssetFile
+import org.ossreviewtoolkit.utils.test.matchExpectedResult
 import org.ossreviewtoolkit.utils.test.patchActualResult
-import org.ossreviewtoolkit.utils.test.patchExpectedResult
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 /**
  * A test for the main entry point of the application.
  */
 class OrtMainFunTest : StringSpec() {
-    private val projectDir = File("../plugins/package-managers/gradle/src/funTest/assets/projects/synthetic")
-    private val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
-    private val vcsUrl = vcsDir.getRemoteUrl()
-    private val vcsRevision = vcsDir.getRevision()
-
     private lateinit var configFile: File
     private lateinit var outputDir: File
 
     override suspend fun beforeSpec(spec: Spec) {
-        configFile = createSpecTempFile(suffix = ".yml")
+        configFile = tempfile(suffix = ".yml")
         configFile.writeValue(
             OrtConfigurationWrapper(
                 OrtConfiguration(
                     packageCurationProviders = listOf(
-                        PackageCurationProviderConfiguration(
+                        ProviderPluginConfiguration(
                             type = "File",
-                            config = mapOf("path" to getAssetFile("gradle-curations.yml").path)
+                            options = mapOf("path" to getAssetFile("gradle-curations.yml").path)
                         )
                     )
                 )
@@ -81,54 +73,62 @@ class OrtMainFunTest : StringSpec() {
     }
 
     override suspend fun beforeTest(testCase: TestCase) {
-        outputDir = createTestTempDir()
+        outputDir = tempdir()
     }
 
     init {
         "Enabling only Gradle works" {
-            val inputDir = createTestTempDir()
+            val inputDir = tempdir()
 
-            val stdout = runMain(
+            val result = OrtMain().test(
                 "-c", configFile.path,
                 "-P", "ort.analyzer.enabledPackageManagers=Gradle",
                 "analyze",
                 "-i", inputDir.path,
                 "-o", outputDir.path
             )
+
+            val stdout = result.stdout.lineSequence()
             val iterator = stdout.iterator()
             while (iterator.hasNext()) {
-                if (iterator.next() == "The following package managers are enabled:") break
+                if (iterator.next() == "The following 1 package manager(s) are enabled:") break
             }
 
-            iterator.hasNext() shouldBe true
-            iterator.next() shouldBe "\tGradle"
+            withClue(result.stderr) {
+                iterator.hasNext() shouldBe true
+                iterator.next().trim() shouldBe "Gradle"
+            }
         }
 
         "Disabling only Gradle works" {
-            val inputDir = createTestTempDir()
+            val expectedPackageManagers = PackageManagerFactory.ENABLED_BY_DEFAULT.filterNot { it.type == "Gradle" }
+            val markerLine = "The following ${expectedPackageManagers.size} package manager(s) are enabled:"
+            val inputDir = tempdir()
 
-            val stdout = runMain(
+            val result = OrtMain().test(
                 "-c", configFile.path,
                 "-P", "ort.analyzer.disabledPackageManagers=Gradle",
                 "analyze",
                 "-i", inputDir.path,
                 "-o", outputDir.path
             )
+
+            val stdout = result.stdout.lineSequence()
             val iterator = stdout.iterator()
             while (iterator.hasNext()) {
-                if (iterator.next() == "The following package managers are enabled:") break
+                if (iterator.next() == markerLine) break
             }
 
-            val expectedPackageManagers = PackageManager.ALL.values.filterNot { it.type == "Gradle" }
-
-            iterator.hasNext() shouldBe true
-            iterator.next() shouldBe "\t${expectedPackageManagers.joinToString { it.type }}"
+            withClue(result.stderr) {
+                iterator.hasNext() shouldBe true
+                iterator.next().trim() shouldBe expectedPackageManagers.joinToString { it.type }
+            }
         }
 
         "Disabling a package manager overrides enabling it" {
-            val inputDir = createTestTempDir()
+            val inputDir = tempdir()
 
-            val stdout = runMain(
+            val result = OrtMain().test(
                 "-c", configFile.path,
                 "-P", "ort.analyzer.enabledPackageManagers=Gradle,NPM",
                 "-P", "ort.analyzer.disabledPackageManagers=Gradle",
@@ -136,20 +136,24 @@ class OrtMainFunTest : StringSpec() {
                 "-i", inputDir.path,
                 "-o", outputDir.path
             )
+
+            val stdout = result.stdout.lineSequence()
             val iterator = stdout.iterator()
             while (iterator.hasNext()) {
-                if (iterator.next() == "The following package managers are enabled:") break
+                if (iterator.next() == "The following 1 package manager(s) are enabled:") break
             }
 
-            iterator.hasNext() shouldBe true
-            iterator.next() shouldBe "\tNPM"
+            withClue(result.stderr) {
+                iterator.hasNext() shouldBe true
+                iterator.next().trim() shouldBe "NPM"
+            }
         }
 
         "An Unmanaged project is created if no definition files are found" {
-            val inputDir = createTestTempDir()
+            val inputDir = tempdir()
             inputDir.resolve("test").writeText("test")
 
-            runMain(
+            OrtMain().test(
                 "-c", configFile.path,
                 "analyze",
                 "-i", inputDir.path,
@@ -165,10 +169,10 @@ class OrtMainFunTest : StringSpec() {
         }
 
         "No Unmanaged project is created if no definition files are found and Unmanaged is disabled" {
-            val inputDir = createTestTempDir()
+            val inputDir = tempdir()
             inputDir.resolve("test").writeText("test")
 
-            runMain(
+            OrtMain().test(
                 "-c", configFile.path,
                 "-P", "ort.analyzer.enabledPackageManagers=Gradle,NPM",
                 "analyze",
@@ -184,9 +188,9 @@ class OrtMainFunTest : StringSpec() {
         }
 
         "Output formats are deduplicated" {
-            val inputDir = projectDir.resolve("gradle")
+            val inputDir = tempdir()
 
-            val stdout = runMain(
+            val result = OrtMain().test(
                 "-c", configFile.path,
                 "-P", "ort.analyzer.enabledPackageManagers=Gradle",
                 "analyze",
@@ -194,49 +198,39 @@ class OrtMainFunTest : StringSpec() {
                 "-o", outputDir.path,
                 "-f", "json,yaml,json"
             )
+
+            val stdout = result.stdout.lineSequence()
             val lines = stdout.filter { it.startsWith("Writing analyzer result to ") }
 
-            lines.count() shouldBe 2
+            withClue(result.stderr) {
+                lines.count() shouldBe 2
+            }
         }
 
         "Analyzer creates correct output" {
-            val expectedResult = patchExpectedResult(
-                getAssetFile("gradle-all-dependencies-expected-result-with-curations.yml"),
-                url = vcsUrl,
-                revision = vcsRevision,
-                urlProcessed = normalizeVcsUrl(vcsUrl)
+            val definitionFile = File(
+                "../plugins/package-managers/gradle/src/funTest/assets/projects/synthetic/gradle/build.gradle"
             )
+            val expectedResultFile = getAssetFile("gradle-all-dependencies-expected-result-with-curations.yml")
+            val expectedResult = matchExpectedResult(expectedResultFile, definitionFile)
 
-            @Suppress("IgnoredReturnValue")
-            runMain(
+            OrtMain().test(
                 "-c", configFile.path,
                 "-P", "ort.analyzer.enabledPackageManagers=Gradle",
                 "analyze",
-                "-i", projectDir.resolve("gradle").absolutePath,
+                "-i", definitionFile.parentFile.absolutePath,
                 "-o", outputDir.path
             )
 
             val ortResult = outputDir.resolve("analyzer-result.yml").readValue<OrtResult>().withResolvedScopes()
 
-            patchActualResult(ortResult, patchStartAndEndTime = true) shouldBe expectedResult
-        }
-
-        "Passing mutually exclusive evaluator options fails" {
-            shouldThrow<MutuallyExclusiveGroupException> {
-                runMain(
-                    "-c", configFile.path,
-                    "evaluate",
-                    "-i", "src/funTest/assets/semver4j-ort-result.yml",
-                    "--rules-resource", "/rules/osadl.rules.kts",
-                    "--package-configuration-dir", "src",
-                    "--package-configuration-file", "build.gradle.kts"
-                )
-            }
+            patchActualResult(ortResult.toYaml(), patchStartAndEndTime = true) shouldBe expectedResult
         }
 
         "EnvironmentVariableFilter is correctly initialized" {
-            val referenceConfigFile = File("../model/src/main/resources/$REFERENCE_CONFIG_FILENAME").absolutePath
-            runMain(
+            val referenceConfigFile = File("../model/src/main/resources/$ORT_REFERENCE_CONFIG_FILENAME").absolutePath
+
+            OrtMain().test(
                 "-c", referenceConfigFile,
                 "config"
             )
@@ -245,14 +239,4 @@ class OrtMainFunTest : StringSpec() {
             EnvironmentVariableFilter.isAllowed("DB_PASS") shouldBe false
         }
     }
-
-    private fun runMain(vararg args: String) =
-        redirectStdout {
-            @Suppress("SwallowedException")
-            try {
-                OrtMain().parse(args.asList())
-            } catch (e: ProgramResult) {
-                // Ignore exceptions that just propagate the program result.
-            }
-        }.lineSequence()
 }

@@ -21,116 +21,90 @@ package org.ossreviewtoolkit.plugins.packagemanagers.pub
 
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.beEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.should
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.haveSubstring
 
-import java.io.File
-
-import org.ossreviewtoolkit.analyzer.Analyzer
+import org.ossreviewtoolkit.analyzer.managers.analyze
+import org.ossreviewtoolkit.analyzer.managers.create
 import org.ossreviewtoolkit.analyzer.managers.resolveSingleProject
-import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.HashAlgorithm
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
-import org.ossreviewtoolkit.utils.test.patchExpectedResult
-import org.ossreviewtoolkit.utils.test.toYaml
+import org.ossreviewtoolkit.utils.test.matchExpectedResult
+import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
-class PubFunTest : WordSpec() {
-    private val projectsDir = getAssetFile("projects/synthetic")
-    private val projectsDirExternal = getAssetFile("projects/external")
-    private val vcsDir = VersionControlSystem.forDirectory(projectsDir)!!
-    private val vcsUrl = vcsDir.getRemoteUrl()
-    private val vcsRevision = vcsDir.getRevision()
-
-    init {
-        "Pub" should {
-            "resolve dart http dependencies correctly" {
-                val workingDir = projectsDirExternal.resolve("dart-http")
-                val lockFile = workingDir.resolve("pubspec.lock")
-                projectsDirExternal.resolve("dart-http-pubspec.lock").copyTo(lockFile, overwrite = true)
-
-                try {
-                    val definitionFile = workingDir.resolve("pubspec.yaml")
-                    val expectedResult = getExpectedResult("dart-http-expected-output.yml", workingDir)
-
-                    val result = createPub(
-                        AnalyzerConfiguration(allowDynamicVersions = true)
-                    ).resolveSingleProject(definitionFile)
-
-                    result.toYaml() shouldBe expectedResult
-                } finally {
-                    lockFile.delete()
-                }
+class PubFunTest : WordSpec({
+    "Pub" should {
+        // TODO: Tests are temporarily disabled to prevent Bootstrapping of the Flutter SDK as GitHub runners are
+        //       running out of disk space. Enable them again once a better solution was implemented.
+        "resolve dart http dependencies correctly".config(enabled = false) {
+            val definitionFile = getAssetFile("projects/external/dart-http/pubspec.yaml")
+            val expectedResultFile = getAssetFile("projects/external/dart-http-expected-output.yml")
+            val lockFile = definitionFile.resolveSibling("pubspec.lock").also {
+                getAssetFile("projects/external/dart-http-pubspec.lock").copyTo(it, overwrite = true)
             }
 
-            "resolve dependencies for a project with dependencies without a static version" {
-                val workingDir = projectsDir.resolve("any-version")
-                val definitionFile = workingDir.resolve("pubspec.yaml")
-                val expectedResult = getExpectedResult("pub-expected-output-any-version.yml", workingDir)
-
-                val result = createPub().resolveSingleProject(definitionFile)
-
-                result.toYaml() shouldBe expectedResult
+            val result = try {
+                create("Pub", allowDynamicVersions = true).resolveSingleProject(definitionFile)
+            } finally {
+                lockFile.delete()
             }
 
-            "resolve multi-module dependencies correctly" {
-                val workingDir = projectsDir.resolve("multi-module")
-                val expectedResult = getExpectedResult("pub-expected-output-multi-module.yml", workingDir)
+            result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+        }
 
-                val analyzerResult = analyze(workingDir).patchPackages()
+        "resolve dependencies for a project with dependencies without a static version".config(enabled = false) {
+            val definitionFile = getAssetFile("projects/synthetic/any-version/pubspec.yaml")
+            val expectedResultFile = getAssetFile("projects/synthetic/pub-expected-output-any-version.yml")
 
-                analyzerResult.toYaml() shouldBe expectedResult
+            val result = create("Pub").resolveSingleProject(definitionFile)
+
+            result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
+        }
+
+        "resolve multi-module dependencies correctly".config(enabled = false) {
+            val definitionFile = getAssetFile("projects/synthetic/multi-module/pubspec.yaml")
+            val expectedResultFile = getAssetFile("projects/synthetic/pub-expected-output-multi-module.yml")
+
+            val ortResult = analyze(definitionFile.parentFile)
+
+            ortResult.analyzer.shouldNotBeNull {
+                result.toYaml() should matchExpectedResult(expectedResultFile, definitionFile)
             }
+        }
 
-            "resolve dependencies for a project with Flutter, Android and Cocoapods" {
-                val workingDir = projectsDir.resolve("flutter-project-with-android-and-cocoapods")
-                val expectedResult = getExpectedResult(
-                    "pub-expected-output-with-flutter-android-and-cocoapods.yml",
-                    workingDir
-                )
+        "resolve dependencies for a project with Flutter, Android and Cocoapods".config(enabled = false) {
+            val definitionFile = getAssetFile(
+                "projects/synthetic/flutter-project-with-android-and-cocoapods/pubspec.yaml"
+            )
+            val expectedResultFile = getAssetFile(
+                "projects/synthetic/pub-expected-output-with-flutter-android-and-cocoapods.yml"
+            )
 
-                val analyzerResult = analyze(workingDir).patchPackages().reduceToPubProjects()
+            val ortResult = analyze(definitionFile.parentFile)
 
-                analyzerResult.toYaml() shouldBe expectedResult
+            ortResult.analyzer.shouldNotBeNull {
+                result.patchPackages().reduceToPubProjects().toYaml() should
+                    matchExpectedResult(expectedResultFile, definitionFile)
             }
+        }
 
-            "show an error if no lockfile is present" {
-                val workingDir = projectsDir.resolve("no-lockfile")
-                val definitionFile = workingDir.resolve("pubspec.yaml")
+        "show an error if no lockfile is present".config(enabled = false) {
+            val definitionFile = getAssetFile("projects/synthetic/no-lockfile/pubspec.yaml")
 
-                val result = createPub().resolveSingleProject(definitionFile)
+            val result = create("Pub").resolveSingleProject(definitionFile)
 
-                with(result) {
-                    packages should beEmpty()
-                    issues.size shouldBe 1
-                    issues.first().message should haveSubstring("IllegalArgumentException: No lockfile found in")
-                }
+            with(result) {
+                packages should beEmpty()
+                issues shouldHaveSize 1
+                issues.first().message should haveSubstring("IllegalArgumentException: No lockfile found in")
             }
         }
     }
-
-    private fun getExpectedResult(expectedResultFilename: String, workingDir: File): String {
-        val vcsPath = vcsDir.getPathToRoot(workingDir)
-        val expectedResultDir = if (workingDir.startsWith(projectsDirExternal)) {
-            projectsDirExternal
-        } else {
-            projectsDir
-        }
-
-        return patchExpectedResult(
-            expectedResultDir.resolve(expectedResultFilename),
-            url = normalizeVcsUrl(vcsUrl),
-            revision = vcsRevision,
-            path = vcsPath
-        )
-    }
-}
+})
 
 private fun AnalyzerResult.reduceToPubProjects(): AnalyzerResult {
     val pubProjects = projects.filterTo(mutableSetOf()) { it.id.type == "Pub" }
@@ -144,22 +118,9 @@ private fun AnalyzerResult.reduceToPubProjects(): AnalyzerResult {
     )
 }
 
-private fun analyze(workingDir: File): AnalyzerResult {
-    val analyzer = Analyzer(AnalyzerConfiguration())
-    val managedFiles = analyzer.findManagedFiles(workingDir)
-    val analyzerRun = analyzer.analyze(managedFiles).analyzer
-
-    return checkNotNull(analyzerRun).result.withResolvedScopes()
-}
-
-private fun createPub(config: AnalyzerConfiguration = AnalyzerConfiguration()) =
-    Pub("Pub", USER_DIR, config, RepositoryConfiguration())
-
-/**
- * Replace aapt2 URL and hash value with dummy values, as these are platform dependent.
- */
 private fun AnalyzerResult.patchPackages(): AnalyzerResult {
     val patchedPackages = packages.mapTo(mutableSetOf()) { pkg ->
+        // Replace aapt2 URL and hash value with dummy values, as these are platform dependent.
         pkg.takeUnless { it.id.toCoordinates().startsWith("Maven:com.android.tools.build:aapt2:") }
             ?: pkg.copy(
                 binaryArtifact = pkg.binaryArtifact.copy(

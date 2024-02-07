@@ -34,20 +34,56 @@ import java.util.EnumSet
 import java.util.Locale
 
 /**
- * Return a string of hexadecimal digits representing the bytes in the array.
+ * Call [also] only if the receiver is null, e.g. for error handling, and return the receiver in any case.
+ */
+inline fun <T> T.alsoIfNull(block: (T) -> Unit): T = this ?: also(block)
+
+/**
+ * Return a string of lowercase hexadecimal digits representing the bytes in the array.
  */
 fun ByteArray.encodeHex(): String = joinToString("") { String.format(Locale.ROOT, "%02x", it) }
 
 /**
- * Return the duplicates as identified by [keySelector] of a collection.
+ * Return a map that associates duplicates as identified by [keySelector] with belonging lists of collection entries.
  */
 fun <T, K> Collection<T>.getDuplicates(keySelector: (T) -> K): Map<K, List<T>> =
     if (this is Set) emptyMap() else groupBy(keySelector).filter { it.value.size > 1 }
 
 /**
- * Return the duplicates of a collection.
+ * Return a set of duplicate entries of a collection.
  */
 fun <T> Collection<T>.getDuplicates(): Set<T> = getDuplicates { it }.keys
+
+/**
+ * Collapse consecutive values to a list of pairs that each denote a range. A single value is represented as a
+ * range whose first and last elements are equal.
+ */
+fun Collection<Int>.collapseToRanges(): List<Pair<Int, Int>> {
+    if (isEmpty()) return emptyList()
+
+    val ranges = mutableListOf<Pair<Int, Int>>()
+
+    val sortedValues = toSortedSet()
+    val rangeBreaks = sortedValues.zipWithNext { a, b -> (a to b).takeIf { b != a + 1 } }.filterNotNull()
+
+    var current = sortedValues.first()
+
+    rangeBreaks.mapTo(ranges) { (last, first) ->
+        (current to last).also { current = first }
+    }
+
+    ranges += current to sortedValues.last()
+
+    return ranges
+}
+
+/**
+ * Return a string of common-separated ranges as denoted by the list of pairs.
+ */
+fun Collection<Pair<Int, Int>>.prettyPrintRanges(): String =
+    joinToString { (startValue, endValue) ->
+        if (startValue == endValue) startValue.toString() else "$startValue-$endValue"
+    }
 
 /**
  * Format this [Double] as a string with the provided number of [decimalPlaces].
@@ -98,6 +134,8 @@ fun File.safeDeleteRecursively(force: Boolean = false, baseDirectory: File? = nu
         }
     }
 
+    if (baseDirectory == this) return
+
     if (!delete() && force && setWritable(true)) {
         // Try again.
         delete()
@@ -126,31 +164,6 @@ fun File.safeMkdirs(): File {
     }
 
     throw IOException("Could not create directory '$absolutePath'.")
-}
-
-/**
- * Search [this] directory upwards towards the root until a file called [searchFileName] is found and return this file,
- * or return null if no such file is found.
- */
-fun File.searchUpwardsForFile(searchFileName: String, ignoreCase: Boolean = false): File? {
-    fun resolveFile(dir: File, fileName: String, ignoreCase: Boolean): File? {
-        val files = dir.list() ?: return null
-
-        return files.filter { it.equals(fileName, ignoreCase = ignoreCase) }
-            .map { dir.resolve(it) }
-            .find { it.isFile }
-    }
-
-    if (!isDirectory) return null
-
-    var currentDir: File? = absoluteFile
-    var currentFile = currentDir?.let { resolveFile(it, searchFileName, ignoreCase) }
-    while (currentDir != null && currentFile == null) {
-        currentDir = currentDir.parentFile ?: break
-        currentFile = resolveFile(currentDir, searchFileName, ignoreCase)
-    }
-
-    return currentFile
 }
 
 /**

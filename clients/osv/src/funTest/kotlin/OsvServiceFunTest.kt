@@ -17,6 +17,8 @@
  * License-Filename: LICENSE
  */
 
+package org.ossreviewtoolkit.clients.osv
+
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.result.shouldBeSuccess
@@ -24,14 +26,8 @@ import io.kotest.matchers.shouldBe
 
 import java.time.Instant
 
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.JsonObject
 
-import org.ossreviewtoolkit.clients.osv.OsvApiClient
-import org.ossreviewtoolkit.clients.osv.OsvService
-import org.ossreviewtoolkit.clients.osv.Package
-import org.ossreviewtoolkit.clients.osv.VulnerabilitiesForPackageRequest
-import org.ossreviewtoolkit.clients.osv.Vulnerability
 import org.ossreviewtoolkit.utils.test.getAssetAsString
 
 private val VULNERABILITY_FOR_PACKAGE_BY_COMMIT_REQUEST = VulnerabilitiesForPackageRequest(
@@ -48,13 +44,14 @@ private val VULNERABILITY_FOR_PACKAGE_BY_INVALID_COMMIT_REQUEST = Vulnerabilitie
     commit = "6879efc2c1596d11a6a6ad296f80063b558d5e0c"
 )
 
-private fun Vulnerability.patchIgnorableFields() = copy(
-    modified = Instant.EPOCH,
-    databaseSpecific = emptyJsonObject.takeIf { databaseSpecific != null },
-    affected = affected.mapTo(mutableSetOf()) { affected ->
-        affected.copy(ecosystemSpecific = emptyJsonObject.takeIf { affected.ecosystemSpecific != null })
-    }
-)
+private fun Vulnerability.patchIgnorableFields() =
+    copy(
+        modified = Instant.EPOCH,
+        databaseSpecific = emptyJsonObject.takeIf { databaseSpecific != null },
+        affected = affected.mapTo(mutableSetOf()) { affected ->
+            affected.copy(ecosystemSpecific = emptyJsonObject.takeIf { affected.ecosystemSpecific != null })
+        }
+    )
 
 private val emptyJsonObject = JsonObject(emptyMap())
 
@@ -94,13 +91,19 @@ class OsvServiceFunTest : StringSpec({
 
         result.shouldBeSuccess {
             it shouldBe listOf(
-                listOf("OSV-2020-484"),
+                listOf(
+                    "CVE-2021-45931",
+                    "CVE-2022-33068",
+                    "CVE-2023-25193",
+                    "OSV-2020-484"
+                ),
                 emptyList(),
                 listOf(
                     "GHSA-462w-v97r-4m45",
                     "GHSA-8r7q-cvjq-x353",
                     "GHSA-fqh9-2qgg-h84h",
                     "GHSA-g3rq-g295-4j3m",
+                    "GHSA-h5c8-rqwp-cp95",
                     "GHSA-hj2j-77xm-mc5v",
                     "PYSEC-2014-8",
                     "PYSEC-2014-82",

@@ -18,24 +18,12 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
-}
-
-repositories {
-    exclusiveContent {
-        forRepository {
-            maven("https://repo.eclipse.org/content/repositories/sw360-releases/")
-        }
-
-        filter {
-            includeGroup("org.eclipse.sw360")
-        }
-    }
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":plugins:package-curation-providers:package-curation-provider-api"))
+    api(projects.plugins.packageCurationProviders.packageCurationProviderApi)
 
     implementation(libs.sw360Client)
 }

@@ -31,6 +31,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.file
 
 import org.ossreviewtoolkit.model.licenses.LicenseClassifications
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.expandTilde
 
@@ -39,7 +40,7 @@ internal class MergeCommand : CliktCommand(
 ) {
     private val licenseClassificationsFiles by argument(
         help = "The license classifications file to merge, in order. Existing classifications will be maintained " +
-                "unless they are redefined, in which case they will be overwritten."
+            "unless they are redefined, in which case they will be overwritten."
     ).convert { it.expandTilde() }
         .file(mustExist = false, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = false)
         .convert { it.absoluteFile.normalize() }
@@ -60,7 +61,7 @@ internal class MergeCommand : CliktCommand(
             existing.merge(other)
         }.sort()
 
-        val yaml = yamlMapper.writeValueAsString(mergedClassifications)
+        val yaml = mergedClassifications.toYaml()
 
         mergedLicenseClassificationsFile?.run {
             writeText(yaml)

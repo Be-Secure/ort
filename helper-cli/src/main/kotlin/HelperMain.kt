@@ -25,7 +25,7 @@ import ch.qos.logback.classic.Logger
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.context
 import com.github.ajalt.clikt.core.subcommands
-import com.github.ajalt.clikt.output.CliktHelpFormatter
+import com.github.ajalt.clikt.output.MordantHelpFormatter
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -35,6 +35,7 @@ import kotlin.system.exitProcess
 
 import org.ossreviewtoolkit.helper.commands.*
 import org.ossreviewtoolkit.helper.commands.classifications.LicenseClassificationsCommand
+import org.ossreviewtoolkit.helper.commands.dev.DevCommand
 import org.ossreviewtoolkit.helper.commands.packageconfig.PackageConfigurationCommand
 import org.ossreviewtoolkit.helper.commands.packagecuration.PackageCurationsCommand
 import org.ossreviewtoolkit.helper.commands.repoconfig.RepositoryConfigurationCommand
@@ -54,7 +55,12 @@ fun main(args: Array<String>) {
     exitProcess(0)
 }
 
-internal class HelperMain : CliktCommand(name = ORTH_NAME, epilog = "* denotes required options.") {
+private const val REQUIRED_OPTION_MARKER = "*"
+
+internal class HelperMain : CliktCommand(
+    name = ORTH_NAME,
+    epilog = "$REQUIRED_OPTION_MARKER denotes required options."
+) {
     private val logLevel by option(help = "Set the verbosity level of log output.").switch(
         "--error" to Level.ERROR,
         "--warn" to Level.WARN,
@@ -67,12 +73,14 @@ internal class HelperMain : CliktCommand(name = ORTH_NAME, epilog = "* denotes r
     init {
         context {
             expandArgumentFiles = false
-            helpFormatter = CliktHelpFormatter(showDefaultValues = true)
+            helpFormatter = { MordantHelpFormatter(context = it, REQUIRED_OPTION_MARKER, showDefaultValues = true) }
         }
 
         subcommands(
             ConvertOrtFileCommand(),
             CreateAnalyzerResultCommand(),
+            CreateAnalyzerResultFromPackageListCommand(),
+            DevCommand(),
             ExtractRepositoryConfigurationCommand(),
             GenerateTimeoutErrorResolutionsCommand(),
             GetPackageLicensesCommand(),
@@ -93,7 +101,6 @@ internal class HelperMain : CliktCommand(name = ORTH_NAME, epilog = "* denotes r
             ScanStorageCommand(),
             SetDependencyRepresentationCommand(),
             SetLabelsCommand(),
-            SubtractScanResultsCommand(),
             TransformResultCommand(),
             VerifySourceArtifactCurationsCommand()
         )

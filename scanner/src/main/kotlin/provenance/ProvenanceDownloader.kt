@@ -20,8 +20,10 @@
 package org.ossreviewtoolkit.scanner.provenance
 
 import java.io.File
+import java.nio.file.StandardCopyOption
 
 import kotlin.io.path.copyToRecursively
+import kotlin.io.path.moveTo
 
 import kotlinx.coroutines.runBlocking
 
@@ -39,14 +41,36 @@ import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 /**
  * An interface that provides functionality to download source code.
  */
-interface ProvenanceDownloader {
+fun interface ProvenanceDownloader {
     /**
-     * Download the source code specified by the provided [provenance] and return the path to the directory that
-     * contains the downloaded source code.
+     * Download the source code specified by the provided [provenance] and return the path to the temporary directory
+     * that contains the downloaded source code. The caller is responsible for deleting the directory.
      *
      * Throws a [DownloadException] if the download fails.
      */
     fun download(provenance: KnownProvenance): File
+
+    /**
+     * Download the source code specified by the provided [nestedProvenance] incl. sub-repositories and return the path
+     * to the temporary directory that contains the downloaded source code. The caller is responsible for deleting the
+     * directory.
+     *
+     * Throws a [DownloadException] if the download fails.
+     */
+    fun downloadRecursively(nestedProvenance: NestedProvenance): File {
+        // Use the provenanceDownloader to download each provenance from nestedProvenance separately, because they are
+        // likely already cached if a path scanner wrapper is used.
+
+        val root = download(nestedProvenance.root)
+
+        nestedProvenance.subRepositories.forEach { (path, provenance) ->
+            val tempDir = download(provenance)
+            val targetDir = root.resolve(path)
+            tempDir.toPath().moveTo(targetDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        }
+
+        return root
+    }
 }
 
 /**
@@ -78,7 +102,7 @@ class DefaultProvenanceDownloader(
 
     private suspend fun downloadFromVcs(provenance: RepositoryProvenance, downloadDir: File) {
         workingTreeCache.use(provenance.vcsInfo) { vcs, workingTree ->
-            vcs.updateWorkingTree(workingTree, provenance.resolvedRevision, recursive = false)
+            vcs.updateWorkingTree(workingTree, provenance.resolvedRevision)
 
             val root = workingTree.getRootPath()
 

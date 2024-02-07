@@ -61,10 +61,215 @@ import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
 import org.ossreviewtoolkit.scanner.ScanStorageException
-import org.ossreviewtoolkit.scanner.ScannerCriteria
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 
-import org.semver4j.Semver
+class ClearlyDefinedStorageTest : WordSpec({
+    val server = WireMockServer(
+        WireMockConfiguration.options()
+            .dynamicPort()
+            .usingFilesUnderDirectory(TEST_FILES_ROOT)
+    )
+
+    beforeSpec {
+        server.start()
+    }
+
+    afterSpec {
+        server.stop()
+    }
+
+    beforeEach {
+        server.resetAll()
+    }
+
+    "ClearlyDefinedStorage" should {
+        "handle a SocketTimeoutException" {
+            server.stubFor(
+                get(anyUrl())
+                    .willReturn(aResponse().withFixedDelay(100))
+            )
+            val client = OkHttpClientHelper.buildClient {
+                readTimeout(Duration.ofMillis(1))
+            }
+
+            val storage = ClearlyDefinedStorage("http://localhost:${server.port()}", client)
+
+            storage.read(TEST_PACKAGE).shouldBeFailure<ScanStorageException>()
+        }
+
+        "load existing scan results for a package from ClearlyDefined" {
+            stubHarvestTools(
+                server, COORDINATES,
+                listOf(toolUrl(COORDINATES, "scancode", SCANCODE_VERSION))
+            )
+            stubHarvestToolResponse(server, COORDINATES)
+            stubDefinitions(server)
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(TEST_PACKAGE).shouldBeValid()
+        }
+
+        "choose the correct tool URL if there are multiple" {
+            val tools = listOf(
+                toolUrl(COORDINATES, "someOtherTool", "08-15"),
+                "a-completely-different-tool",
+                toolUrl(COORDINATES, "scancode", SCANCODE_VERSION)
+            )
+            stubHarvestTools(server, COORDINATES, tools)
+            stubHarvestToolResponse(server, COORDINATES)
+            stubDefinitions(server)
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(TEST_PACKAGE).shouldBeValid()
+        }
+
+        "set correct metadata in the package scan result" {
+            stubHarvestTools(
+                server, COORDINATES,
+                listOf(toolUrl(COORDINATES, "scancode", SCANCODE_VERSION))
+            )
+            stubHarvestToolResponse(server, COORDINATES)
+            stubDefinitions(server)
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(TEST_PACKAGE).shouldBeValid {
+                scanner.name shouldBe "ScanCode"
+                scanner.version shouldBe "3.0.2"
+            }
+        }
+
+        "return a failure if a ClearlyDefined request fails" {
+            server.stubFor(
+                get(anyUrl())
+                    .willReturn(aResponse().withStatus(500))
+            )
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            val result = storage.read(TEST_PACKAGE)
+
+            result.shouldBeFailure {
+                it.message shouldContain "HttpException"
+            }
+        }
+
+        "return an empty result if no results for the scancode tool are available" {
+            val tools = listOf(toolUrl(COORDINATES, "unknownTool", "unknownVersion"), "differentTool")
+            stubHarvestTools(server, COORDINATES, tools)
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(TEST_PACKAGE).shouldBeSuccess {
+                it should beEmpty()
+            }
+        }
+
+        "return a failure if no result for the tool file is returned" {
+            val scanCodeUrl = toolUrl(COORDINATES, "scancode", SCANCODE_VERSION)
+            stubHarvestTools(server, COORDINATES, listOf(scanCodeUrl))
+            server.stubFor(
+                get(urlPathEqualTo("/harvest/$scanCodeUrl"))
+                    .willReturn(aResponse().withStatus(200))
+            )
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(TEST_PACKAGE).shouldBeFailure {
+                it.message shouldContain "HttpException"
+            }
+        }
+
+        "use GitHub VCS info if available" {
+            val gitUrl = Coordinates(ComponentType.GIT, Provider.GITHUB, NAMESPACE, NAME, COMMIT)
+            val vcsGit = VcsInfo(
+                VcsType.GIT,
+                "https://github.com/$NAMESPACE/$NAME.git",
+                COMMIT
+            )
+            val pkg = TEST_PACKAGE.copy(vcs = vcsGit, vcsProcessed = vcsGit)
+            val tools = listOf(toolUrl(gitUrl, "scancode", SCANCODE_VERSION))
+            stubHarvestTools(server, gitUrl, tools)
+            stubHarvestToolResponse(server, gitUrl)
+            stubDefinitions(server, gitUrl)
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(pkg).shouldBeValid()
+        }
+
+        "use information from a source artifact if available" {
+            val sourceArtifact = RemoteArtifact("https://source-artifact.org/test", Hash.NONE)
+            val expUrl = COORDINATES.copy(type = ComponentType.SOURCE_ARCHIVE)
+            val pkg = TEST_PACKAGE.copy(sourceArtifact = sourceArtifact)
+            val tools = listOf(toolUrl(expUrl, "scancode", SCANCODE_VERSION))
+            stubHarvestTools(server, expUrl, tools)
+            stubHarvestToolResponse(server, expUrl)
+            stubDefinitions(server, expUrl)
+
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            storage.read(pkg).shouldBeValid()
+        }
+
+        "return a failure if the coordinates are not supported by ClearlyDefined" {
+            val id = TEST_IDENTIFIER.copy(type = "unknown")
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            val result = storage.read(TEST_PACKAGE.copy(id = id))
+
+            result.shouldBeFailure<ScanStorageException>()
+        }
+
+        "return a failure if a harvest tool request returns an unexpected result" {
+            server.stubFor(
+                get(anyUrl())
+                    .willReturn(
+                        aResponse().withStatus(200)
+                            .withBody("This is not a JSON response")
+                    )
+            )
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            val result = storage.read(TEST_PACKAGE)
+
+            result.shouldBeFailure<ScanStorageException>()
+        }
+
+        "return a failure if a harvest tool file request returns an unexpected result" {
+            val scanCodeUrl = toolUrl(COORDINATES, "scancode", SCANCODE_VERSION)
+            stubHarvestTools(server, COORDINATES, listOf(scanCodeUrl))
+            server.stubFor(
+                get(urlPathEqualTo("/harvest/$scanCodeUrl"))
+                    .willReturn(
+                        aResponse().withStatus(200)
+                            .withBody("{ \"unexpected\": true }")
+                    )
+            )
+            val storage = ClearlyDefinedStorage(storageConfiguration(server))
+
+            val result = storage.read(TEST_PACKAGE)
+
+            result.shouldBeFailure<ScanStorageException>()
+        }
+
+        "return a failure if the connection to the server fails" {
+            // Find a port on which no service is running.
+            val port = withContext(Dispatchers.IO) { ServerSocket(0).use { it.localPort } }
+            val serverUrl = "http://localhost:$port"
+
+            val storage = ClearlyDefinedStorage(ClearlyDefinedStorageConfiguration((serverUrl)))
+
+            val result = storage.read(TEST_PACKAGE)
+
+            result.shouldBeFailure {
+                it.message shouldContain "Connection refused"
+            }
+        }
+    }
+})
 
 private const val PACKAGE_TYPE = "Maven"
 private const val NAMESPACE = "someNamespace"
@@ -100,16 +305,9 @@ private val TEST_PACKAGE =
         declaredLicenses = emptySet(),
         description = "test package description",
         homepageUrl = "https://www.test-package.com",
-        vcs = VcsInfo.EMPTY,
+        binaryArtifact = RemoteArtifact.EMPTY,
         sourceArtifact = RemoteArtifact.EMPTY,
-        binaryArtifact = RemoteArtifact.EMPTY
-    )
-
-/** The scanner details used by tests. */
-private val SCANNER_CRITERIA =
-    ScannerCriteria(
-        "aScanner", Semver("1.0.0"), Semver("2.0.0"),
-        ScannerCriteria.exactConfigMatcher("aConfig")
+        vcs = VcsInfo.EMPTY
     )
 
 /** The template for a ClearlyDefined definitions request. */
@@ -204,226 +402,3 @@ private fun readDefinitionsTemplate(): String {
     val templateFile = File("$TEST_FILES_ROOT/cd_definitions.json")
     return templateFile.readText()
 }
-
-class ClearlyDefinedStorageTest : WordSpec({
-    val server = WireMockServer(
-        WireMockConfiguration.options()
-            .dynamicPort()
-            .usingFilesUnderDirectory(TEST_FILES_ROOT)
-    )
-
-    beforeSpec {
-        server.start()
-    }
-
-    afterSpec {
-        server.stop()
-    }
-
-    beforeEach {
-        server.resetAll()
-    }
-
-    "ClearlyDefinedStorage" should {
-        "handle a SocketTimeoutException" {
-            server.stubFor(
-                get(anyUrl())
-                    .willReturn(aResponse().withFixedDelay(100))
-            )
-            val client = OkHttpClientHelper.buildClient {
-                readTimeout(Duration.ofMillis(1))
-            }
-
-            val storage = ClearlyDefinedStorage("http://localhost:${server.port()}", client)
-
-            storage.read(TEST_PACKAGE, SCANNER_CRITERIA).shouldBeFailure<ScanStorageException>()
-        }
-
-        "load existing scan results for a package from ClearlyDefined" {
-            stubHarvestTools(
-                server, COORDINATES,
-                listOf(toolUrl(COORDINATES, "scancode", SCANCODE_VERSION))
-            )
-            stubHarvestToolResponse(server, COORDINATES)
-            stubDefinitions(server)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(TEST_PACKAGE, SCANNER_CRITERIA).shouldBeValid()
-        }
-
-        "load existing scan results for an identifier from ClearlyDefined" {
-            stubHarvestTools(
-                server, COORDINATES,
-                listOf(toolUrl(COORDINATES, "scancode", SCANCODE_VERSION))
-            )
-            stubHarvestToolResponse(server, COORDINATES)
-            stubDefinitions(server)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(TEST_IDENTIFIER).shouldBeValid()
-        }
-
-        "choose the correct tool URL if there are multiple" {
-            val tools = listOf(
-                toolUrl(COORDINATES, "someOtherTool", "08-15"),
-                "a-completely-different-tool",
-                toolUrl(COORDINATES, "scancode", SCANCODE_VERSION)
-            )
-            stubHarvestTools(server, COORDINATES, tools)
-            stubHarvestToolResponse(server, COORDINATES)
-            stubDefinitions(server)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(TEST_PACKAGE, SCANNER_CRITERIA).shouldBeValid()
-        }
-
-        "set correct metadata in the package scan result" {
-            stubHarvestTools(
-                server, COORDINATES,
-                listOf(toolUrl(COORDINATES, "scancode", SCANCODE_VERSION))
-            )
-            stubHarvestToolResponse(server, COORDINATES)
-            stubDefinitions(server)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(TEST_IDENTIFIER).shouldBeValid {
-                scanner.name shouldBe "ScanCode"
-                scanner.version shouldBe "3.0.2"
-            }
-        }
-
-        "return a failure if a ClearlyDefined request fails" {
-            server.stubFor(
-                get(anyUrl())
-                    .willReturn(aResponse().withStatus(500))
-            )
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            val result = storage.read(TEST_IDENTIFIER)
-
-            result.shouldBeFailure {
-                it.message shouldContain "HttpException"
-            }
-        }
-
-        "return an empty result if no results for the scancode tool are available" {
-            val tools = listOf(toolUrl(COORDINATES, "unknownTool", "unknownVersion"), "differentTool")
-            stubHarvestTools(server, COORDINATES, tools)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(TEST_IDENTIFIER).shouldBeSuccess {
-                it should beEmpty()
-            }
-        }
-
-        "return an empty result if no result for the tool file is returned" {
-            val scanCodeUrl = toolUrl(COORDINATES, "scancode", SCANCODE_VERSION)
-            stubHarvestTools(server, COORDINATES, listOf(scanCodeUrl))
-            server.stubFor(
-                get(urlPathEqualTo("/harvest/$scanCodeUrl"))
-                    .willReturn(aResponse().withStatus(200))
-            )
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(TEST_PACKAGE, SCANNER_CRITERIA).shouldBeSuccess {
-                it should beEmpty()
-            }
-        }
-
-        "use GitHub VCS info if available" {
-            val gitUrl = Coordinates(ComponentType.GIT, Provider.GITHUB, NAMESPACE, NAME, COMMIT)
-            val vcsGit = VcsInfo(
-                VcsType.GIT,
-                "https://github.com/$NAMESPACE/$NAME.git",
-                COMMIT
-            )
-            val pkg = TEST_PACKAGE.copy(vcs = vcsGit, vcsProcessed = vcsGit)
-            val tools = listOf(toolUrl(gitUrl, "scancode", SCANCODE_VERSION))
-            stubHarvestTools(server, gitUrl, tools)
-            stubHarvestToolResponse(server, gitUrl)
-            stubDefinitions(server, gitUrl)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(pkg, SCANNER_CRITERIA).shouldBeValid()
-        }
-
-        "use information from a source artifact if available" {
-            val sourceArtifact = RemoteArtifact("https://source-artifact.org/test", Hash.NONE)
-            val expUrl = COORDINATES.copy(type = ComponentType.SOURCE_ARCHIVE)
-            val pkg = TEST_PACKAGE.copy(sourceArtifact = sourceArtifact)
-            val tools = listOf(toolUrl(expUrl, "scancode", SCANCODE_VERSION))
-            stubHarvestTools(server, expUrl, tools)
-            stubHarvestToolResponse(server, expUrl)
-            stubDefinitions(server, expUrl)
-
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            storage.read(pkg, SCANNER_CRITERIA).shouldBeValid()
-        }
-
-        "return a failure if the coordinates are not supported by ClearlyDefined" {
-            val id = TEST_IDENTIFIER.copy(type = "unknown")
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            val result = storage.read(id)
-
-            result.shouldBeFailure<ScanStorageException>()
-        }
-
-        "return a failure if a harvest tool request returns an unexpected result" {
-            server.stubFor(
-                get(anyUrl())
-                    .willReturn(
-                        aResponse().withStatus(200)
-                            .withBody("This is not a JSON response")
-                    )
-            )
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            val result = storage.read(TEST_IDENTIFIER)
-
-            result.shouldBeFailure<ScanStorageException>()
-        }
-
-        "return an empty result if a harvest tool file request returns an unexpected result" {
-            val scanCodeUrl = toolUrl(COORDINATES, "scancode", SCANCODE_VERSION)
-            stubHarvestTools(server, COORDINATES, listOf(scanCodeUrl))
-            server.stubFor(
-                get(urlPathEqualTo("/harvest/$scanCodeUrl"))
-                    .willReturn(
-                        aResponse().withStatus(200)
-                            .withBody("{ \"unexpected\": true }")
-                    )
-            )
-            val storage = ClearlyDefinedStorage(storageConfiguration(server))
-
-            val result = storage.read(TEST_IDENTIFIER)
-
-            result.shouldBeSuccess {
-                it should beEmpty()
-            }
-        }
-
-        "return a failure if the connection to the server fails" {
-            // Find a port on which no service is running.
-            val port = withContext(Dispatchers.IO) { ServerSocket(0).use { it.localPort } }
-            val serverUrl = "http://localhost:$port"
-
-            val storage = ClearlyDefinedStorage(ClearlyDefinedStorageConfiguration((serverUrl)))
-
-            val result = storage.read(TEST_IDENTIFIER)
-
-            result.shouldBeFailure {
-                it.message shouldContain "Connection refused"
-            }
-        }
-    }
-})

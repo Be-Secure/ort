@@ -19,8 +19,6 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.module.kotlin.readValue
-
 import io.kotest.assertions.assertSoftly
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.inspectors.forAll
@@ -39,13 +37,13 @@ class IdentifierTest : WordSpec({
         "be correct" {
             val mapping = mapOf(
                 Identifier("manager", "namespace", "name", "version")
-                        to "manager:namespace:name:version",
+                    to "manager:namespace:name:version",
                 Identifier("", "", "", "")
-                        to ":::",
+                    to ":::",
                 Identifier("manager", "namespace", "name", "")
-                        to "manager:namespace:name:",
+                    to "manager:namespace:name:",
                 Identifier("manager", "", "name", "version")
-                        to "manager::name:version"
+                    to "manager::name:version"
             )
 
             mapping.entries.forAll { (identifier, stringRepresentation) ->
@@ -56,13 +54,13 @@ class IdentifierTest : WordSpec({
         "be parsed correctly" {
             val mapping = mapOf(
                 "manager:namespace:name:version"
-                        to Identifier("manager", "namespace", "name", "version"),
+                    to Identifier("manager", "namespace", "name", "version"),
                 ":::"
-                        to Identifier("", "", "", ""),
+                    to Identifier("", "", "", ""),
                 "manager:namespace:name:"
-                        to Identifier("manager", "namespace", "name", ""),
+                    to Identifier("manager", "namespace", "name", ""),
                 "manager::name:version"
-                        to Identifier("manager", "", "name", "version")
+                    to Identifier("manager", "", "name", "version")
             )
 
             mapping.entries.forAll { (stringRepresentation, identifier) ->
@@ -88,7 +86,7 @@ class IdentifierTest : WordSpec({
         "be serialized correctly" {
             val id = Identifier("type", "namespace", "name", "version")
 
-            val serializedId = yamlMapper.writeValueAsString(id)
+            val serializedId = id.toYaml()
 
             serializedId shouldBe "--- \"type:namespace:name:version\"\n"
         }
@@ -96,7 +94,7 @@ class IdentifierTest : WordSpec({
         "be deserialized correctly" {
             val serializedId = "--- \"type:namespace:name:version\""
 
-            val id = yamlMapper.readValue<Identifier>(serializedId)
+            val id = serializedId.fromYaml<Identifier>()
 
             id shouldBe Identifier("type", "namespace", "name", "version")
         }
@@ -104,7 +102,7 @@ class IdentifierTest : WordSpec({
         "be deserialized correctly even if incomplete" {
             val serializedId = "--- \"type:namespace:\""
 
-            val id = yamlMapper.readValue<Identifier>(serializedId)
+            val id = serializedId.fromYaml<Identifier>()
 
             id shouldBe Identifier("type", "namespace", "", "")
         }
@@ -112,7 +110,7 @@ class IdentifierTest : WordSpec({
         "be deserialized correctly from a map key" {
             val serializedMap = "---\ntype:namespace:name:version: 1"
 
-            val map = yamlMapper.readValue<Map<Identifier, Int>>(serializedMap)
+            val map = serializedMap.fromYaml<Map<Identifier, Int>>()
 
             map should containExactly(Identifier("type", "namespace", "name", "version") to 1)
         }
@@ -120,7 +118,7 @@ class IdentifierTest : WordSpec({
         "be deserialized correctly from a map key even if incomplete" {
             val serializedMap = "---\ntype:namespace:: 1"
 
-            val map = yamlMapper.readValue<Map<Identifier, Int>>(serializedMap)
+            val map = serializedMap.fromYaml<Map<Identifier, Int>>()
 
             map should containExactly(Identifier("type", "namespace", "", "") to 1)
         }
@@ -146,34 +144,34 @@ class IdentifierTest : WordSpec({
             purl shouldBe purl.lowercase()
         }
 
-        "use given type if it is not a known package manager" {
+        "use the generic type if it is not a known package manager" {
             val purl = Identifier("FooBar", "namespace", "name", "version").toPurl()
 
-            purl shouldStartWith "pkg:foobar"
+            purl shouldStartWith "pkg:generic"
         }
 
         "not use '/' for empty namespaces" {
-            val purl = Identifier("type", "", "name", "version").toPurl()
+            val purl = Identifier("generic", "", "name", "version").toPurl()
 
-            purl shouldBe "pkg:type/name@version"
+            purl shouldBe "pkg:generic/name@version"
         }
 
         "percent-encode namespaces with segments" {
-            val purl = Identifier("type", "name/space", "name", "version").toPurl()
+            val purl = Identifier("generic", "name/space", "name", "version").toPurl()
 
-            purl shouldBe "pkg:type/name%2Fspace/name@version"
+            purl shouldBe "pkg:generic/name%2Fspace/name@version"
         }
 
         "percent-encode the name" {
-            val purl = Identifier("type", "namespace", "fancy name", "version").toPurl()
+            val purl = Identifier("generic", "namespace", "fancy name", "version").toPurl()
 
-            purl shouldBe "pkg:type/namespace/fancy%20name@version"
+            purl shouldBe "pkg:generic/namespace/fancy%20name@version"
         }
 
         "percent-encode the version" {
-            val purl = Identifier("type", "namespace", "name", "release candidate").toPurl()
+            val purl = Identifier("generic", "namespace", "name", "release candidate").toPurl()
 
-            purl shouldBe "pkg:type/namespace/name@release%20candidate"
+            purl shouldBe "pkg:generic/namespace/name@release%20candidate"
         }
 
         "allow qualifiers" {

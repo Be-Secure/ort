@@ -19,20 +19,22 @@
 
 package org.ossreviewtoolkit.model.config
 
-import com.fasterxml.jackson.module.kotlin.readValue
-
 import io.kotest.core.spec.style.WordSpec
-import io.kotest.matchers.nulls.beNull
-import io.kotest.matchers.should
+import io.kotest.matchers.shouldBe
 
 import java.io.File
 
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.model.fromYaml
+import org.ossreviewtoolkit.model.toYaml
+import org.ossreviewtoolkit.utils.ort.ORT_REFERENCE_CONFIG_FILENAME
+import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class ReporterConfigurationTest : WordSpec({
-    "Generic reporter options" should {
-        "not be serialized as they might contain sensitive information" {
-            rereadReporterConfig(loadReporterConfig()).options should beNull()
+    "Reporter secrets" should {
+        "not be serialized as they contain sensitive information" {
+            rereadReporterConfig(loadReporterConfig()).config?.get("FossId").shouldNotBeNull {
+                secrets shouldBe emptyMap()
+            }
         }
     }
 })
@@ -41,13 +43,10 @@ class ReporterConfigurationTest : WordSpec({
  * Load the ORT reference configuration and extract the reporter configuration.
  */
 private fun loadReporterConfig(): ReporterConfiguration =
-    OrtConfiguration.load(file = File("src/main/resources/$REFERENCE_CONFIG_FILENAME")).reporter
+    OrtConfiguration.load(file = File("src/main/resources/$ORT_REFERENCE_CONFIG_FILENAME")).reporter
 
 /**
  * Perform a serialization round-trip of the given reporter [config] and return the result. This is used to check
  * whether serialization and deserialization of reporter configurations work as expected.
  */
-private fun rereadReporterConfig(config: ReporterConfiguration): ReporterConfiguration {
-    val yaml = yamlMapper.writeValueAsString(config)
-    return yamlMapper.readValue(yaml)
-}
+private fun rereadReporterConfig(config: ReporterConfiguration): ReporterConfiguration = config.toYaml().fromYaml()

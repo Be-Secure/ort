@@ -28,10 +28,12 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
 
-import org.ossreviewtoolkit.helper.utils.logger
+import org.apache.logging.log4j.kotlin.logger
+
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.config.OrtConfiguration
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.scanner.ScanStorages
 import org.ossreviewtoolkit.utils.common.expandTilde
 import org.ossreviewtoolkit.utils.ort.ORT_CONFIG_FILENAME
@@ -57,7 +59,7 @@ internal class ListStoredScanResultsCommand : CliktCommand(
     private val configArguments by option(
         "-P",
         help = "Override a key-value pair in the configuration file. For example: " +
-                "-P ort.scanner.storages.postgres.connection.schema=testSchema"
+            "-P ort.scanner.storages.postgres.connection.schema=testSchema"
     ).associate()
 
     override fun run() {
@@ -68,7 +70,7 @@ internal class ListStoredScanResultsCommand : CliktCommand(
             "Searching for scan results of '${packageId.toCoordinates()}' in ${scanStorages.readers.size} storage(s)."
         )
 
-        val scanResults = runCatching { scanStorages.read(packageId) }.getOrElse {
+        val scanResults = runCatching { scanStorages.read(Package.EMPTY.copy(id = packageId)) }.getOrElse {
             logger.error { "Could not read scan results: ${it.message}" }
             throw ProgramResult(1)
         }
@@ -76,7 +78,7 @@ internal class ListStoredScanResultsCommand : CliktCommand(
         println("Found ${scanResults.size} scan results:")
 
         scanResults.forEach { result ->
-            println("\n${yamlMapper.writeValueAsString(result.provenance)}")
+            println("\n${result.provenance.toYaml()}")
         }
     }
 }

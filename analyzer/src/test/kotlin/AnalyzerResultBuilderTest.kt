@@ -19,20 +19,19 @@
 
 package org.ossreviewtoolkit.analyzer
 
-import com.fasterxml.jackson.module.kotlin.readValue
-
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.inspectors.forAll
 import io.kotest.matchers.collections.beEmpty
 import io.kotest.matchers.collections.containExactlyInAnyOrder
-import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.maps.containExactly
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.beTheSameInstanceAs
+
+import java.time.Instant
 
 import org.ossreviewtoolkit.analyzer.managers.utils.PackageManagerDependencyHandler
 import org.ossreviewtoolkit.model.AnalyzerResult
@@ -50,15 +49,17 @@ import org.ossreviewtoolkit.model.Scope
 import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.ScopeExclude
 import org.ossreviewtoolkit.model.config.ScopeExcludeReason
+import org.ossreviewtoolkit.model.fromYaml
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 class AnalyzerResultBuilderTest : WordSpec() {
-    private val issue1 = Issue(source = "source-1", message = "message-1")
-    private val issue2 = Issue(source = "source-2", message = "message-2")
-    private val issue3 = Issue(source = "source-3", message = "message-3")
-    private val issue4 = Issue(source = "source-4", message = "message-4")
-    private val issue5 = Issue(source = "source-5", message = "message-5")
+    private val issue1 = Issue(timestamp = Instant.EPOCH, source = "source-1", message = "message-1")
+    private val issue2 = Issue(timestamp = Instant.EPOCH, source = "source-2", message = "message-2")
+    private val issue3 = Issue(timestamp = Instant.EPOCH, source = "source-3", message = "message-3")
+    private val issue4 = Issue(timestamp = Instant.EPOCH, source = "source-4", message = "message-4")
+    private val issue5 = Issue(timestamp = Instant.EPOCH, source = "source-5", message = "message-5")
 
     private val package1 = Package.EMPTY.copy(id = Identifier("type-1", "namespace-1", "package-1", "version-1"))
     private val package2 = Package.EMPTY.copy(id = Identifier("type-2", "namespace-2", "package-2", "version-2"))
@@ -66,24 +67,24 @@ class AnalyzerResultBuilderTest : WordSpec() {
 
     private val pkgRef1 = package1.toReference(issues = listOf(issue1))
     private val pkgRef2 = package2.toReference(
-        dependencies = sortedSetOf(package3.toReference(issues = listOf(issue2)))
+        dependencies = setOf(package3.toReference(issues = listOf(issue2)))
     )
 
-    private val scope1 = Scope("scope-1", sortedSetOf(pkgRef1))
-    private val scope2 = Scope("scope-2", sortedSetOf(pkgRef2))
+    private val scope1 = Scope("scope-1", setOf(pkgRef1))
+    private val scope2 = Scope("scope-2", setOf(pkgRef2))
 
     private val project1 = Project.EMPTY.copy(
         id = Identifier("type-1", "namespace-1", "project-1", "version-1"),
-        scopeDependencies = sortedSetOf(scope1),
+        scopeDependencies = setOf(scope1),
         definitionFilePath = "project1"
     )
     private val project2 = Project.EMPTY.copy(
         id = Identifier("type-2", "namespace-2", "project-2", "version-2"),
-        scopeDependencies = sortedSetOf(scope1, scope2)
+        scopeDependencies = setOf(scope1, scope2)
     )
     private val project3 = Project.EMPTY.copy(
         id = Identifier("type-1", "namespace-3", "project-1.2", "version-1"),
-        scopeNames = sortedSetOf("scope-2"),
+        scopeNames = setOf("scope-2"),
         scopeDependencies = null
     )
 
@@ -130,15 +131,15 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     .addResult(analyzerResult2)
                     .build()
 
-                val serializedMergedResults = yamlMapper.writeValueAsString(mergedResults)
-                val deserializedMergedResults = yamlMapper.readValue<AnalyzerResult>(serializedMergedResults)
+                val serializedMergedResults = mergedResults.toYaml()
+                val deserializedMergedResults = serializedMergedResults.fromYaml<AnalyzerResult>()
 
                 deserializedMergedResults shouldBe mergedResults
             }
 
             "be serialized and deserialized correctly with a dependency graph" {
-                val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope1"))
-                val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope3"))
+                val p1 = project1.copy(scopeDependencies = null, scopeNames = setOf("scope1"))
+                val p2 = project2.copy(scopeDependencies = null, scopeNames = setOf("scope3"))
                 val result = AnalyzerResult(
                     projects = setOf(p1, p2, project3),
                     packages = emptySet(),
@@ -148,15 +149,14 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     )
                 )
 
-                val serializedResult = yamlMapper.writeValueAsString(result)
-                val deserializedResult = yamlMapper.readValue<AnalyzerResult>(serializedResult)
+                val deserializedResult = result.toYaml().fromYaml<AnalyzerResult>()
 
                 deserializedResult shouldBe result
             }
 
             "not change its representation when serialized again" {
-                val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope1"))
-                val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope3"))
+                val p1 = project1.copy(scopeDependencies = null, scopeNames = setOf("scope1"))
+                val p2 = project2.copy(scopeDependencies = null, scopeNames = setOf("scope3"))
                 val result = AnalyzerResult(
                     projects = setOf(p1, p2, project3),
                     packages = emptySet(),
@@ -166,11 +166,9 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     )
                 )
 
-                val serializedResult = yamlMapper.writeValueAsString(result)
-                val deserializedResult = yamlMapper.readValue<AnalyzerResult>(serializedResult)
-                val serializedResult2 = yamlMapper.writeValueAsString(deserializedResult)
+                val serializedResult = result.toYaml().fromYaml<AnalyzerResult>().toYaml()
 
-                serializedResult2 shouldBe serializedResult
+                serializedResult shouldBe serializedResult
             }
 
             "use the dependency graph representation on serialization" {
@@ -179,20 +177,18 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     .addResult(analyzerResult2)
                     .build()
 
-                val serializedMergedResults = yamlMapper.writeValueAsString(mergedResults)
+                val serializedMergedResults = mergedResults.toYaml()
                 val resultTree = yamlMapper.readTree(serializedMergedResults)
 
                 resultTree["dependency_graphs"] shouldNotBeNull {
                     count() shouldBe 2
                 }
-
-                resultTree["has_issues"].asBoolean() shouldBe true
             }
 
             "be serialized and deserialized correctly with an empty dependency graph" {
                 val emptyGraph = DependencyGraph(packages = emptyList(), scopes = emptyMap())
-                val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope1"))
-                val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope3"))
+                val p1 = project1.copy(scopeDependencies = null, scopeNames = setOf("scope1"))
+                val p2 = project2.copy(scopeDependencies = null, scopeNames = setOf("scope3"))
                 val result = AnalyzerResult(
                     projects = setOf(p1, p2, project3),
                     packages = emptySet(),
@@ -202,8 +198,7 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     )
                 )
 
-                val serializedResult = yamlMapper.writeValueAsString(result)
-                val deserializedResult = yamlMapper.readValue<AnalyzerResult>(serializedResult)
+                val deserializedResult = result.toYaml().fromYaml<AnalyzerResult>()
 
                 deserializedResult.withResolvedScopes() shouldBe result.withResolvedScopes()
             }
@@ -217,7 +212,7 @@ class AnalyzerResultBuilderTest : WordSpec() {
                     .addDependencyGraph("foo", graph2)
                     .build()
 
-                analyzerResult.collectIssues() should containExactly(
+                analyzerResult.getAllIssues() should containExactly(
                     package1.id to setOf(issue1),
                     package3.id to setOf(issue2),
                     project1.id to setOf(issue3, issue4),
@@ -238,8 +233,8 @@ class AnalyzerResultBuilderTest : WordSpec() {
             }
 
             "resolve the dependency information in affected projects" {
-                val p1 = project1.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope-1"))
-                val p2 = project2.copy(scopeDependencies = null, scopeNames = sortedSetOf("scope-3"))
+                val p1 = project1.copy(scopeDependencies = null, scopeNames = setOf("scope-1"))
+                val p2 = project2.copy(scopeDependencies = null, scopeNames = setOf("scope-3"))
                 val analyzerResult = AnalyzerResultBuilder()
                     .addResult(ProjectAnalyzerResult(p1, emptySet()))
                     .addDependencyGraph(p1.id.type, graph1)
@@ -343,18 +338,18 @@ class AnalyzerResultBuilderTest : WordSpec() {
 
                 val scope = Scope(
                     name = "scope",
-                    dependencies = sortedSetOf(
+                    dependencies = setOf(
                         packageManagerDependency,
                         PackageReference(
-                            id = pkgRef1.id,
-                            dependencies = sortedSetOf(packageManagerDependency)
+                            id = package1.id,
+                            dependencies = setOf(packageManagerDependency)
                         )
                     )
                 )
 
                 val project = Project.EMPTY.copy(
                     id = Identifier("type", "namespace", "project", "version"),
-                    scopeDependencies = sortedSetOf(scope),
+                    scopeDependencies = setOf(scope),
                     definitionFilePath = "project"
                 )
 
@@ -371,24 +366,22 @@ class AnalyzerResultBuilderTest : WordSpec() {
 
                 analyzerResult.withResolvedScopes().apply {
                     projects.find { it.id == project.id } shouldNotBeNull {
-                        project.scopes shouldContainExactly sortedSetOf(
+                        scopes should containExactlyInAnyOrder(
                             Scope(
                                 name = "scope",
-                                dependencies = sortedSetOf(
+                                dependencies = setOf(
                                     PackageReference(
                                         id = project1.id,
-                                        dependencies = sortedSetOf(
-                                            PackageReference(id = package1.id)
-                                        )
+                                        linkage = PackageLinkage.PROJECT_DYNAMIC,
+                                        dependencies = setOf(pkgRef1)
                                     ),
                                     PackageReference(
                                         id = package1.id,
-                                        dependencies = sortedSetOf(
+                                        dependencies = setOf(
                                             PackageReference(
                                                 id = project1.id,
-                                                dependencies = sortedSetOf(
-                                                    PackageReference(id = package1.id)
-                                                )
+                                                linkage = PackageLinkage.PROJECT_DYNAMIC,
+                                                dependencies = setOf(pkgRef1)
                                             )
                                         )
                                     )

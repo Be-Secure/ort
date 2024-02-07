@@ -26,10 +26,12 @@ import com.sksamuel.hoplite.fp.getOrElse
 
 import java.io.File
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.utils.common.EnvironmentVariableFilter
+import org.ossreviewtoolkit.utils.ort.ORT_FAILURE_STATUS_CODE
+import org.ossreviewtoolkit.utils.ort.ORT_PACKAGE_CONFIGURATIONS_DIRNAME
 import org.ossreviewtoolkit.utils.ort.ORT_PACKAGE_CURATIONS_DIRNAME
 import org.ossreviewtoolkit.utils.ort.ORT_PACKAGE_CURATIONS_FILENAME
 
@@ -80,23 +82,33 @@ data class OrtConfiguration(
     val licenseFilePatterns: LicenseFilePatterns = LicenseFilePatterns.DEFAULT,
 
     /**
-     * The package curation providers to use. Defaults to providers for the default configuration locations
-     * [ORT_PACKAGE_CURATIONS_FILENAME] and [ORT_PACKAGE_CURATIONS_DIRNAME] are added. The order of this list defines
-     * the priority of the providers: Providers that appear earlier in the list can overwrite curations for the same
-     * package from providers that appear later in the list.
+     * The package configuration providers to use. Defaults to the provider [ORT_PACKAGE_CONFIGURATIONS_DIRNAME]
+     * configuration location.
      */
-    val packageCurationProviders: List<PackageCurationProviderConfiguration> = listOf(
-        PackageCurationProviderConfiguration(type = "DefaultDir"),
-        PackageCurationProviderConfiguration(type = "DefaultFile")
+    val packageConfigurationProviders: List<ProviderPluginConfiguration> = listOf(
+        ProviderPluginConfiguration(type = "DefaultDir")
     ),
 
     /**
-     * The threshold from which on issues count as severe.
+     * The package curation providers to use. Defaults to providers for the default [ORT_PACKAGE_CURATIONS_FILENAME] and
+     * [ORT_PACKAGE_CURATIONS_DIRNAME] configuration locations. The order of this list defines the priority of the
+     * providers: Providers that appear earlier in the list can overwrite curations for the same package from providers
+     * that appear later in the list.
+     */
+    val packageCurationProviders: List<ProviderPluginConfiguration> = listOf(
+        ProviderPluginConfiguration(type = "DefaultDir"),
+        ProviderPluginConfiguration(type = "DefaultFile")
+    ),
+
+    /**
+     * The threshold from which on issues count as severe. Severe issues cause the status code on exit of the CLI
+     * commands to be at least [ORT_FAILURE_STATUS_CODE].
      */
     val severeIssueThreshold: Severity = Severity.WARNING,
 
     /**
-     * The threshold from which on rule violations count as severe.
+     * The threshold from which on rule violations count as severe. Severe rule violations cause the status code on exit
+     * of the CLI commands to be at least [ORT_FAILURE_STATUS_CODE].
      */
     val severeRuleViolationThreshold: Severity = Severity.WARNING,
 
@@ -130,7 +142,7 @@ data class OrtConfiguration(
      */
     val notifier: NotifierConfiguration = NotifierConfiguration()
 ) {
-    companion object : Logging {
+    companion object {
         /**
          * Load the [OrtConfiguration]. The different sources are used with this priority:
          *
@@ -183,13 +195,3 @@ data class OrtConfiguration(
 data class OrtConfigurationWrapper(
     val ort: OrtConfiguration
 )
-
-/**
- * A typealias for key-value pairs, used in several configuration classes.
- */
-typealias Options = Map<String, String>
-
-/**
- * The filename of the reference configuration file.
- */
-const val REFERENCE_CONFIG_FILENAME = "reference.yml"

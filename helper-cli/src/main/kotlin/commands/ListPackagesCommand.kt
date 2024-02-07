@@ -39,7 +39,7 @@ import org.ossreviewtoolkit.model.licenses.LicenseView
 import org.ossreviewtoolkit.model.utils.createLicenseInfoResolver
 import org.ossreviewtoolkit.utils.common.expandTilde
 
-class ListPackagesCommand : CliktCommand(
+internal class ListPackagesCommand : CliktCommand(
     help = "Lists the packages and optionally also projects contained in the given ORT result file."
 ) {
     private val ortFile by option(
@@ -58,19 +58,19 @@ class ListPackagesCommand : CliktCommand(
     private val type by option(
         "--package-type",
         help = "Filter the output by package type."
-    ).enum<PackageType>().split(",").default(enumValues<PackageType>().asList())
+    ).enum<PackageType>().split(",").default(PackageType.entries)
 
     private val offendingOnly by option(
         "--offending-only",
         help = "Only list packages causing at least one rule violation with an offending severity, see " +
-                "--offending-severities."
+            "--offending-severities."
     ).flag()
 
     private val offendingSeverities by option(
         "--offending-severities",
         help = "Set the severities to use for the filtering enabled by --offending-only, specified as " +
-                "comma-separated values."
-    ).enum<Severity>().split(",").default(enumValues<Severity>().asList())
+            "comma-separated values."
+    ).enum<Severity>().split(",").default(Severity.entries)
 
     override fun run() {
         val ortResult = readOrtResult(ortFile)
@@ -86,7 +86,7 @@ class ListPackagesCommand : CliktCommand(
             it.severity in offendingSeverities
         }.mapNotNullTo(mutableSetOf()) { it.pkg }
 
-        val packages = ortResult.collectProjectsAndPackages().filter { id ->
+        val packages = ortResult.getProjectsAndPackages().filter { id ->
             (ortResult.isPackage(id) && PACKAGE in type) || (ortResult.isProject(id) && PROJECT in type)
         }.filter { id ->
             matchDetectedLicenses.isEmpty() || (matchDetectedLicenses - getDetectedLicenses(id)).isEmpty()

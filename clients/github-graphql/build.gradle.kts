@@ -20,10 +20,11 @@
 import com.expediagroup.graphql.plugin.gradle.config.GraphQLSerializer
 import com.expediagroup.graphql.plugin.gradle.graphql
 
-@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 
+    // Apply third-party plugins.
     alias(libs.plugins.graphQl)
     alias(libs.plugins.kotlinSerialization)
 }
@@ -43,11 +44,10 @@ graphql {
 }
 
 dependencies {
-    api(libs.ktorClientCore)
+    api(libs.ktor.client.core)
 
     implementation(libs.bundles.kotlinxSerialization)
     implementation(libs.graphQlKtorClient)
-    implementation(libs.log4jApiKotlin)
 
     testImplementation(libs.wiremock)
 }

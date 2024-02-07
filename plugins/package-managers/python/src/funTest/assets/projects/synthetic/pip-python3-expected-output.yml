@@ -11,7 +11,7 @@ project:
     path: ""
   vcs_processed:
     type: "Git"
-    url: "<REPLACE_URL>"
+    url: "<REPLACE_URL_PROCESSED>"
     revision: "<REPLACE_REVISION>"
     path: "<REPLACE_PATH>"
   homepage_url: ""
@@ -20,8 +20,8 @@ project:
     dependencies:
     - id: "PyPI::django:2.2.20"
       dependencies:
-      - id: "PyPI::pytz:2023.2"
-      - id: "PyPI::sqlparse:0.4.3"
+      - id: "PyPI::pytz:2024.1"
+      - id: "PyPI::sqlparse:0.4.4"
 packages:
 - id: "PyPI::django:2.2.20"
   purl: "pkg:pypi/django@2.2.20"
@@ -58,8 +58,8 @@ packages:
     url: "https://github.com/django/django.git"
     revision: ""
     path: ""
-- id: "PyPI::pytz:2023.2"
-  purl: "pkg:pypi/pytz@2023.2"
+- id: "PyPI::pytz:2024.1"
+  purl: "pkg:pypi/pytz@2024.1"
   authors:
   - "Stuart Bishop <stuart@stuartbishop.net>"
   declared_licenses:
@@ -72,14 +72,14 @@ packages:
   description: "World timezone definitions, modern and historical"
   homepage_url: "http://pythonhosted.org/pytz"
   binary_artifact:
-    url: "https://files.pythonhosted.org/packages/a3/21/0ffac8dacd94d20f4d1ceaaa91cf28ad94ec22e8f3ec9056976f1066ff24/pytz-2023.2-py2.py3-none-any.whl"
+    url: "https://files.pythonhosted.org/packages/9c/3d/a121f284241f08268b21359bd425f7d4825cffc5ac5cd0e1b3d82ffd2b10/pytz-2024.1-py2.py3-none-any.whl"
     hash:
-      value: "8a8baaf1e237175b02f5c751eea67168043a749c843989e2b3015aa1ad9db68b"
+      value: "328171f4e3623139da4983451950b28e95ac706e13f3f2630a879749e7a8b319"
       algorithm: "SHA-256"
   source_artifact:
-    url: "https://files.pythonhosted.org/packages/55/71/cb1b0a0035cf479eaf05109ea830323af66d48197bfc759a018f94acc3c4/pytz-2023.2.tar.gz"
+    url: "https://files.pythonhosted.org/packages/90/26/9f1f00a5d021fff16dee3de13d43e5e978f3d58928e129c3a62cf7eb9738/pytz-2024.1.tar.gz"
     hash:
-      value: "a27dcf612c05d2ebde626f7d506555f10dfc815b3eddccfaadfc7d99b11c9a07"
+      value: "2a29735ea9c18baf14b448846bde5a48030ed267578472d8955cd0e7443a9812"
       algorithm: "SHA-256"
   vcs:
     type: ""
@@ -91,28 +91,26 @@ packages:
     url: ""
     revision: ""
     path: ""
-- id: "PyPI::sqlparse:0.4.3"
-  purl: "pkg:pypi/sqlparse@0.4.3"
+- id: "PyPI::sqlparse:0.4.4"
+  purl: "pkg:pypi/sqlparse@0.4.4"
   authors:
   - "Andi Albrecht <albrecht.andi@gmail.com>"
   declared_licenses:
   - "BSD License"
-  - "BSD-3-Clause"
   declared_licenses_processed:
-    spdx_expression: "BSD-3-Clause"
-    mapped:
-      BSD License: "BSD-3-Clause"
+    unmapped:
+    - "BSD License"
   description: "A non-validating SQL parser."
-  homepage_url: "https://github.com/andialbrecht/sqlparse"
+  homepage_url: ""
   binary_artifact:
-    url: "https://files.pythonhosted.org/packages/97/d3/31dd2c3e48fc2060819f4acb0686248250a0f2326356306b38a42e059144/sqlparse-0.4.3-py3-none-any.whl"
+    url: "https://files.pythonhosted.org/packages/98/5a/66d7c9305baa9f11857f247d4ba761402cea75db6058ff850ed7128957b7/sqlparse-0.4.4-py3-none-any.whl"
     hash:
-      value: "0323c0ec29cd52bceabc1b4d9d579e311f3e4961b98d174201d5622a23b85e34"
+      value: "5430a4fe2ac7d0f93e66f1efc6e1338a41884b7ddf2a350cedd20ccc4d9d28f3"
       algorithm: "SHA-256"
   source_artifact:
-    url: "https://files.pythonhosted.org/packages/ba/fa/5b7662b04b69f3a34b8867877e4dbf2a37b7f2a5c0bbb5a9eed64efd1ad1/sqlparse-0.4.3.tar.gz"
+    url: "https://files.pythonhosted.org/packages/65/16/10f170ec641ed852611b6c9441b23d10b5702ab5288371feab3d36de2574/sqlparse-0.4.4.tar.gz"
     hash:
-      value: "69ca804846bb114d2ec380e4360a8a340db83f0ccf3afceeb1404df028f57268"
+      value: "d446183e84b8349fa3061f0fe7f06ca94ba65b426946ffebe6e3e8295332420c"
       algorithm: "SHA-256"
   vcs:
     type: ""

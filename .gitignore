@@ -1,4 +1,3 @@
-.batect/
 .gradle/
 .idea/
 !.idea/icon*.png
@@ -6,6 +5,7 @@ build/
 out/
 /local.properties
 /*.iml
+Dockerfile.custom
 
 # Kotest temporary directory
 .kotest/

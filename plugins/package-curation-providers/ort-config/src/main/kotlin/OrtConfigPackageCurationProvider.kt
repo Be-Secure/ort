@@ -22,9 +22,9 @@ package org.ossreviewtoolkit.plugins.packagecurationproviders.ortconfig
 import java.io.File
 import java.io.IOException
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
-import org.ossreviewtoolkit.downloader.vcs.Git
+import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.PackageCuration
@@ -33,6 +33,7 @@ import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.model.utils.PackageCurationProvider
 import org.ossreviewtoolkit.plugins.packagecurationproviders.api.PackageCurationProviderFactory
+import org.ossreviewtoolkit.utils.common.Options
 import org.ossreviewtoolkit.utils.common.encodeOr
 import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.ort.ortDataDirectory
@@ -45,7 +46,7 @@ class OrtConfigPackageCurationProviderFactory : PackageCurationProviderFactory<U
 
     override fun create(config: Unit) = OrtConfigPackageCurationProvider()
 
-    override fun parseConfig(config: Map<String, String>) = Unit
+    override fun parseConfig(options: Options, secrets: Options) = Unit
 }
 
 /**
@@ -53,8 +54,6 @@ class OrtConfigPackageCurationProviderFactory : PackageCurationProviderFactory<U
  * [ort-config repository](https://github.com/oss-review-toolkit/ort-config).
  */
 open class OrtConfigPackageCurationProvider : PackageCurationProvider {
-    companion object : Logging
-
     private val curationsDir by lazy {
         ortDataDirectory.resolve("ort-config").also {
             updateOrtConfig(it)
@@ -65,15 +64,19 @@ open class OrtConfigPackageCurationProvider : PackageCurationProvider {
         packages.flatMapTo(mutableSetOf()) { pkg -> getCurationsFor(pkg.id) }
 
     private fun getCurationsFor(pkgId: Identifier): List<PackageCuration> {
-        val file = curationsDir.resolve("curations").resolve(pkgId.toCurationPath())
-        return if (file.isFile) {
+        // The ORT config repository follows path layout conventions, so curations can be looked up directly.
+        val packageCurationsFile = curationsDir.resolve("curations").resolve(pkgId.toCurationPath())
+
+        // Also consider curations for all packages in a namespace.
+        val namespaceCurationsFile = packageCurationsFile.resolveSibling("_.yml")
+
+        // Return namespace-level curations before package-level curations to allow overriding the former.
+        return listOf(namespaceCurationsFile, packageCurationsFile).filter { it.isFile }.flatMap { file ->
             runCatching {
                 file.readValue<List<PackageCuration>>().filter { it.isApplicable(pkgId) }
             }.getOrElse {
                 throw IOException("Failed parsing package curation from '${file.absolutePath}'.", it)
             }
-        } else {
-            emptyList()
         }
     }
 }
@@ -82,15 +85,20 @@ open class OrtConfigPackageCurationProvider : PackageCurationProvider {
  * The path must be aligned with the
  * [conventions for the ort-config repository](https://github.com/oss-review-toolkit/ort-config#curations).
  */
-private fun Identifier.toCurationPath() =
-    "${type.encodeOr("_")}/${namespace.encodeOr("_")}/${name.encodeOr("_")}.yml"
+fun Identifier.toCurationPath() = "${type.encodeOr("_")}/${namespace.encodeOr("_")}/${name.encodeOr("_")}.yml"
 
 private fun updateOrtConfig(dir: File) {
+    val vcsInfo = VcsInfo.EMPTY.copy(type = VcsType.GIT, url = ORT_CONFIG_REPOSITORY_URL)
+    val vcs = checkNotNull(VersionControlSystem.forType(vcsInfo.type)) {
+        "No applicable VersionControlSystem implementation found for ${vcsInfo.type}."
+    }
+
     dir.safeMkdirs()
-    Git().apply {
-        val workingTree = initWorkingTree(dir, VcsInfo.EMPTY.copy(type = VcsType.GIT, url = ORT_CONFIG_REPOSITORY_URL))
+
+    vcs.apply {
+        val workingTree = initWorkingTree(dir, vcsInfo)
         val revision = updateWorkingTree(workingTree, ORT_CONFIG_REPOSITORY_BRANCH).getOrThrow()
-        OrtConfigPackageCurationProvider.logger.info {
+        logger.info {
             "Successfully cloned $revision from $ORT_CONFIG_REPOSITORY_URL."
         }
     }

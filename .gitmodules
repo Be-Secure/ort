@@ -7,14 +7,15 @@
 	url = https://github.com/spdx/tools-python.git
 	ignore = untracked
 [submodule "quickcheck-state-machine"]
-	path = analyzer/src/funTest/assets/projects/external/quickcheck-state-machine
+	path = plugins/package-managers/stack/src/funTest/assets/projects/external/quickcheck-state-machine
 	url = https://github.com/advancedtelematic/quickcheck-state-machine.git
 	ignore = untracked
 [submodule "sbt-multi-project-example"]
-	path = analyzer/src/funTest/assets/projects/external/sbt-multi-project-example
+	path = plugins/package-managers/sbt/src/funTest/assets/projects/external/sbt-multi-project-example
 	url = https://github.com/oss-review-toolkit/sbt-multi-project-example.git
 	ignore = untracked
 [submodule "dart-http"]
 	path = plugins/package-managers/pub/src/funTest/assets/projects/external/dart-http
 	url = https://github.com/dart-lang/http.git
 	ignore = untracked
+	tag = 0.13.0

@@ -21,17 +21,31 @@ package org.ossreviewtoolkit.utils.test
 
 import com.fasterxml.jackson.module.kotlin.readValue
 
-import io.kotest.matchers.Matcher
-import io.kotest.matchers.collections.beEmpty
-import io.kotest.matchers.neverNullMatcher
-
 import java.io.File
 import java.time.Instant
 
 import org.ossreviewtoolkit.downloader.VersionControlSystem
+import org.ossreviewtoolkit.model.AdvisorRecord
+import org.ossreviewtoolkit.model.AdvisorResult
+import org.ossreviewtoolkit.model.AdvisorRun
+import org.ossreviewtoolkit.model.ArtifactProvenance
+import org.ossreviewtoolkit.model.FileList
+import org.ossreviewtoolkit.model.Hash
+import org.ossreviewtoolkit.model.HashAlgorithm
+import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.KnownProvenance
 import org.ossreviewtoolkit.model.OrtResult
+import org.ossreviewtoolkit.model.ProvenanceResolutionResult
+import org.ossreviewtoolkit.model.RemoteArtifact
+import org.ossreviewtoolkit.model.RepositoryProvenance
+import org.ossreviewtoolkit.model.ScanResult
+import org.ossreviewtoolkit.model.ScannerRun
+import org.ossreviewtoolkit.model.config.AdvisorConfiguration
 import org.ossreviewtoolkit.model.mapper
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.model.utils.alignRevisions
+import org.ossreviewtoolkit.model.utils.clearVcsPath
+import org.ossreviewtoolkit.model.utils.toPurl
+import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
 
 val USER_DIR = File(System.getProperty("user.dir"))
@@ -44,6 +58,18 @@ private val START_AND_END_TIME_REGEX = Regex("((start|end)_time): \".*\"")
 private val TIMESTAMP_REGEX = Regex("(timestamp): \".*\"")
 
 /**
+ * Create an [AdvisorRun] with the given [results].
+ */
+fun advisorRunOf(vararg results: Pair<Identifier, List<AdvisorResult>>): AdvisorRun =
+    AdvisorRun(
+        startTime = Instant.now(),
+        endTime = Instant.now(),
+        environment = Environment(),
+        config = AdvisorConfiguration(),
+        results = AdvisorRecord(results.toMap())
+    )
+
+/**
  * Return the content of the fun test asset file located under [path] relative to the 'assets' directory as text.
  */
 fun getAssetAsString(path: String): String = getAssetFile(path).readText()
@@ -53,50 +79,50 @@ fun getAssetAsString(path: String): String = getAssetFile(path).readText()
  */
 fun getAssetFile(path: String): File = File("src/funTest/assets", path).absoluteFile
 
- @Suppress("LongParameterList")
+/**
+ * Return a string representation of the [expectedResultFile] contents that has placeholders replaced. If a
+ * [definitionFile] is provided, values that can be derived from it, like the VCS revision, are also replaced.
+ * Additionally, [custom] placeholders can be replaced as well.
+ */
 fun patchExpectedResult(
-    result: File,
-    custom: Map<String, String> = emptyMap(),
-    definitionFilePath: String? = null,
-    absoluteDefinitionFilePath: String? = null,
-    url: String? = null,
-    revision: String? = null,
-    path: String? = null,
-    urlProcessed: String? = null
+    expectedResultFile: File,
+    definitionFile: File? = null,
+    custom: Map<String, String> = emptyMap()
 ): String {
-    fun String.replaceIfNotNull(oldValue: String, newValue: String?) =
-        if (newValue != null) replace(oldValue, newValue) else this
+    val replacements = buildMap {
+        put("<REPLACE_JAVA>", System.getProperty("java.version"))
+        put("<REPLACE_OS>", System.getProperty("os.name"))
+        put("\"<REPLACE_PROCESSORS>\"", Runtime.getRuntime().availableProcessors().toString())
+        put("\"<REPLACE_MAX_MEMORY>\"", Runtime.getRuntime().maxMemory().toString())
 
-    return custom.entries.fold(result.readText()) { text, entry -> text.replaceIfNotNull(entry.key, entry.value) }
-        .replaceIfNotNull("<REPLACE_JAVA>", System.getProperty("java.version"))
-        .replaceIfNotNull("<REPLACE_OS>", System.getProperty("os.name"))
-        .replaceIfNotNull("\"<REPLACE_PROCESSORS>\"", Runtime.getRuntime().availableProcessors().toString())
-        .replaceIfNotNull("\"<REPLACE_MAX_MEMORY>\"", Runtime.getRuntime().maxMemory().toString())
-        .replaceIfNotNull("<REPLACE_DEFINITION_FILE_PATH>", definitionFilePath)
-        .replaceIfNotNull("<REPLACE_ABSOLUTE_DEFINITION_FILE_PATH>", absoluteDefinitionFilePath)
-        .replaceIfNotNull("<REPLACE_URL>", url)
-        .replaceIfNotNull("<REPLACE_REVISION>", revision)
-        .replaceIfNotNull("<REPLACE_PATH>", path)
-        .replaceIfNotNull("<REPLACE_URL_PROCESSED>", urlProcessed)
+        if (definitionFile != null) {
+            val projectDir = definitionFile.parentFile
+            val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
+            val url = vcsDir.getRemoteUrl()
+            val path = vcsDir.getPathToRoot(projectDir)
+
+            put("<REPLACE_DEFINITION_FILE_PATH>", "$path/${definitionFile.name}")
+            put("<REPLACE_ABSOLUTE_DEFINITION_FILE_PATH>", definitionFile.absoluteFile.invariantSeparatorsPath)
+            put("<REPLACE_URL>", url)
+            put("<REPLACE_REVISION>", vcsDir.getRevision())
+            put("<REPLACE_PATH>", path)
+            put("<REPLACE_URL_PROCESSED>", normalizeVcsUrl(url))
+        }
+
+        putAll(custom)
+    }
+
+    return replacements.entries.fold(expectedResultFile.readText()) { text, (oldValue, newValue) ->
+        text.replace(oldValue, newValue)
+    }
 }
 
-fun patchExpectedResult2(expectedResultFile: File, definitionFile: File): String {
-    val projectDir = definitionFile.parentFile
-    val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
-    val vcsUrl = vcsDir.getRemoteUrl()
-    val vcsRevision = vcsDir.getRevision()
-    val vcsPath = vcsDir.getPathToRoot(projectDir)
-
-    return patchExpectedResult(
-        expectedResultFile,
-        definitionFilePath = "$vcsPath/${definitionFile.name}",
-        absoluteDefinitionFilePath = definitionFile.absolutePath,
-        path = vcsPath,
-        revision = vcsRevision,
-        url = normalizeVcsUrl(vcsUrl)
-    )
-}
-
+/**
+ * Return a patched version of the [result] string, which is assumed to represent an ORT result (but is not required to
+ * do). Values that usually change between ORT runs, like timestamps, are replaced with invariant values to allow for
+ * easy comparison with expected results. If [patchStartAndEndTime] is true, start and end times are also replaced.
+ * Additionally, [custom] regex replacements with substitutions can be specified.
+ */
 fun patchActualResult(
     result: String,
     custom: Map<String, String> = emptyMap(),
@@ -105,7 +131,7 @@ fun patchActualResult(
     fun String.replaceIf(condition: Boolean, regex: Regex, transform: (MatchResult) -> CharSequence) =
         if (condition) replace(regex, transform) else this
 
-    return custom.entries.fold(result) { text, entry -> text.replace(entry.key, entry.value) }
+    return custom.entries.fold(result) { text, (pattern, replacement) -> text.replace(pattern.toRegex(), replacement) }
         .replace(ORT_VERSION_REGEX) { "${it.groupValues[1]}: \"HEAD\"" }
         .replace(JAVA_VERSION_REGEX) { "${it.groupValues[1]}: \"${System.getProperty("java.version")}\"" }
         .replace(ENV_VAR_REGEX) { "${it.groupValues[1]} {}" }
@@ -114,29 +140,72 @@ fun patchActualResult(
         .replaceIf(patchStartAndEndTime, START_AND_END_TIME_REGEX) { "${it.groupValues[1]}: \"${Instant.EPOCH}\"" }
 }
 
-fun patchActualResult(
-    result: OrtResult,
-    patchStartAndEndTime: Boolean = false
-): String =
-    patchActualResult(yamlMapper.writeValueAsString(result), patchStartAndEndTime = patchStartAndEndTime)
-
 fun readOrtResult(file: String) = readOrtResult(File(file))
 
 fun readOrtResult(file: File) = file.mapper().readValue<OrtResult>(patchExpectedResult(file))
 
 /**
- * A helper function to create a custom matcher that compares an [expected] collection to a collection obtained by
- * [transform] using the provided [matcher].
+ * Create a [ScannerRun] with the given [pkgScanResults].
  */
-fun <T, U> transformingCollectionMatcher(
-    expected: Collection<U>,
-    matcher: (Collection<U>) -> Matcher<Collection<U>>,
-    transform: (T) -> Collection<U>
-): Matcher<T?> = neverNullMatcher { value -> matcher(expected).test(transform(value)) }
+fun scannerRunOf(vararg pkgScanResults: Pair<Identifier, List<ScanResult>>): ScannerRun {
+    val pkgScanResultsWithKnownProvenance = pkgScanResults.associate { (id, scanResultsForId) ->
+        id to scanResultsForId.map { scanResult ->
+            scanResult.takeIf { scanResult.provenance is KnownProvenance } ?: scanResult.copy(
+                provenance = ArtifactProvenance(
+                    sourceArtifact = RemoteArtifact(
+                        url = id.toPurl(),
+                        hash = Hash(value = "", algorithm = HashAlgorithm.NONE)
+                    )
+                )
+            )
+        }
+    }
 
-/**
- * A helper function to create custom matchers that assert that the collection obtained by [transform] is empty.
- */
-fun <T, U> transformingCollectionEmptyMatcher(
-    transform: (T) -> Collection<U>
-): Matcher<T?> = neverNullMatcher { value -> beEmpty<U>().test(transform(value)) }
+    val scanResults = pkgScanResultsWithKnownProvenance.values.flatten().mapTo(mutableSetOf()) { scanResult ->
+        scanResult.copy(
+            provenance = (scanResult.provenance as? RepositoryProvenance)?.clearVcsPath()?.alignRevisions()
+                ?: scanResult.provenance
+        )
+    }
+
+    val filePathsByProvenance = scanResults.mapNotNull { scanResult ->
+        val provenance = scanResult.provenance as? KnownProvenance ?: return@mapNotNull null
+
+        val paths = buildSet {
+            scanResult.summary.copyrightFindings.mapTo(this) { it.location.path }
+            scanResult.summary.licenseFindings.mapTo(this) { it.location.path }
+            scanResult.summary.snippetFindings.mapTo(this) { it.sourceLocation.path }
+        }
+
+        provenance to paths
+    }.groupBy({ it.first }, { it.second }).mapValues { it.value.flatten().toSet() }
+
+    val files = filePathsByProvenance.mapTo(mutableSetOf()) { (provenance, paths) ->
+        FileList(
+            provenance = provenance,
+            files = paths.mapTo(mutableSetOf()) {
+                FileList.Entry(path = it, sha1 = HashAlgorithm.SHA1.calculate(it.encodeToByteArray()))
+            }
+        )
+    }
+    val scanners = pkgScanResults.associate { (id, scanResultsForId) ->
+        id to scanResultsForId.mapTo(mutableSetOf()) { it.scanner.name }
+    }
+
+    return ScannerRun.EMPTY.copy(
+        provenances = pkgScanResultsWithKnownProvenance.mapTo(mutableSetOf()) { (id, scanResultsForId) ->
+            val packageProvenance = scanResultsForId.firstOrNull()?.provenance as KnownProvenance
+
+            ProvenanceResolutionResult(
+                id = id,
+                packageProvenance = packageProvenance,
+                subRepositories = emptyMap(),
+                packageProvenanceResolutionIssue = null,
+                nestedProvenanceResolutionIssue = null
+            )
+        },
+        scanResults = scanResults,
+        files = files,
+        scanners = scanners
+    )
+}

@@ -9,6 +9,7 @@ uploading Service Account Keys.
 ## Getting Started
 
 To run the pipeline, you will need the following things:
+
 * A Kubernetes cluster with Tekton installed (follow the
   [installation instructions](https://tekton.dev/docs/pipelines/install/)).
 * You will need to install the [git-clone](https://hub.tekton.dev/tekton/task/git-clone) and
@@ -19,6 +20,7 @@ The pipeline is defined in `ort-pipeline.yaml`. You will need to replace `ort:la
 `gcr.io/<project_id>/ort:latest`.
 
 The pipeline takes a few inputs:
+
 * `shared-data` is a workspace and will need a volume. It is used for checking out the source code repo, and for storing
   the temporary artifacts.
 * `gcs-credentials` is a workspace and will need a volume. On GKE, you can use Workload Identities to allow the
@@ -42,8 +44,8 @@ Next, you need to create a `PipelineRun` resource. In order to trigger a run, e.
 ## Next Steps
 
 You probably do not want to trigger each execution via `kubectl`. Check out the
-[Tekton documentation](https://tekton.dev/docs/triggers/) to learn how you can trigger a _PipelineRun_ via
-_EventListeneres_.
+[Tekton documentation](https://tekton.dev/docs/triggers/) to learn how you can trigger a *PipelineRun* via
+*EventListeners*.
 
 If you are not working on a public GitHub repository, you should also check out how to work with a
 [private repo](https://hub.tekton.dev/tekton/task/git-clone).

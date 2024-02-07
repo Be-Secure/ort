@@ -28,8 +28,8 @@ import org.ossreviewtoolkit.utils.common.collapseWhitespace
  */
 data class IssueResolution(
     /**
-     * A regular expression string to match the messages of issues to resolve. Will be converted to a [Regex] using
-     * [RegexOption.DOT_MATCHES_ALL].
+     * A regular expression string to match the messages of issues to resolve. Whitespace in the message will be
+     * [collapsed][collapseWhitespace] and it will be converted to a [Regex] using [RegexOption.DOT_MATCHES_ALL].
      */
     val message: String,
 
@@ -46,7 +46,8 @@ data class IssueResolution(
     private val regex = Regex(message.collapseWhitespace(), RegexOption.DOT_MATCHES_ALL)
 
     /**
-     * True if [message] matches the message of [issue].
+     * True if [message] matches the message of [issue]. Whitespace in the message of the [issue] is
+     * [collapsed][collapseWhitespace] before matching.
      */
     fun matches(issue: Issue) = regex.matches(issue.message.collapseWhitespace())
 }

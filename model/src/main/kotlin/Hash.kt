@@ -19,6 +19,9 @@
 
 package org.ossreviewtoolkit.model
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
+import com.fasterxml.jackson.databind.util.StdConverter
+
 import java.io.File
 import java.util.Base64
 
@@ -32,6 +35,7 @@ data class Hash(
     /**
      * The value calculated using the hash algorithm.
      */
+    @JsonSerialize(converter = StringLowercaseConverter::class)
     val value: String,
 
     /**
@@ -46,8 +50,8 @@ data class Hash(
         val NONE = Hash(HashAlgorithm.NONE.toString(), HashAlgorithm.NONE)
 
         /**
-         * Create a [Hash] instance from a known hash [value]. If the [HashAlgorithm] cannot be determined,
-         * [HashAlgorithm.UNKNOWN] along with the original [value] is returned.
+         * Create a [Hash] instance from a known hash [value]. If the [HashAlgorithm] cannot be determined, the original
+         * [value] is returned with [HashAlgorithm.UNKNOWN], or with [HashAlgorithm.NONE] if the value is blank.
          */
         fun create(value: String): Hash {
             val splitValue = value.split('-')
@@ -59,7 +63,7 @@ data class Hash(
                     algorithm = HashAlgorithm.fromString(splitValue.first())
                 )
             } else {
-                Hash(value, HashAlgorithm.create(value))
+                Hash(value.lowercase(), HashAlgorithm.create(value))
             }
         }
 
@@ -78,8 +82,7 @@ data class Hash(
     /**
      * Return the hash in Support Subresource Integrity (SRI) format.
      */
-    fun toSri() = algorithm.toString().lowercase().replace("sha-", "sha") + "-" +
-            Base64.getEncoder().encodeToString(value.decodeHex())
+    fun toSri() = algorithm.name.lowercase() + "-" + Base64.getEncoder().encodeToString(value.decodeHex())
 
     /**
      * Verify that the [file] matches this hash.
@@ -96,4 +99,8 @@ data class Hash(
      * Verify that the provided [hash] matches this hash.
      */
     fun verify(hash: Hash): Boolean = algorithm == hash.algorithm && value.equals(hash.value, ignoreCase = true)
+}
+
+private class StringLowercaseConverter : StdConverter<String, String>() {
+    override fun convert(value: String): String = value.lowercase()
 }

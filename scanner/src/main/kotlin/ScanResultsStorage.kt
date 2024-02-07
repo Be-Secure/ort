@@ -26,9 +26,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
-import org.ossreviewtoolkit.model.AccessStatistics
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
@@ -43,7 +42,7 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
     /**
      * A companion object that allow to configure the globally used storage backend.
      */
-    companion object : Logging {
+    companion object {
         /**
          * A successful [Result] with an empty list of [ScanResult]s.
          */
@@ -56,27 +55,16 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
     open val name: String = javaClass.simpleName
 
     /**
-     * The access statistics for the scan result storage.
+     * Return all [ScanResult]s contained in this [ScanResultsStorage] corresponding to the [package][pkg] wrapped in a
+     * [Result].
      */
-    val stats = AccessStatistics()
-
-    /**
-     * Return all [ScanResult]s contained in this [ScanResultsStorage] corresponding to the package denoted by the given
-     * [id] wrapped in a [Result].
-     */
-    fun read(id: Identifier): Result<List<ScanResult>> {
-        val (result, duration) = measureTimedValue { readInternal(id) }
-
-        stats.numReads.incrementAndGet()
+    fun read(pkg: Package): Result<List<ScanResult>> {
+        val (result, duration) = measureTimedValue { readInternal(pkg) }
 
         result.onSuccess { results ->
-            if (results.isNotEmpty()) {
-                stats.numHits.incrementAndGet()
-            }
-
             logger.info {
-                "Read ${results.size} scan result(s) for '${id.toCoordinates()}' from ${javaClass.simpleName} in " +
-                        "$duration."
+                "Read ${results.size} scan result(s) for '${pkg.id.toCoordinates()}' from ${javaClass.simpleName} in " +
+                    "$duration."
             }
         }
 
@@ -85,25 +73,19 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
 
     /**
      * Return all [ScanResult]s contained in this [ScanResultsStorage] corresponding to the given [package][pkg] that
-     * are [compatible][ScannerCriteria.matches] with the provided [scannerCriteria] wrapped in a [Result]. Also,
+     * are [compatible][ScannerMatcher.matches] with the provided [scannerMatcher] wrapped in a [Result]. Also,
      * [Package.sourceArtifact], [Package.vcs], and [Package.vcsProcessed] are used to check if the scan result matches
      * the expected source code location. That check is important to find the correct results when different revisions
      * of a package using the same version name are used (e.g. multiple scans of a "1.0-SNAPSHOT" version during
      * development).
      */
-    fun read(pkg: Package, scannerCriteria: ScannerCriteria): Result<List<ScanResult>> {
-        val (result, duration) = measureTimedValue { readInternal(pkg, scannerCriteria) }
-
-        stats.numReads.incrementAndGet()
+    fun read(pkg: Package, scannerMatcher: ScannerMatcher): Result<List<ScanResult>> {
+        val (result, duration) = measureTimedValue { readInternal(pkg, scannerMatcher) }
 
         result.onSuccess { results ->
-            if (results.isNotEmpty()) {
-                stats.numHits.incrementAndGet()
-            }
-
             logger.info {
-                "Read ${results.size} scan result(s) for '${pkg.id.toCoordinates()}' from ${javaClass.simpleName} in " +
-                        "$duration."
+                "Read ${results.size} matching scan result(s) for '${pkg.id.toCoordinates()}' from " +
+                    "${javaClass.simpleName} in $duration."
             }
         }
 
@@ -112,25 +94,19 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
 
     /**
      * Return all [ScanResult]s contained in this [ScanResultsStorage] corresponding to the given [packages] that
-     * are [compatible][ScannerCriteria.matches] with the provided [scannerCriteria] wrapped in a [Result]. Also,
+     * are [compatible][ScannerMatcher.matches] with the provided [scannerMatcher] wrapped in a [Result]. Also,
      * [Package.sourceArtifact], [Package.vcs], and [Package.vcsProcessed] are used to check if the scan result matches
      * the expected source code location. That check is important to find the correct results when different revisions
      * of a package using the same version name are used (e.g. multiple scans of a "1.0-SNAPSHOT" version during
      * development).
      */
-    fun read(
-        packages: Collection<Package>,
-        scannerCriteria: ScannerCriteria
-    ): Result<Map<Identifier, List<ScanResult>>> {
-        val (result, duration) = measureTimedValue { readInternal(packages, scannerCriteria) }
-
-        stats.numReads.addAndGet(packages.size)
+    fun read(packages: Collection<Package>, scannerMatcher: ScannerMatcher): Result<Map<Identifier, List<ScanResult>>> {
+        val (result, duration) = measureTimedValue { readInternal(packages, scannerMatcher) }
 
         result.onSuccess { results ->
-            stats.numHits.addAndGet(results.count { (_, results) -> results.isNotEmpty() })
-
             logger.info {
-                "Read ${results.values.sumOf { it.size }} scan result(s) from ${javaClass.simpleName} in $duration."
+                val count = results.values.sumOf { it.size }
+                "Read $count matching scan result(s) from ${javaClass.simpleName} in $duration."
             }
         }
 
@@ -162,55 +138,57 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
     }
 
     /**
-     * Internal version of [read] that does not update the [access statistics][stats].
+     * Internal version of [read].
      */
-    protected abstract fun readInternal(id: Identifier): Result<List<ScanResult>>
+    protected abstract fun readInternal(pkg: Package): Result<List<ScanResult>>
 
     /**
-     * Internal version of [read] that does not update the [access statistics][stats]. Implementations may want to
-     * override this function if they can filter for the wanted [scannerCriteria] in a more efficient way.
+     * Internal version of [read]. Implementations may want to override this function if they can filter for the wanted
+     * [scannerMatcher] in a more efficient way than this default implementation.
      */
-    protected open fun readInternal(pkg: Package, scannerCriteria: ScannerCriteria): Result<List<ScanResult>> =
-        readInternal(pkg.id).map { results ->
+    protected open fun readInternal(pkg: Package, scannerMatcher: ScannerMatcher): Result<List<ScanResult>> =
+        readInternal(pkg).map { results ->
             if (results.isEmpty()) {
                 results
             } else {
-                val scanResults = results.toMutableList()
+                val (matchingProvenance, nonMatchingProvenance) = results.partition { it.provenance.matches(pkg) }
 
-                // Only keep scan results whose provenance information matches the package information.
-                scanResults.retainAll { it.provenance.matches(pkg) }
-                if (scanResults.isEmpty()) {
+                if (matchingProvenance.isEmpty()) {
                     logger.debug {
                         "No stored scan results found for $pkg. The following entries with non-matching provenance " +
-                                "have been ignored: ${scanResults.map { it.provenance }}"
+                            "have been ignored: ${nonMatchingProvenance.map { it.provenance }}"
                     }
+
+                    matchingProvenance
                 } else {
-                    // Only keep scan results from compatible scanners.
-                    scanResults.retainAll { scannerCriteria.matches(it.scanner) }
-                    if (scanResults.isEmpty()) {
+                    val (matchingCriteria, nonMatchingCriteria) = matchingProvenance.partition {
+                        scannerMatcher.matches(it.scanner)
+                    }
+
+                    if (matchingCriteria.isEmpty()) {
                         logger.debug {
-                            "No stored scan results found for $scannerCriteria. The following entries with " +
-                                    "incompatible scanners have been ignored: ${scanResults.map { it.scanner }}"
+                            "No stored scan results for '${pkg.id.toCoordinates()}' match $scannerMatcher. The " +
+                                "following entries with non-matching criteria have been ignored: " +
+                                nonMatchingCriteria.map { it.scanner }
                         }
                     }
-                }
 
-                scanResults
+                    matchingCriteria
+                }
             }
         }
 
     /**
-     * Internal version of [read] that does not update the [access statistics][stats]. The default implementation uses
-     * [Dispatchers.IO] to run requests for individual packages in parallel. Implementations may want to override this
-     * function if they can filter for the wanted [scannerCriteria] or fetch results for multiple packages in a more
-     * efficient way.
+     * Internal version of [read]. The default implementation uses [Dispatchers.IO] to run requests for individual
+     * packages in parallel. Implementations may want to override this function if they can filter for the wanted
+     * [scannerMatcher] or fetch results for multiple packages in a more efficient way.
      */
     protected open fun readInternal(
         packages: Collection<Package>,
-        scannerCriteria: ScannerCriteria
+        scannerMatcher: ScannerMatcher
     ): Result<Map<Identifier, List<ScanResult>>> {
         val results = runBlocking(Dispatchers.IO) {
-            packages.map { async { it.id to readInternal(it, scannerCriteria) } }.awaitAll()
+            packages.map { async { it.id to readInternal(it, scannerMatcher) } }.awaitAll()
         }.associate { it }
 
         val successfulResults = results.mapNotNull { (id, scanResults) ->
@@ -229,15 +207,14 @@ abstract class ScanResultsStorage : PackageBasedScanStorage {
      */
     protected abstract fun addInternal(id: Identifier, scanResult: ScanResult): Result<Unit>
 
-    override fun read(id: Identifier, nestedProvenance: NestedProvenance): List<NestedProvenanceScanResult> =
-        read(id).toNestedProvenanceScanResult(nestedProvenance)
+    override fun read(pkg: Package, nestedProvenance: NestedProvenance): List<NestedProvenanceScanResult> =
+        read(pkg).toNestedProvenanceScanResult(nestedProvenance)
 
     override fun read(
         pkg: Package,
         nestedProvenance: NestedProvenance,
-        scannerCriteria: ScannerCriteria
-    ): List<NestedProvenanceScanResult> =
-        read(pkg, scannerCriteria).toNestedProvenanceScanResult(nestedProvenance)
+        scannerMatcher: ScannerMatcher
+    ): List<NestedProvenanceScanResult> = read(pkg, scannerMatcher).toNestedProvenanceScanResult(nestedProvenance)
 
     private fun Result<List<ScanResult>>.toNestedProvenanceScanResult(nestedProvenance: NestedProvenance) =
         map { scanResults ->

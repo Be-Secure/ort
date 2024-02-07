@@ -30,7 +30,6 @@ import org.ossreviewtoolkit.model.Repository
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
-import org.ossreviewtoolkit.model.ScannerRun
 import org.ossreviewtoolkit.model.Scope
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.UnknownProvenance
@@ -41,6 +40,7 @@ import org.ossreviewtoolkit.model.config.PathExcludeReason
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.spdx.toSpdx
+import org.ossreviewtoolkit.utils.test.scannerRunOf
 
 val authors = setOf("The Author", "The Other Author")
 val projectAuthors = setOf("The Project Author")
@@ -49,7 +49,7 @@ val concludedLicense = "LicenseRef-a AND LicenseRef-b".toSpdx()
 val declaredLicenses = setOf("LicenseRef-a", "LicenseRef-b")
 val declaredLicensesProcessed = DeclaredLicenseProcessor.process(declaredLicenses)
 
-val licenseFindings = sortedSetOf(
+val licenseFindings = setOf(
     LicenseFinding("LicenseRef-a", TextLocation("LICENSE", 1)),
     LicenseFinding("LicenseRef-b", TextLocation("LICENSE", 2))
 )
@@ -117,7 +117,7 @@ val allPackages = setOf(
 
 val scope = Scope(
     name = "compile",
-    dependencies = sortedSetOf(
+    dependencies = setOf(
         packageWithoutLicense.toReference(),
         packageWithConcludedLicense.toReference(),
         packageWithDeclaredLicense.toReference(),
@@ -129,10 +129,8 @@ val project = Project.EMPTY.copy(
     id = Identifier("Maven:org.ossreviewtoolkit:project-included:1.0"),
     definitionFilePath = "included/pom.xml",
     authors = projectAuthors,
-    scopeDependencies = sortedSetOf(scope)
+    scopeDependencies = setOf(scope)
 )
-
-val provenance = UnknownProvenance
 
 val scanResults = listOf(
     packageWithDetectedLicense,
@@ -142,10 +140,10 @@ val scanResults = listOf(
 ).associateTo(sortedMapOf()) {
     it.id to listOf(
         ScanResult(
-            provenance = provenance,
+            provenance = UnknownProvenance,
             scanner = ScannerDetails.EMPTY,
             summary = ScanSummary.EMPTY.copy(
-                licenseFindings = licenseFindings,
+                licenseFindings = licenseFindings
             )
         )
     )
@@ -172,7 +170,5 @@ val ortResult = OrtResult(
             packages = allPackages
         )
     ),
-    scanner = ScannerRun.EMPTY.copy(
-        scanResults = scanResults
-    )
+    scanner = scannerRunOf(*scanResults.toList().toTypedArray())
 )

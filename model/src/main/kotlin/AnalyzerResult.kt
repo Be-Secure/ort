@@ -19,7 +19,7 @@
 
 package org.ossreviewtoolkit.model
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
@@ -30,7 +30,6 @@ import org.ossreviewtoolkit.model.utils.ProjectSortedSetConverter
 /**
  * A class that merges all information from individual [ProjectAnalyzerResult]s created for each found definition file.
  */
-@JsonIgnoreProperties(value = ["has_issues"], allowGetters = true)
 data class AnalyzerResult(
     /**
      * Sorted set of the projects, as they appear in the individual analyzer results.
@@ -47,8 +46,7 @@ data class AnalyzerResult(
     /**
      * The lists of [Issue]s that occurred within the analyzed projects themselves. Issues related to project
      * dependencies are contained in the dependencies of the project's scopes.
-     * This property is not serialized if the map is empty to reduce the size of the result file. If there are no issues
-     * at all, [AnalyzerResult.hasIssues] already contains that information.
+     * This property is not serialized if the map is empty to reduce the size of the result file.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JsonPropertyOrder(alphabetic = true)
@@ -78,32 +76,27 @@ data class AnalyzerResult(
     /**
      * Return a map of all de-duplicated [Issue]s associated by [Identifier].
      */
-    fun collectIssues(): Map<Identifier, Set<Issue>> {
-        val collectedIssues = issues.mapValuesTo(mutableMapOf()) { it.value.toMutableSet() }
+    @JsonIgnore
+    fun getAllIssues(): Map<Identifier, Set<Issue>> =
+        buildMap<Identifier, MutableSet<Issue>> {
+            putAll(issues.mapValues { it.value.toMutableSet() })
 
-        // Collecting issues from projects is necessary only if they use the dependency tree format; otherwise, the
-        // issues can be retrieved from the graph. So, once analyzer results are created with dependency graphs
-        // exclusively, this step can be removed.
-        projects.filter { it.scopeDependencies != null }.forEach { project ->
-            val projectDependencies = project.scopeDependencies.orEmpty().asSequence().flatMap(Scope::dependencies)
-            DependencyNavigator.collectIssues(projectDependencies).forEach { (id, issues) ->
-                collectedIssues.getOrPut(id) { mutableSetOf() } += issues
+            // Collecting issues from projects is necessary only if they use the dependency tree format; otherwise, the
+            // issues can be retrieved from the graph. So, once analyzer results are created with dependency graphs
+            // exclusively, this step can be removed.
+            projects.filter { it.scopeDependencies != null }.forEach { project ->
+                val projectDependencies = project.scopeDependencies.orEmpty().asSequence().flatMap(Scope::dependencies)
+                DependencyNavigator.collectIssues(projectDependencies).forEach { (id, issues) ->
+                    getOrPut(id) { mutableSetOf() } += issues
+                }
+            }
+
+            dependencyGraphs.values.forEach { graph ->
+                graph.collectIssues().forEach { (id, issues) ->
+                    getOrPut(id) { mutableSetOf() } += issues
+                }
             }
         }
-
-        dependencyGraphs.values.forEach { graph ->
-            graph.collectIssues().forEach { (id, issues) ->
-                collectedIssues.getOrPut(id) { mutableSetOf() } += issues
-            }
-        }
-
-        return collectedIssues
-    }
-
-    /**
-     * True if there were any issues during the analysis, false otherwise.
-     */
-    val hasIssues by lazy { collectIssues().isNotEmpty() }
 
     /**
      * Return a result, in which all contained [Project]s have their scope information resolved. If this result

@@ -18,18 +18,16 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":model"))
+    api(projects.model)
 
-    implementation(project(":utils:ort-utils"))
+    implementation(projects.utils.ortUtils)
 
-    implementation(libs.jgit)
-    implementation(libs.jgitSshApacheAgent)
-    implementation(libs.svnkit)
+    funTestImplementation(platform(projects.plugins.versionControlSystems))
 
     testImplementation(libs.mockk)
 }

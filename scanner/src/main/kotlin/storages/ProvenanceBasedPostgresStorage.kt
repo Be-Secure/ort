@@ -23,7 +23,7 @@ import java.sql.SQLException
 
 import javax.sql.DataSource
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.jetbrains.exposed.dao.id.IntIdTable
 import org.jetbrains.exposed.sql.Database
@@ -61,8 +61,6 @@ class ProvenanceBasedPostgresStorage(
      */
     private val tableName: String = "provenance_scan_results"
 ) : ProvenanceBasedScanStorage {
-    companion object : Logging
-
     private val table = ProvenanceScanResults(tableName)
 
     /** The [Database] instance on which all operations are executed. */
@@ -90,15 +88,15 @@ class ProvenanceBasedPostgresStorage(
                     is ArtifactProvenance -> {
                         query.andWhere {
                             table.artifactUrl eq provenance.sourceArtifact.url and
-                                    (table.artifactHash eq provenance.sourceArtifact.hash.value)
+                                (table.artifactHash eq provenance.sourceArtifact.hash.value)
                         }
                     }
 
                     is RepositoryProvenance -> {
                         query.andWhere {
                             table.vcsType eq provenance.vcsInfo.type.toString() and
-                                    (table.vcsUrl eq provenance.vcsInfo.url) and
-                                    (table.vcsRevision eq provenance.resolvedRevision)
+                                (table.vcsUrl eq provenance.vcsInfo.url) and
+                                (table.vcsRevision eq provenance.resolvedRevision)
                         }
                     }
                 }
@@ -127,7 +125,7 @@ class ProvenanceBasedPostgresStorage(
         }
     }
 
-    // TODO: Override read(provenance, scannerCriteria) to make it more efficient by matching the scanner details in the
+    // TODO: Override read(provenance, scannerMatcher) to make it more efficient by matching the scanner details in the
     //       query.
 
     override fun write(scanResult: ScanResult) {
@@ -180,7 +178,7 @@ private class ProvenanceScanResults(tableName: String) : IntIdTable(tableName) {
     val scannerName = text("scanner_name")
     val scannerVersion = text("scanner_version")
     val scannerConfiguration = text("scanner_configuration")
-    val scanSummary = jsonb("scan_summary", ScanSummary::class)
+    val scanSummary = jsonb<ScanSummary>("scan_summary")
 
     init {
         // Indices to prevent duplicate entries.

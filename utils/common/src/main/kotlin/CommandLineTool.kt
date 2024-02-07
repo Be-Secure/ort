@@ -21,7 +21,7 @@ package org.ossreviewtoolkit.utils.common
 
 import java.io.File
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.semver4j.RangesList
 import org.semver4j.RangesListFactory
@@ -31,7 +31,7 @@ import org.semver4j.Semver
  * An interface to implement by classes that are backed by a command line tool.
  */
 interface CommandLineTool {
-    companion object : Logging {
+    companion object {
         /**
          * A convenience property to require any version.
          */
@@ -104,10 +104,10 @@ interface CommandLineTool {
         val actualVersion = Semver.coerce(getVersion(workingDir))
         val requiredVersion = getVersionRequirement()
 
-        if (!actualVersion.satisfies(requiredVersion)) {
+        if (actualVersion?.satisfies(requiredVersion) != true) {
             logger.warn {
                 "The command is required in version $requiredVersion, but you are using version $actualVersion. This " +
-                        "could lead to problems."
+                    "could lead to problems."
             }
         }
     }

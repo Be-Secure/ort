@@ -28,7 +28,6 @@ import com.github.ajalt.clikt.parameters.options.split
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.file
 
-import org.ossreviewtoolkit.helper.utils.getUnresolvedRuleViolations
 import org.ossreviewtoolkit.helper.utils.readOrtResult
 import org.ossreviewtoolkit.helper.utils.replaceRuleViolationResolutions
 import org.ossreviewtoolkit.helper.utils.write
@@ -41,7 +40,7 @@ import org.ossreviewtoolkit.utils.common.expandTilde
 
 internal class GenerateRuleViolationResolutionsCommand : CliktCommand(
     help = "Generates resolutions for all unresolved rule violations. The output is written to the given repository " +
-            "configuration file."
+        "configuration file."
 ) {
     private val ortFile by option(
         "--ort-file", "-i",
@@ -62,15 +61,15 @@ internal class GenerateRuleViolationResolutionsCommand : CliktCommand(
     private val severity by option(
         "--severity",
         help = "Only consider violations of the given severities, specified as comma-separated values. Allowed " +
-                "values: ERROR,WARNING,HINT."
-    ).enum<Severity>().split(",").default(enumValues<Severity>().asList())
+            "values: ${Severity.entries.joinToString()}."
+    ).enum<Severity>().split(",").default(Severity.entries)
 
     override fun run() {
         val repositoryConfiguration = repositoryConfigurationFile.readValue<RepositoryConfiguration>()
         val ortResult = readOrtResult(ortFile).replaceConfig(repositoryConfiguration)
 
         val generatedResolutions = ortResult
-            .getUnresolvedRuleViolations()
+            .getRuleViolations(omitResolved = true)
             .filter { it.severity in severity }
             .map {
                 RuleViolationResolution(

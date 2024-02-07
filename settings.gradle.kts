@@ -17,6 +17,10 @@
  * License-Filename: LICENSE
  */
 
+// Enable type-safe project accessors, see:
+// https://docs.gradle.org/current/userguide/declaring_dependencies.html#sec:type-safe-project-accessors
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
 rootProject.name = "oss-review-toolkit"
 
 include(":advisor")
@@ -33,29 +37,10 @@ include(":clients:vulnerable-code")
 include(":detekt-rules")
 include(":downloader")
 include(":evaluator")
-include(":examples:evaluator-rules")
-include(":examples:notifications")
 include(":helper-cli")
 include(":model")
 include(":notifier")
-include(":plugins:package-curation-providers")
-include(":plugins:package-curation-providers:api")
-include(":plugins:package-curation-providers:clearly-defined")
-include(":plugins:package-curation-providers:file")
-include(":plugins:package-curation-providers:ort-config")
-include(":plugins:package-curation-providers:sw360")
-include(":plugins:package-managers")
-include(":plugins:package-managers:bower")
-include(":plugins:package-managers:bundler")
-include(":plugins:package-managers:cargo")
-include(":plugins:package-managers:carthage")
-include(":plugins:package-managers:composer")
-include(":plugins:package-managers:gradle")
-include(":plugins:package-managers:gradle-model")
-include(":plugins:package-managers:pub")
-include(":plugins:package-managers:python")
 include(":reporter")
-include(":reporter-web-app")
 include(":scanner")
 include(":utils:common")
 include(":utils:ort")
@@ -72,31 +57,43 @@ project(":clients:osv").name = "osv-client"
 project(":clients:scanoss").name = "scanoss-client"
 project(":clients:vulnerable-code").name = "vulnerable-code-client"
 
-project(":plugins:package-curation-providers:api").name = "package-curation-provider-api"
-project(":plugins:package-curation-providers:clearly-defined").name = "clearly-defined-package-curation-provider"
-project(":plugins:package-curation-providers:file").name = "file-package-curation-provider"
-project(":plugins:package-curation-providers:ort-config").name = "ort-config-package-curation-provider"
-project(":plugins:package-curation-providers:sw360").name = "sw360-package-curation-provider"
-
-project(":plugins:package-managers:bower").name = "bower-package-manager"
-project(":plugins:package-managers:bundler").name = "bundler-package-manager"
-project(":plugins:package-managers:cargo").name = "cargo-package-manager"
-project(":plugins:package-managers:carthage").name = "carthage-package-manager"
-project(":plugins:package-managers:composer").name = "composer-package-manager"
-project(":plugins:package-managers:gradle").name = "gradle-package-manager"
-project(":plugins:package-managers:pub").name = "pub-package-manager"
-project(":plugins:package-managers:python").name = "python-package-manager"
-
 project(":utils:common").name = "common-utils"
 project(":utils:ort").name = "ort-utils"
 project(":utils:scripting").name = "scripting-utils"
 project(":utils:spdx").name = "spdx-utils"
 project(":utils:test").name = "test-utils"
 
-val buildCacheRetentionDays: String by settings
+file("plugins").walk().maxDepth(3).filter {
+    it.isFile && it.name == "build.gradle.kts"
+}.mapTo(mutableListOf()) {
+    it.parentFile.toRelativeString(rootDir).replace(File.separatorChar, ':')
+}.forEach { projectPath ->
+    include(":$projectPath")
 
-buildCache {
-    local {
-        removeUnusedEntriesAfterDays = buildCacheRetentionDays.toInt()
+    // Give API and package-manager projects a dedicated name that includes the type of plugin, but keep the names of
+    // accompanying project as-is.
+    val accompanyingProjects = setOf("gradle-inspector", "gradle-model", "gradle-plugin", "web-app-template")
+
+    val parts = projectPath.split(':')
+    if (parts.size == 3 && parts[2] !in accompanyingProjects) {
+        // Convert the plural name for the type of plugin to singular.
+        val singularTypeName = parts[1].removeSuffix("s")
+
+        project(":$projectPath").name = when(parts[2]) {
+            "api" -> "$singularTypeName-api"
+            else -> "${parts[2]}-$singularTypeName"
+        }
     }
+}
+
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    // Gradle cannot access the version catalog from here, so hard-code the dependency.
+    id("org.gradle.toolchains.foojay-resolver-convention").version("0.8.0")
 }

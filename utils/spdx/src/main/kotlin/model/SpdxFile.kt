@@ -25,6 +25,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants.REF_PREFIX
+import org.ossreviewtoolkit.utils.spdx.SpdxExpression.Strictness.ALLOW_LICENSEREF_EXCEPTIONS
 import org.ossreviewtoolkit.utils.spdx.isSpdxExpressionOrNotPresent
 
 /**
@@ -33,7 +34,7 @@ import org.ossreviewtoolkit.utils.spdx.isSpdxExpressionOrNotPresent
 @JsonIgnoreProperties("ranges") // TODO: Implement ranges which is broken in the specification examples.
 data class SpdxFile(
     /**
-     * A unique identifies this [SpdxFile] within a SPDX document.
+     * A unique identifier for this [SpdxFile] within a [SpdxDocument].
      */
     @JsonProperty("SPDXID")
     val spdxId: String,
@@ -59,7 +60,7 @@ data class SpdxFile(
      * A text relating to a copyright notice, even if not complete. To represent a not present value
      * [SpdxConstants.NONE] or [SpdxConstants.NOASSERTION] must be used.
      */
-    val copyrightText: String,
+    val copyrightText: String = SpdxConstants.NOASSERTION,
 
     /**
      * The list of contributors which contributed to the file. Contributors could include names of copyright holders
@@ -102,7 +103,7 @@ data class SpdxFile(
      * The license information found in this file. To represent a not present value [SpdxConstants.NONE] or
      * [SpdxConstants.NOASSERTION] must be used.
      */
-    val licenseInfoInFiles: List<String>,
+    val licenseInfoInFiles: List<String> = listOf(SpdxConstants.NOASSERTION),
 
     /**
      * License notices or other such related notices found in the file. This may include copyright statements.
@@ -164,7 +165,7 @@ data class SpdxFile(
         /**
          * The file is associated with a video file (MIME type of video, e.g. .avi, .mkv, .mp4)
          */
-        VIDEO;
+        VIDEO
     }
 
     init {
@@ -187,10 +188,12 @@ data class SpdxFile(
 
         // TODO: The check for [licenseInfoInFiles] can be made more strict, but the SPDX specification is not exact
         //       enough yet to do this safely.
-        licenseInfoInFiles.filterNot { it.isSpdxExpressionOrNotPresent() }.let {
-            require(it.isEmpty()) {
-                "The entries in licenseInfoInFiles must each be either an SpdxExpression, 'NONE' or 'NOASSERTION', " +
-                    "but found ${it.joinToString()}."
+        licenseInfoInFiles.filterNot {
+            it.isSpdxExpressionOrNotPresent(ALLOW_LICENSEREF_EXCEPTIONS)
+        }.let { nonSpdxLicenses ->
+            require(nonSpdxLicenses.isEmpty()) {
+                "The entries in 'licenseInfoInFiles' must each be either an SPDX expression, 'NONE' or " +
+                    "'NOASSERTION', but found ${nonSpdxLicenses.joinToString { "'$it'" }}."
             }
         }
     }

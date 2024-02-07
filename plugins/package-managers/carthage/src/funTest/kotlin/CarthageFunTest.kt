@@ -20,46 +20,25 @@
 package org.ossreviewtoolkit.plugins.packagemanagers.carthage
 
 import io.kotest.core.spec.style.StringSpec
-import io.kotest.matchers.shouldBe
+import io.kotest.matchers.should
 
+import org.ossreviewtoolkit.analyzer.managers.create
 import org.ossreviewtoolkit.analyzer.managers.resolveSingleProject
-import org.ossreviewtoolkit.downloader.VersionControlSystem
-import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
-import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
-import org.ossreviewtoolkit.utils.test.USER_DIR
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.utils.test.getAssetFile
-import org.ossreviewtoolkit.utils.test.patchExpectedResult
-import org.ossreviewtoolkit.utils.test.toYaml
+import org.ossreviewtoolkit.utils.test.matchExpectedResult
 
-class CarthageFunTest : StringSpec() {
-    private val projectDir = getAssetFile("projects/synthetic/carthage")
-    private val vcsDir = VersionControlSystem.forDirectory(projectDir)!!
-    private val vcsUrl = vcsDir.getRemoteUrl()
-    private val vcsRevision = vcsDir.getRevision()
+class CarthageFunTest : StringSpec({
+    "Project dependencies are detected correctly" {
+        val definitionFile = getAssetFile("projects/synthetic/carthage/Cartfile.resolved")
+        val expectedResultFile = getAssetFile("projects/synthetic/carthage-expected-output.yml")
 
-    private val normalizedVcsUrl = normalizeVcsUrl(vcsUrl)
-    private val gitHubProject = normalizedVcsUrl.split('/', '.').dropLast(1).takeLast(2).joinToString(":")
+        val result = create("Carthage").resolveSingleProject(definitionFile)
 
-    init {
-        "Project dependencies are detected correctly" {
-            val cartfileResolved = projectDir.resolve("Cartfile.resolved")
-            val vcsPath = vcsDir.getPathToRoot(projectDir)
-            val expectedResult = patchExpectedResult(
-                projectDir.resolveSibling("carthage-expected-output.yml"),
-                definitionFilePath = "$vcsPath/Cartfile.resolved",
-                path = vcsPath,
-                revision = vcsRevision,
-                url = normalizedVcsUrl,
-                custom = mapOf("<REPLACE_GITHUB_PROJECT>" to gitHubProject)
-            )
-
-            val result = createCarthage().resolveSingleProject(cartfileResolved)
-
-            result.toYaml() shouldBe expectedResult
-        }
+        result.toYaml() should matchExpectedResult(
+            expectedResultFile,
+            definitionFile,
+            mapOf("<REPLACE_GITHUB_ORGANIZATION>" to "oss-review-toolkit")
+        )
     }
-
-    private fun createCarthage() =
-        Carthage("Carthage", USER_DIR, AnalyzerConfiguration(), RepositoryConfiguration())
-}
+})

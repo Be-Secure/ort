@@ -24,8 +24,7 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.annotation.JsonSerialize
 
-import java.util.SortedSet
-
+import org.ossreviewtoolkit.model.utils.ScopeSortedSetConverter
 import org.ossreviewtoolkit.utils.common.StringSortedSetConverter
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.ort.ProcessedDeclaredLicense
@@ -98,7 +97,8 @@ data class Project(
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonProperty("scopes")
-    val scopeDependencies: SortedSet<Scope>? = null,
+    @JsonSerialize(converter = ScopeSortedSetConverter::class)
+    val scopeDependencies: Set<Scope>? = null,
 
     /**
      * Contains dependency information as a set of scope names in case a shared [DependencyGraph] is used. The scopes
@@ -106,7 +106,7 @@ data class Project(
      * graph.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    val scopeNames: SortedSet<String>? = null
+    val scopeNames: Set<String>? = null
 ) {
     companion object {
         /**
@@ -122,14 +122,14 @@ data class Project(
             vcs = VcsInfo.EMPTY,
             vcsProcessed = VcsInfo.EMPTY,
             homepageUrl = "",
-            scopeDependencies = sortedSetOf()
+            scopeDependencies = emptySet()
         )
     }
 
     init {
         require(scopeDependencies == null || scopeNames == null) {
             "Not both 'scopeDependencies' and 'scopeNames' may be set, as otherwise it is ambiguous which one " +
-                    "to use."
+                "to use."
         }
     }
 
@@ -138,7 +138,7 @@ data class Project(
      * matter whether this information has been initialized directly or has been encoded in a [DependencyGraph].
      */
     @get:JsonIgnore
-    val scopes by lazy { scopeDependencies ?: sortedSetOf() }
+    val scopes: Set<Scope> by lazy { scopeDependencies.orEmpty() }
 
     /**
      * Return a [Project] instance that has its scope information directly available, resolved from the given [graph].

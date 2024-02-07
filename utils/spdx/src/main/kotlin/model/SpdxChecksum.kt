@@ -46,7 +46,7 @@ data class SpdxChecksum(
         SHA224(56),
         SHA256(64),
         SHA384(96),
-        SHA512(128);
+        SHA512(128)
     }
 
     init {
@@ -58,7 +58,7 @@ data class SpdxChecksum(
 
         require(algorithm.checksumHexDigits == -1 || checksumValue.length == algorithm.checksumHexDigits) {
             "Expected a checksum value with ${algorithm.checksumHexDigits} hexadecimal symbols, but found " +
-                    "${checksumValue.length}."
+                "${checksumValue.length}."
         }
     }
 }

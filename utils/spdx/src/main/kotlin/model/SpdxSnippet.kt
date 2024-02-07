@@ -24,6 +24,7 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
 
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
+import org.ossreviewtoolkit.utils.spdx.SpdxExpression.Strictness.ALLOW_LICENSEREF_EXCEPTIONS
 import org.ossreviewtoolkit.utils.spdx.isSpdxExpressionOrNotPresent
 
 /**
@@ -55,7 +56,7 @@ data class SpdxSnippet(
      * respectively. Ideally this text is extracted from the actual snippet. To represent a not present value
      * [SpdxConstants.NONE] or [SpdxConstants.NOASSERTION] must be used.
      */
-    val copyrightText: String,
+    val copyrightText: String = SpdxConstants.NOASSERTION,
 
     /**
      * Any relevant background references or analysis that went in to arriving at the concluded License for the file.
@@ -83,10 +84,52 @@ data class SpdxSnippet(
     val name: String = "",
 
     /**
+     * The ranges in the original host file that the snippet information applies to.
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    val ranges: List<Range> = emptyList(),
+
+    /**
      * The SPDX reference referencing the document within the SpdxDocument containing the snippet.
      */
     val snippetFromFile: String
 ) {
+    data class Range(
+        /** The start of the snippet range. */
+        val startPointer: Pointer,
+
+        /** The end of the snippet range. */
+        val endPointer: Pointer
+    ) {
+        init {
+            require(
+                (startPointer.lineNumber != null && endPointer.lineNumber != null) ||
+                    (startPointer.offset != null && endPointer.offset != null)
+            ) {
+                "Start and end pointers need to be of the same type (line number or byte offset)."
+            }
+        }
+    }
+
+    data class Pointer(
+        /** SPDX ID of the file. */
+        val reference: String,
+
+        /** Line number in the (text) file. */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        val lineNumber: Int? = null,
+
+        /** Byte offset in the (binary) file. */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        val offset: Int? = null
+    ) {
+        init {
+            require((lineNumber != null) xor (offset != null)) {
+                "Either 'lineNumber' or 'offset' must be set for the '$reference' pointer."
+            }
+        }
+    }
+
     init {
         require(spdxId.startsWith(SpdxConstants.REF_PREFIX)) {
             "The SPDX ID '$spdxId' has to start with '${SpdxConstants.REF_PREFIX}'."
@@ -103,11 +146,17 @@ data class SpdxSnippet(
 
         // TODO: The check for [licenseInfoInSnippets] can be made more strict, but the SPDX specification is not exact
         //       enough yet to do this safely.
-        licenseInfoInSnippets.filterNot { it.isSpdxExpressionOrNotPresent() }.let { invalidEntries ->
-            require(invalidEntries.isEmpty()) {
-                "The entries in licenseInfoInSnippets must each be either an SpdxExpression, 'NONE' or " +
-                        "'NOASSERTION', but found ${invalidEntries.joinToString()}."
+        licenseInfoInSnippets.filterNot {
+            it.isSpdxExpressionOrNotPresent(ALLOW_LICENSEREF_EXCEPTIONS)
+        }.let { nonSpdxLicenses ->
+            require(nonSpdxLicenses.isEmpty()) {
+                "The entries in 'licenseInfoInSnippets' must each be either an SPDX expression, 'NONE' or " +
+                    "'NOASSERTION', but found ${nonSpdxLicenses.joinToString { "'$it'" }}."
             }
+        }
+
+        require(name.isNotBlank()) {
+            "The name must not be blank."
         }
 
         require(snippetFromFile.isNotBlank()) {

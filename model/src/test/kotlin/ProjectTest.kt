@@ -34,7 +34,7 @@ import io.mockk.mockk
 import java.io.File
 
 private fun readAnalyzerResult(analyzerResultFilename: String): Project =
-    File("../analyzer/src/funTest/assets/projects/synthetic")
+    File("src/test/assets")
         .resolve(analyzerResultFilename)
         .readValue<ProjectAnalyzerResult>().project
 
@@ -85,8 +85,8 @@ class ProjectTest : WordSpec({
         "fail if both scopeDependencies and scopeNames are provided" {
             shouldThrow<IllegalArgumentException> {
                 Project.EMPTY.copy(
-                    scopeDependencies = sortedSetOf(mockk()),
-                    scopeNames = sortedSetOf("test", "compile", "other")
+                    scopeDependencies = setOf(mockk()),
+                    scopeNames = setOf("test", "compile", "other")
                 )
             }
         }
@@ -105,7 +105,7 @@ class ProjectTest : WordSpec({
                 definitionFilePath = "/some/path",
                 declaredLicenses = emptySet(),
                 vcs = VcsInfo.EMPTY,
-                homepageUrl = "https//www.test-project.org",
+                homepageUrl = "https//www.test-project.org"
             )
 
             project.scopes.shouldBeEmpty()
@@ -127,7 +127,7 @@ class ProjectTest : WordSpec({
                 definitionFilePath = "/some/path",
                 homepageUrl = "https//www.test-project.org",
                 scopeDependencies = null,
-                scopeNames = sortedSetOf("partial")
+                scopeNames = setOf("partial")
             )
 
             val graph = createDependencyGraph(qualified = true)

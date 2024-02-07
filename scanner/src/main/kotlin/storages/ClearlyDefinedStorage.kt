@@ -19,54 +19,48 @@
 
 package org.ossreviewtoolkit.scanner.storages
 
+import com.fasterxml.jackson.databind.JsonNode
+
+import java.time.Instant
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 
 import okhttp3.OkHttpClient
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService
 import org.ossreviewtoolkit.clients.clearlydefined.ComponentType
 import org.ossreviewtoolkit.clients.clearlydefined.Coordinates
 import org.ossreviewtoolkit.clients.clearlydefined.toCoordinates
+import org.ossreviewtoolkit.downloader.VcsHost
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.Hash
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.Package
+import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.RemoteArtifact
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.ScanResult
+import org.ossreviewtoolkit.model.ScannerDetails
 import org.ossreviewtoolkit.model.UnknownProvenance
-import org.ossreviewtoolkit.model.VcsInfo
-import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.ClearlyDefinedStorageConfiguration
 import org.ossreviewtoolkit.model.jsonMapper
 import org.ossreviewtoolkit.model.utils.toClearlyDefinedCoordinates
 import org.ossreviewtoolkit.model.utils.toClearlyDefinedSourceLocation
+import org.ossreviewtoolkit.scanner.CommandLinePathScannerWrapper
 import org.ossreviewtoolkit.scanner.ScanResultsStorage
 import org.ossreviewtoolkit.scanner.ScanStorageException
-import org.ossreviewtoolkit.scanner.ScannerCriteria
-import org.ossreviewtoolkit.scanner.scanners.scancode.generateScannerDetails
-import org.ossreviewtoolkit.scanner.scanners.scancode.generateSummary
+import org.ossreviewtoolkit.scanner.ScannerWrapperFactory
+import org.ossreviewtoolkit.scanner.storages.utils.getScanCodeDetails
+import org.ossreviewtoolkit.utils.common.AlphaNumericComparator
 import org.ossreviewtoolkit.utils.common.collectMessages
+import org.ossreviewtoolkit.utils.common.withoutPrefix
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 import org.ossreviewtoolkit.utils.ort.showStackTrace
-import org.ossreviewtoolkit.utils.spdx.SpdxConstants
 
 import retrofit2.HttpException
-
-/** The name used by ClearlyDefined for the ScanCode tool. */
-private const val TOOL_SCAN_CODE = "scancode"
-
-/**
- * Given a list of [tools], return the version of ScanCode that was used to scan the package with the given
- * [coordinates], or return null if no such tool entry is found.
- */
-private fun findScanCodeVersion(tools: List<String>, coordinates: Coordinates): String? {
-    val toolUrl = "$coordinates/$TOOL_SCAN_CODE/"
-    return tools.find { it.startsWith(toolUrl) }?.substring(toolUrl.length)
-}
 
 /**
  * A storage implementation that tries to download ScanCode results from ClearlyDefined.
@@ -79,8 +73,6 @@ class ClearlyDefinedStorage(
     config: ClearlyDefinedStorageConfiguration,
     client: OkHttpClient? = null
 ) : ScanResultsStorage() {
-    companion object : Logging
-
     constructor(serverUrl: String, client: OkHttpClient? = null) : this(
         ClearlyDefinedStorageConfiguration(serverUrl), client
     )
@@ -90,10 +82,7 @@ class ClearlyDefinedStorage(
         ClearlyDefinedService.create(config.serverUrl, client ?: OkHttpClientHelper.buildClient())
     }
 
-    override fun readInternal(id: Identifier): Result<List<ScanResult>> =
-        runBlocking(Dispatchers.IO) { readFromClearlyDefined(Package.EMPTY.copy(id = id)) }
-
-    override fun readInternal(pkg: Package, scannerCriteria: ScannerCriteria): Result<List<ScanResult>> =
+    override fun readInternal(pkg: Package): Result<List<ScanResult>> =
         runBlocking(Dispatchers.IO) { readFromClearlyDefined(pkg) }
 
     override fun addInternal(id: Identifier, scanResult: ScanResult): Result<Unit> =
@@ -106,32 +95,68 @@ class ClearlyDefinedStorage(
      */
     private suspend fun readFromClearlyDefined(pkg: Package): Result<List<ScanResult>> {
         val coordinates = pkg.toClearlyDefinedSourceLocation()?.toCoordinates() ?: pkg.toClearlyDefinedCoordinates()
-            ?: return Result.failure(ScanStorageException("Unable to create ClearlyDefined coordinates for $pkg."))
-
-        return runCatching {
-            logger.debug { "Looking up ClearlyDefined scan results for $coordinates." }
-
-            val tools = service.harvestTools(
-                coordinates.type,
-                coordinates.provider,
-                coordinates.namespace ?: "-",
-                coordinates.name,
-                coordinates.revision.orEmpty()
+            ?: return Result.failure(
+                ScanStorageException("Unable to create ClearlyDefined coordinates for '${pkg.id.toCoordinates()}'.")
             )
 
-            val version = findScanCodeVersion(tools, coordinates)
-            if (version != null) {
-                loadScanCodeResults(coordinates, version)
-            } else {
-                logger.debug { "$coordinates was not scanned with any version of ScanCode." }
+        return runCatching {
+            logger.debug { "Looking up ClearlyDefined scan results for '$coordinates'." }
 
-                emptyList()
+            val tools = service.harvestTools(coordinates)
+
+            val toolVersionsByName = tools.mapNotNull { it.withoutPrefix("$coordinates/") }
+                .groupBy({ it.substringBefore('/') }, { it.substringAfter('/') })
+                .mapValues { (_, versions) -> versions.sortedWith(AlphaNumericComparator) }
+
+            val supportedScanners = toolVersionsByName.mapNotNull { (name, versions) ->
+                // For the ClearlyDefined tool names see https://github.com/clearlydefined/service#tool-name-registry.
+                ScannerWrapperFactory.ALL[name]?.let { factory ->
+                    val scanner = factory.create(emptyMap(), emptyMap())
+                    (scanner as? CommandLinePathScannerWrapper)?.let { cliScanner -> cliScanner to versions.last() }
+                }.also { factory ->
+                    factory ?: logger.debug { "Unsupported tool '$name' for coordinates '$coordinates'." }
+                }
+            }
+
+            supportedScanners.mapNotNull { (cliScanner, version) ->
+                val startTime = Instant.now()
+                val name = cliScanner.name.lowercase()
+                val data = loadToolData(coordinates, name, version)
+                val provenance = getProvenance(coordinates)
+                val endTime = Instant.now()
+
+                when (cliScanner.name) {
+                    "ScanCode" -> {
+                        data["content"]?.let { result ->
+                            val details = getScanCodeDetails(cliScanner.name, result)
+                            val summary = cliScanner.createSummary(result.toString(), startTime, endTime)
+
+                            ScanResult(provenance, details, summary)
+                        }
+                    }
+
+                    "Licensee" -> {
+                        data["licensee"]?.let { result ->
+                            val details = ScannerDetails(
+                                name = name,
+                                version = result["version"].textValue(),
+                                configuration = result["parameters"].joinToString(" ")
+                            )
+                            val output = result["output"]["content"].toString()
+                            val summary = cliScanner.createSummary(output, startTime, endTime)
+
+                            ScanResult(provenance, details, summary)
+                        }
+                    }
+
+                    else -> null
+                }
             }
         }.recoverCatching { e ->
             e.showStackTrace()
 
             val message = "Error when reading results for '${pkg.id.toCoordinates()}' from ClearlyDefined: " +
-                    e.collectMessages()
+                e.collectMessages()
 
             logger.error { message }
 
@@ -146,56 +171,40 @@ class ClearlyDefinedStorage(
     }
 
     /**
-     * Load the ScanCode results file for the package with the given [coordinates] from ClearlyDefined.
-     * The results have been produced by ScanCode in the given [version].
+     * Load the data produced by the tool of the given [name] and [version] for the package with the given [coordinates]
+     * and return it as a [JsonNode].
      */
-    private suspend fun loadScanCodeResults(coordinates: Coordinates, version: String): List<ScanResult> {
-        val toolResponse = service.harvestToolData(
-            coordinates.type,
-            coordinates.provider,
-            coordinates.namespace ?: "-",
-            coordinates.name,
-            coordinates.revision.orEmpty(),
-            TOOL_SCAN_CODE,
-            version
-        )
+    private suspend fun loadToolData(coordinates: Coordinates, name: String, version: String): JsonNode {
+        val toolData = service.harvestToolData(coordinates, name, version)
+        return toolData.use { jsonMapper.readTree(it.byteStream()) }
+    }
 
-        return toolResponse.use {
-            jsonMapper.readTree(it.byteStream())["content"]?.let { result ->
-                val definitions = service.getDefinitions(listOf(coordinates))
-                val described = definitions.getValue(coordinates).described
-                val sourceLocation = described.sourceLocation
+    /**
+     * Return the [Provenance] from where the package with the given [coordinates] was harvested.
+     */
+    private suspend fun getProvenance(coordinates: Coordinates): Provenance {
+        val definitions = service.getDefinitions(listOf(coordinates))
+        val described = definitions.getValue(coordinates).described
+        val sourceLocation = described.sourceLocation
 
-                val provenance = when {
-                    sourceLocation == null -> UnknownProvenance
+        return when {
+            sourceLocation == null -> UnknownProvenance
 
-                    sourceLocation.type == ComponentType.GIT -> {
-                        RepositoryProvenance(
-                            vcsInfo = VcsInfo(
-                                type = VcsType.GIT,
-                                url = sourceLocation.url.orEmpty(),
-                                revision = sourceLocation.revision,
-                                path = sourceLocation.path.orEmpty()
-                            ),
-                            resolvedRevision = sourceLocation.revision
-                        )
-                    }
+            sourceLocation.type == ComponentType.GIT -> {
+                RepositoryProvenance(
+                    vcsInfo = VcsHost.parseUrl(sourceLocation.url.orEmpty()),
+                    resolvedRevision = sourceLocation.revision
+                )
+            }
 
-                    else -> {
-                        ArtifactProvenance(
-                            sourceArtifact = RemoteArtifact(
-                                url = sourceLocation.url.orEmpty(),
-                                hash = Hash.create(described.hashes?.sha1.orEmpty())
-                            )
-                        )
-                    }
-                }
-
-                val summary = generateSummary(SpdxConstants.NONE, result)
-                val details = generateScannerDetails(result)
-
-                listOf(ScanResult(provenance, details, summary))
-            }.orEmpty()
+            else -> {
+                ArtifactProvenance(
+                    sourceArtifact = RemoteArtifact(
+                        url = sourceLocation.url.orEmpty(),
+                        hash = Hash.create(described.hashes?.sha1.orEmpty())
+                    )
+                )
+            }
         }
     }
 }

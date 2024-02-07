@@ -17,6 +17,8 @@
  * License-Filename: LICENSE
  */
 
+package org.ossreviewtoolkit.clients.fossid
+
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
@@ -25,10 +27,10 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
-import org.ossreviewtoolkit.clients.fossid.FossIdRestService
-import org.ossreviewtoolkit.clients.fossid.FossIdServiceWithVersion
-import org.ossreviewtoolkit.clients.fossid.VersionedFossIdService2021dot2
-import org.ossreviewtoolkit.clients.fossid.checkResponse
+import io.mockk.clearAllMocks
+import io.mockk.every
+import io.mockk.mockkObject
+
 import org.ossreviewtoolkit.clients.fossid.model.status.ScanStatus
 
 private const val PROJECT_CODE = "semver4j"
@@ -47,11 +49,18 @@ class FossId2021dot2Test : StringSpec({
 
     beforeSpec {
         server.start()
+
+        mockkObject(FossIdServiceWithVersion)
+        every { FossIdServiceWithVersion.instance(any()) } answers {
+            VersionedFossIdService2021dot2(firstArg(), "2021.2.2")
+        }
+
         service = FossIdRestService.create("http://localhost:${server.port()}")
     }
 
     afterSpec {
         server.stop()
+        clearAllMocks()
     }
 
     beforeTest {

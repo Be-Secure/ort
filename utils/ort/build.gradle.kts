@@ -18,18 +18,19 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":utils:common-utils"))
-    api(project(":utils:spdx-utils"))
+    api(projects.utils.commonUtils)
+    api(projects.utils.spdxUtils)
 
     api(libs.okhttp)
 
+    implementation(libs.awsS3)
     implementation(libs.commonsCompress)
-    implementation(libs.kotlinxCoroutines)
+    implementation(libs.kotlinx.coroutines)
 
     testImplementation(libs.mockk)
 }

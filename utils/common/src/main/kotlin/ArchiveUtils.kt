@@ -17,7 +17,7 @@
  * License-Filename: LICENSE
  */
 
-@file:Suppress("TooManyFunctions")
+@file:Suppress("MatchingDeclarationName", "TooManyFunctions")
 
 package org.ossreviewtoolkit.utils.common
 
@@ -45,18 +45,16 @@ import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
 import org.apache.commons.compress.compressors.xz.XZCompressorInputStream
 import org.apache.commons.compress.utils.SeekableInMemoryByteChannel
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
-object ArchiveUtils : Logging
-
-enum class ArchiveType(vararg val extensions: String) {
+enum class ArchiveType(extension: String, vararg aliases: String) {
     SEVENZIP(".7z"),
-    ZIP(".aar", ".egg", ".jar", ".war", ".whl", ".zip"),
+    ZIP(".zip", ".aar", ".egg", ".jar", ".war", ".whl"),
 
-    TAR(".gem", ".tar"),
     TAR_BZIP2(".tar.bz2", ".tbz2"),
-    TAR_GZIP(".crate", ".tar.gz", ".tgz"),
+    TAR_GZIP(".tar.gz", ".tgz", ".crate"),
     TAR_XZ(".tar.xz", ".txz"),
+    TAR(".tar", ".gem"),
 
     DEB(".deb", ".udeb"),
 
@@ -65,11 +63,13 @@ enum class ArchiveType(vararg val extensions: String) {
     companion object {
         fun getType(filename: String): ArchiveType {
             val lowerName = filename.lowercase()
-            return (enumValues<ArchiveType>().asList() - NONE).find { type ->
+            return (ArchiveType.entries - NONE).find { type ->
                 type.extensions.any { lowerName.endsWith(it) }
             } ?: NONE
         }
     }
+
+    val extensions = listOf(extension, *aliases)
 }
 
 /**
@@ -81,22 +81,21 @@ fun File.unpack(
     targetDirectory: File,
     forceArchiveType: ArchiveType = ArchiveType.NONE,
     filter: (ArchiveEntry) -> Boolean = { true }
-) =
-    when (forceArchiveType.takeUnless { it == ArchiveType.NONE } ?: ArchiveType.getType(name)) {
-        ArchiveType.SEVENZIP -> unpack7Zip(targetDirectory, filter)
-        ArchiveType.ZIP -> unpackZip(targetDirectory, filter)
+) = when (forceArchiveType.takeUnless { it == ArchiveType.NONE } ?: ArchiveType.getType(name)) {
+    ArchiveType.SEVENZIP -> unpack7Zip(targetDirectory, filter)
+    ArchiveType.ZIP -> unpackZip(targetDirectory, filter)
 
-        ArchiveType.TAR -> inputStream().use { it.unpackTar(targetDirectory, filter) }
-        ArchiveType.TAR_BZIP2 -> inputStream().use { BZip2CompressorInputStream(it).unpackTar(targetDirectory, filter) }
-        ArchiveType.TAR_GZIP -> inputStream().use { GzipCompressorInputStream(it).unpackTar(targetDirectory, filter) }
-        ArchiveType.TAR_XZ -> inputStream().use { XZCompressorInputStream(it).unpackTar(targetDirectory, filter) }
+    ArchiveType.TAR -> inputStream().use { it.unpackTar(targetDirectory, filter) }
+    ArchiveType.TAR_BZIP2 -> inputStream().use { BZip2CompressorInputStream(it).unpackTar(targetDirectory, filter) }
+    ArchiveType.TAR_GZIP -> inputStream().use { GzipCompressorInputStream(it).unpackTar(targetDirectory, filter) }
+    ArchiveType.TAR_XZ -> inputStream().use { XZCompressorInputStream(it).unpackTar(targetDirectory, filter) }
 
-        ArchiveType.DEB -> unpackDeb(targetDirectory, filter)
+    ArchiveType.DEB -> unpackDeb(targetDirectory, filter)
 
-        ArchiveType.NONE -> {
-            throw IOException("Unable to guess compression scheme from file name '$name'.")
-        }
+    ArchiveType.NONE -> {
+        throw IOException("Unable to guess compression scheme from file name '$name'.")
     }
+}
 
 /**
  * Try to unpack this [File] of an unknown archive type to [targetDirectory] using [filter] to select only the entries
@@ -107,11 +106,13 @@ fun File.unpackTryAllTypes(targetDirectory: File, filter: (ArchiveEntry) -> Bool
     val typeFromName = ArchiveType.getType(name)
     val suppressedExceptions = mutableListOf<Throwable>()
 
-    enumValues<ArchiveType>().mapNotNullTo(mutableListOf(typeFromName)) { type ->
+    ArchiveType.entries.mapNotNullTo(mutableListOf(typeFromName)) { type ->
         type.takeUnless { type == typeFromName || type == ArchiveType.NONE }
     }.find { archiveType ->
         runCatching {
             unpack(targetDirectory, forceArchiveType = archiveType, filter)
+        }.onSuccess {
+            logger.debug { "Unpacked stream as $archiveType to '$targetDirectory'." }
         }.onFailure {
             suppressedExceptions += IOException("Unpacking '$this' as $archiveType failed.", it)
         }.isSuccess
@@ -139,7 +140,7 @@ fun File.unpack7Zip(targetDirectory: File, filter: (ArchiveEntry) -> Boolean = {
             val target = targetDirectory.resolve(entry.name)
 
             if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
-                ArchiveUtils.logger.warn {
+                logger.warn {
                     "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
                 }
 
@@ -189,7 +190,7 @@ private fun ZipFile.unpack(targetDirectory: File, filter: (ArchiveEntry) -> Bool
             val target = targetDirectory.resolve(entry.name)
 
             if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
-                ArchiveUtils.logger.warn {
+                logger.warn {
                     "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
                 }
 
@@ -257,7 +258,9 @@ fun InputStream.unpackZip(targetDirectory: File) =
 fun InputStream.unpackTar(targetDirectory: File, filter: (ArchiveEntry) -> Boolean = { true }) =
     TarArchiveInputStream(this).unpack(
         targetDirectory,
-        { entry -> !(entry as TarArchiveEntry).isFile || File(entry.name).isAbsolute || !filter(entry) },
+        { entry ->
+            (entry as TarArchiveEntry).isDirectory || !entry.isFile || File(entry.name).isAbsolute || !filter(entry)
+        },
         { entry -> (entry as TarArchiveEntry).mode }
     )
 
@@ -265,44 +268,45 @@ fun InputStream.unpackTar(targetDirectory: File, filter: (ArchiveEntry) -> Boole
  * Unpack this [ArchiveInputStream] to the [targetDirectory], skipping all entries for which [shouldSkip] returns true,
  * and using what [mode] returns as the file mode bits.
  */
-private fun ArchiveInputStream.unpack(
+private fun <E : ArchiveEntry> ArchiveInputStream<E>.unpack(
     targetDirectory: File,
     shouldSkip: (ArchiveEntry) -> Boolean,
     mode: (ArchiveEntry) -> Int
-) =
-    use { input ->
-        val canonicalTargetDirectory = targetDirectory.canonicalFile
-        var processed = false
+) = use { input ->
+    val canonicalTargetDirectory = targetDirectory.canonicalFile
+    var processed = false
 
-        while (true) {
-            val entry = input.nextEntry ?: break
-            processed = true
+    while (true) {
+        val entry = input.nextEntry ?: break
+        processed = true
 
-            if (shouldSkip(entry)) continue
+        if (shouldSkip(entry)) continue
 
-            val target = targetDirectory.resolve(entry.name)
+        val target = targetDirectory.resolve(entry.name)
 
-            if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
-                ArchiveUtils.logger.warn {
-                    "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
-                }
-
-                continue
+        if (!target.canonicalFile.startsWith(canonicalTargetDirectory)) {
+            logger.warn {
+                "Skipping entry '${entry.name}' which points to outside of '$targetDirectory'."
             }
 
-            // There is no guarantee that directory entries appear before file entries, so ensure that the parent
-            // directory for a file exists.
-            target.parentFile.safeMkdirs()
-
-            target.outputStream().use { output ->
-                input.copyTo(output)
-            }
-
-            copyExecutableModeBit(target, mode(entry))
+            continue
         }
 
-        if (!processed) throw IOException("Unsupported archive format or empty archive.")
+        // There is no guarantee that directory entries appear before file entries, so ensure that the parent
+        // directory for a file exists.
+        target.parentFile.safeMkdirs()
+
+        target.outputStream().use { output ->
+            input.copyTo(output)
+        }
+
+        copyExecutableModeBit(target, mode(entry))
     }
+
+    if (this is TarArchiveInputStream && !processed) {
+        throw IOException("Unsupported archive type or empty archive.")
+    }
+}
 
 /**
  * Copy the executable bit contained in [mode] to the [target] file's mode bits.

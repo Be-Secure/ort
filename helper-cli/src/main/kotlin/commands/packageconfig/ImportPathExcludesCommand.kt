@@ -38,7 +38,7 @@ import org.ossreviewtoolkit.model.config.PackageConfiguration
 import org.ossreviewtoolkit.model.readValue
 import org.ossreviewtoolkit.utils.common.expandTilde
 
-class ImportPathExcludesCommand : CliktCommand(
+internal class ImportPathExcludesCommand : CliktCommand(
     help = "Import path excludes by repository from a file into the given package configuration."
 ) {
     private val pathExcludesFile by option(
@@ -73,7 +73,7 @@ class ImportPathExcludesCommand : CliktCommand(
     private val vcsUrlMappingFile by option(
         "--vcs-url-mapping-file",
         help = "A YAML or JSON file containing a mapping of VCS URLs to other VCS URLs which will be replaced during " +
-                "the import."
+            "the import."
     ).convert { it.expandTilde() }
         .file(mustExist = false, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = false)
         .convert { it.absoluteFile.normalize() }

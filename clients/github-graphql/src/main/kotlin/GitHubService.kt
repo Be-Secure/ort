@@ -29,11 +29,11 @@ import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
 
-import java.net.URL
+import java.net.URI
 
 import kotlin.time.measureTimedValue
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.clients.github.issuesquery.Issue
 import org.ossreviewtoolkit.clients.github.releasesquery.Release
@@ -62,7 +62,7 @@ class QueryException(
 class GitHubService private constructor(
     val client: GraphQLKtorClient
 ) {
-    companion object : Logging {
+    companion object {
         /**
          * The default endpoint URL for accessing the GitHub GraphQL API.
          */
@@ -82,7 +82,7 @@ class GitHubService private constructor(
 
             val httpClient = client?.config(clientConfig) ?: HttpClient(clientConfig)
 
-            return GitHubService(GraphQLKtorClient(URL(url), httpClient))
+            return GitHubService(GraphQLKtorClient(URI(url).toURL(), httpClient))
         }
     }
 
@@ -111,15 +111,16 @@ class GitHubService private constructor(
         owner: String,
         repository: String,
         paging: Paging = Paging.INITIAL
-    ): QueryResult<Release> = runCatching {
-        val query = ReleasesQuery(ReleasesQuery.Variables(owner, repository, paging.pageSize, paging.cursor))
-        val result = client.executeAndCheck(query)
+    ): QueryResult<Release> =
+        runCatching {
+            val query = ReleasesQuery(ReleasesQuery.Variables(owner, repository, paging.pageSize, paging.cursor))
+            val result = client.executeAndCheck(query)
 
-        val releasesConnection = result.data?.repository?.releases
-        val pageInfo = releasesConnection?.pageInfo
-        val nextCursor = pageInfo?.endCursor?.takeIf { pageInfo.hasNextPage }
-        PagedResult(releasesConnection?.edges.orEmpty().mapNotNull { it?.node }, paging.pageSize, nextCursor)
-    }
+            val releasesConnection = result.data?.repository?.releases
+            val pageInfo = releasesConnection?.pageInfo
+            val nextCursor = pageInfo?.endCursor?.takeIf { pageInfo.hasNextPage }
+            PagedResult(releasesConnection?.edges.orEmpty().mapNotNull { it?.node }, paging.pageSize, nextCursor)
+        }
 }
 
 /**
@@ -135,7 +136,7 @@ private suspend fun <T : Any> GraphQLKtorClient.executeAndCheck(
 ): GraphQLClientResponse<T> {
     val (result, duration) = measureTimedValue { execute(request) }
 
-    GitHubService.logger.debug { "Executed query '${request.operationName}' in $duration." }
+    logger.debug { "Executed query '${request.operationName}' in $duration." }
 
     result.errors?.let { errors ->
         throw QueryException("Result of query '${request.operationName}' contains errors.", errors)

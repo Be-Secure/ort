@@ -21,8 +21,6 @@ package org.ossreviewtoolkit.helper.commands
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.UsageError
-import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
-import com.github.ajalt.clikt.parameters.groups.single
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
@@ -35,10 +33,10 @@ import com.github.ajalt.clikt.parameters.types.file
 import java.io.File
 import java.lang.IllegalArgumentException
 
-import org.ossreviewtoolkit.helper.utils.PackageConfigurationOption
-import org.ossreviewtoolkit.helper.utils.createProvider
-import org.ossreviewtoolkit.helper.utils.fetchScannedSources
+import org.ossreviewtoolkit.helper.utils.downloadSources
 import org.ossreviewtoolkit.helper.utils.getLicenseFindingsById
+import org.ossreviewtoolkit.helper.utils.getScannedProvenance
+import org.ossreviewtoolkit.helper.utils.getSourceCodeOrigin
 import org.ossreviewtoolkit.helper.utils.getViolatedRulesByLicense
 import org.ossreviewtoolkit.helper.utils.readOrtResult
 import org.ossreviewtoolkit.helper.utils.replaceConfig
@@ -48,9 +46,10 @@ import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.Severity
 import org.ossreviewtoolkit.model.TextLocation
+import org.ossreviewtoolkit.plugins.packageconfigurationproviders.dir.DirPackageConfigurationProvider
 import org.ossreviewtoolkit.utils.common.FileMatcher
 import org.ossreviewtoolkit.utils.common.expandTilde
-import org.ossreviewtoolkit.utils.spdx.SpdxSingleLicenseExpression
+import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
 internal class ListLicensesCommand : CliktCommand(
     help = "Lists the license findings for a given package as distinct text locations."
@@ -72,8 +71,8 @@ internal class ListLicensesCommand : CliktCommand(
     private val sourceCodeDir by option(
         "--source-code-dir",
         help = "A directory containing the sources for the target package. These sources should match the provenance " +
-                "of the respective scan result in the ORT result. If not specified those sources are downloaded if " +
-                "needed."
+            "of the respective scan result in the ORT result. If not specified those sources are downloaded if " +
+            "needed."
     ).convert { it.expandTilde() }
         .file(mustExist = true, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
@@ -81,14 +80,14 @@ internal class ListLicensesCommand : CliktCommand(
     private val offendingOnly by option(
         "--offending-only",
         help = "Only list licenses causing at least one rule violation with an offending severity, see " +
-                "--offending-severities."
+            "--offending-severities."
     ).flag()
 
     private val offendingSeverities by option(
         "--offending-severities",
         help = "Set the severities to use for the filtering enabled by --offending-only, specified as " +
-                "comma-separated values."
-    ).enum<Severity>().split(",").default(enumValues<Severity>().asList())
+            "comma-separated values."
+    ).enum<Severity>().split(",").default(Severity.entries)
 
     private val omitExcluded by option(
         "--omit-excluded",
@@ -113,7 +112,7 @@ internal class ListLicensesCommand : CliktCommand(
     private val decomposeLicenseExpressions by option(
         "--decompose-license-expressions",
         help = "Decompose SPDX license expressions into its single licenses components and list the findings for " +
-                "each single license separately."
+            "each single license separately."
     ).flag()
 
     private val repositoryConfigurationFile by option(
@@ -123,21 +122,12 @@ internal class ListLicensesCommand : CliktCommand(
         .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
         .convert { it.absoluteFile.normalize() }
 
-    private val packageConfigurationOption by mutuallyExclusiveOptions(
-        option(
-            "--package-configuration-dir",
-            help = "The directory containing the package configuration files to read as input. It is searched " +
-                    "recursively."
-        ).convert { it.expandTilde() }
-            .file(mustExist = true, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = true)
-            .convert { PackageConfigurationOption.Dir(it) },
-        option(
-            "--package-configuration-file",
-            help = "The file containing the package configurations to read as input."
-        ).convert { it.expandTilde() }
-            .file(mustExist = true, canBeFile = true, canBeDir = false, mustBeWritable = false, mustBeReadable = true)
-            .convert { PackageConfigurationOption.File(it) }
-    ).single()
+    private val packageConfigurationsDir by option(
+        "--package-configurations-dir",
+        help = "A directory that is searched recursively for package configuration files. Each file must only " +
+            "contain a single package configuration."
+    ).convert { it.expandTilde() }
+        .file(mustExist = true, canBeFile = false, canBeDir = true, mustBeWritable = false, mustBeReadable = true)
 
     private val licenseAllowlist by option(
         "--license-allow-list",
@@ -158,12 +148,17 @@ internal class ListLicensesCommand : CliktCommand(
             throw UsageError("Could not find the package for the given id '${packageId.toCoordinates()}'.")
         }
 
-        val sourcesDir = sourceCodeDir ?: run {
-            println("Downloading sources for package '${packageId.toCoordinates()}'...")
-            ortResult.fetchScannedSources(packageId)
+        val sourceCodeOrigin = ortResult.getScannedProvenance(packageId).getSourceCodeOrigin() ?: run {
+            println("No scan results available.")
+            return
         }
 
-        val packageConfigurationProvider = packageConfigurationOption.createProvider()
+        val sourcesDir = sourceCodeDir ?: run {
+            println("Downloading sources for package '${packageId.toCoordinates()}'...")
+            ortResult.downloadSources(packageId, sourceCodeOrigin)
+        }
+
+        val packageConfigurationProvider = DirPackageConfigurationProvider(packageConfigurationsDir)
 
         fun isPathExcluded(provenance: Provenance, path: String): Boolean =
             if (ortResult.isProject(packageId)) {
@@ -183,13 +178,13 @@ internal class ListLicensesCommand : CliktCommand(
             )
             .mapValues { (provenance, locationsByLicense) ->
                 locationsByLicense.filter { (license, _) ->
-                    !offendingOnly || license in violatedRulesByLicense
+                    !offendingOnly || license.decompose().any { it in violatedRulesByLicense }
                 }.mapValues { (license, locations) ->
                     locations.filter { location ->
                         val isAllowedFile = fileAllowList.isEmpty() || FileMatcher.match(fileAllowList, location.path)
 
                         val isIncluded = !omitExcluded || !isPathExcluded(provenance, location.path) ||
-                                ignoreExcludedRuleIds.intersect(violatedRulesByLicense[license].orEmpty()).isNotEmpty()
+                            ignoreExcludedRuleIds.intersect(violatedRulesByLicense[license].orEmpty()).isNotEmpty()
 
                         isAllowedFile && isIncluded
                     }
@@ -198,7 +193,7 @@ internal class ListLicensesCommand : CliktCommand(
                 }.filter { (_, locations) ->
                     locations.isNotEmpty()
                 }.filter { (license, _) ->
-                    licenseAllowlist.isEmpty() || license.simpleLicense() in licenseAllowlist
+                    licenseAllowlist.isEmpty() || license.decompose().any { it.simpleLicense() in licenseAllowlist }
                 }
             }
 
@@ -241,7 +236,7 @@ private fun Collection<TextLocationGroup>.assignReferenceNameAndSort(): List<Pai
     }
 }
 
-private fun Map<SpdxSingleLicenseExpression, List<TextLocationGroup>>.writeValueAsString(
+private fun Map<SpdxExpression, List<TextLocationGroup>>.writeValueAsString(
     isPathExcluded: (String) -> Boolean,
     provenanceIndex: Int,
     includeLicenseTexts: Boolean = true
@@ -292,7 +287,7 @@ private fun Collection<TextLocation>.groupByText(baseDir: File): List<TextLocati
     val unresolvedLocations = (this - resolvedLocations.values.flatten()).toSet()
 
     return resolvedLocations.map { (text, locations) -> TextLocationGroup(locations = locations, text = text) } +
-            unresolvedLocations.map { TextLocationGroup(locations = setOf(it)) }
+        unresolvedLocations.map { TextLocationGroup(locations = setOf(it)) }
 }
 
 private fun TextLocation.resolve(baseDir: File): String? {

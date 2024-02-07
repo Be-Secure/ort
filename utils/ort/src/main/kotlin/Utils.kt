@@ -24,44 +24,10 @@ import java.net.Authenticator
 import java.net.PasswordAuthentication
 import java.net.URI
 
-import org.ossreviewtoolkit.utils.common.Os
 import org.ossreviewtoolkit.utils.common.toSafeUri
 import org.ossreviewtoolkit.utils.common.toUri
 import org.ossreviewtoolkit.utils.common.withoutPrefix
 import org.ossreviewtoolkit.utils.common.withoutSuffix
-
-/**
- * The directory to store ORT (read-only) configuration in.
- */
-val ortConfigDirectory by lazy {
-    Os.env[ORT_CONFIG_DIR_ENV_NAME]?.takeUnless {
-        it.isEmpty()
-    }?.let {
-        File(it)
-    } ?: ortDataDirectory.resolve("config")
-}
-
-/**
- * The directory to store ORT (read-write) tools in.
- */
-val ortToolsDirectory by lazy {
-    Os.env[ORT_TOOLS_DIR_ENV_NAME]?.takeUnless {
-        it.isEmpty()
-    }?.let {
-        File(it)
-    } ?: ortDataDirectory.resolve("tools")
-}
-
-/**
- * The directory to store ORT (read-write) data in, like caches and archives.
- */
-val ortDataDirectory by lazy {
-    Os.env[ORT_DATA_DIR_ENV_NAME]?.takeUnless {
-        it.isEmpty()
-    }?.let {
-        File(it)
-    } ?: Os.userHomeDirectory.resolve(".ort")
-}
 
 /**
  * Global variable that gets toggled by a command line parameter parsed in the main entry points of the modules.
@@ -71,7 +37,8 @@ var printStackTrace = false
 private val versionSeparators = listOf('-', '_', '.')
 private val versionSeparatorsPattern = versionSeparators.joinToString("", "[", "]")
 
-private val ignorablePrefixSuffixPattern = listOf("rel", "release", "final").joinToString("|", "(", ")")
+private val ignorablePrefixSuffix = listOf("rel", "release", "final")
+private val ignorablePrefixSuffixPattern = ignorablePrefixSuffix.joinToString("|", "(", ")")
 private val ignorablePrefixSuffixRegex = Regex(
     "(^$ignorablePrefixSuffixPattern$versionSeparatorsPattern|$versionSeparatorsPattern$ignorablePrefixSuffixPattern$)"
 )
@@ -97,6 +64,10 @@ fun filterVersionNames(version: String, names: List<String>, project: String? = 
         VersionVariant(versionLower.replace(separatorRegex, it.toString()), listOf(it))
     }
 
+    ignorablePrefixSuffix.mapTo(versionVariants) {
+        VersionVariant(versionLower.removeSuffix(it).trimEnd(*versionSeparators.toCharArray()), versionSeparators)
+    }
+
     // The list of supported version separators.
     val versionHasSeparator = versionSeparators.any { it in version }
 
@@ -120,12 +91,12 @@ fun filterVersionNames(version: String, names: List<String>, project: String? = 
 
                 // Full match with the current version variant.
                 last == null
-                        // The prefix does not end with the current separators or a digit.
-                        || (last !in currentSeparators && !last.isDigit())
-                        // The prefix ends with the current separators but the forelast character is not a digit.
-                        || (last in currentSeparators && (forelast == null || !forelast.isDigit()))
-                        // The prefix ends with 'v' and the forelast character is a separator.
-                        || (last == 'v' && (forelast == null || forelast in currentSeparators))
+                    // The prefix does not end with the current separators or a digit.
+                    || (last !in currentSeparators && !last.isDigit())
+                    // The prefix ends with the current separators but the forelast character is not a digit.
+                    || (last in currentSeparators && (forelast == null || !forelast.isDigit()))
+                    // The prefix ends with 'v' and the forelast character is a separator.
+                    || (last == 'v' && (forelast == null || forelast in currentSeparators))
             } ?: false
 
             hasIgnorableSuffixOnly || hasIgnorablePrefixOnly
@@ -171,11 +142,6 @@ fun requestPasswordAuthentication(uri: URI): PasswordAuthentication? =
  */
 fun normalizeVcsUrl(vcsUrl: String): String {
     var url = vcsUrl.trim().trimEnd('/')
-
-    if (url.startsWith(":pserver:") || url.startsWith(":ext:")) {
-        // Do not touch CVS URLs for now.
-        return url
-    }
 
     // Avoid using the unauthenticated Git protocol, which is blocked by many VCS hosts.
     if (url.startsWith("git://")) {

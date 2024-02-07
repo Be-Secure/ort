@@ -19,14 +19,14 @@
 
 package org.ossreviewtoolkit.model.config
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.utils.DatabaseUtils
 import org.ossreviewtoolkit.model.utils.FileArchiver
-import org.ossreviewtoolkit.model.utils.FileArchiverFileStorage
-import org.ossreviewtoolkit.model.utils.PostgresFileArchiverStorage
+import org.ossreviewtoolkit.model.utils.FileProvenanceFileStorage
+import org.ossreviewtoolkit.model.utils.PostgresProvenanceFileStorage
 import org.ossreviewtoolkit.utils.ort.storage.FileStorage
-import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
+import org.ossreviewtoolkit.utils.ort.storage.XZCompressedLocalFileStorage
 
 /**
  * The configuration model for a [FileArchiver].
@@ -43,17 +43,20 @@ data class FileArchiverConfiguration(
     val fileStorage: FileStorageConfiguration? = null,
 
     /**
-     * Configuration of the [PostgresFileArchiverStorage] used for archiving the files.
+     * Configuration of the [PostgresProvenanceFileStorage] used for archiving the files.
      */
     val postgresStorage: PostgresStorageConfiguration? = null
 ) {
-    companion object : Logging
+    companion object {
+        const val ARCHIVE_FILENAME = "archive.zip"
+        const val TABLE_NAME = "file_archives"
+    }
 
     init {
         if (fileStorage != null && postgresStorage != null) {
             logger.warn {
                 "'fileStorage' and 'postgresStorage' are both configured but only one storage can be used. Using " +
-                        "'fileStorage'."
+                    "'fileStorage'."
             }
         }
     }
@@ -66,7 +69,10 @@ fun FileArchiverConfiguration?.createFileArchiver(): FileArchiver? {
     if (this?.enabled == false) return null
 
     val storage = when {
-        this?.fileStorage != null -> FileArchiverFileStorage(fileStorage.createFileStorage())
+        this?.fileStorage != null -> FileProvenanceFileStorage(
+            storage = fileStorage.createFileStorage(),
+            filename = FileArchiverConfiguration.ARCHIVE_FILENAME
+        )
 
         this?.postgresStorage != null -> {
             val dataSource = DatabaseUtils.createHikariDataSource(
@@ -74,10 +80,13 @@ fun FileArchiverConfiguration?.createFileArchiver(): FileArchiver? {
                 applicationNameSuffix = "file-archiver"
             )
 
-            PostgresFileArchiverStorage(dataSource)
+            PostgresProvenanceFileStorage(dataSource, FileArchiverConfiguration.TABLE_NAME)
         }
 
-        else -> FileArchiverFileStorage(LocalFileStorage(FileArchiver.DEFAULT_ARCHIVE_DIR))
+        else -> FileProvenanceFileStorage(
+            storage = XZCompressedLocalFileStorage(FileArchiver.DEFAULT_ARCHIVE_DIR),
+            filename = FileArchiverConfiguration.ARCHIVE_FILENAME
+        )
     }
 
     val patterns = LicenseFilePatterns.getInstance().allLicenseFilenames

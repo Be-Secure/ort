@@ -60,7 +60,7 @@ data class ResolvedConfiguration(
         val duplicateProviderIds = packageCurations.getDuplicates().map { it.provider.id }
         require(duplicateProviderIds.isEmpty()) {
             "The list 'providers' contains the following duplicates, which is not allowed: " +
-                    "${duplicateProviderIds.joinToStringSingleQuoted()}."
+                "${duplicateProviderIds.joinToStringSingleQuoted()}."
         }
     }
 
@@ -73,7 +73,7 @@ data class ResolvedConfiguration(
 
 data class ResolvedPackageCurations(
     /**
-     * All enabled providers ordered highest-priority-first.
+     * The package curation provider.
      */
     val provider: Provider,
 
@@ -81,7 +81,7 @@ data class ResolvedPackageCurations(
      * All package curations applicable to the packages contained in the enclosing [OrtResult] in the order as they
      * were provided by the package curation provider.
      */
-    val curations: Set<PackageCuration> = emptySet()
+    val curations: List<PackageCuration> = emptyList()
 ) {
     data class Provider(
         /**

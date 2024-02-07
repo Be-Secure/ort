@@ -19,13 +19,12 @@
 
 package org.ossreviewtoolkit.model.config
 
-import com.fasterxml.jackson.module.kotlin.readValue
-
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.collections.containExactly
 import io.kotest.matchers.should
 
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.model.fromYaml
+import org.ossreviewtoolkit.model.toYaml
 
 class LicenseFindingCurationTest : WordSpec({
     "A License finding curation" should {
@@ -36,12 +35,9 @@ class LicenseFindingCurationTest : WordSpec({
                 detected_license: "MIT"
                 reason: "INCORRECT"
                 concluded_license: "Apache-2.0"
-                """.trimIndent()
+            """.trimIndent()
 
-            val curation = yamlMapper
-                .readValue<LicenseFindingCuration>(yaml)
-                .let { yamlMapper.writeValueAsString(it) }
-                .let { yamlMapper.readValue<LicenseFindingCuration>(it) }
+            val curation = yaml.fromYaml<LicenseFindingCuration>().toYaml().fromYaml<LicenseFindingCuration>()
 
             curation.startLines should containExactly(1, 2, 3, 5)
         }

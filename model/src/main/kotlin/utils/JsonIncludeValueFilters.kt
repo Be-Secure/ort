@@ -33,14 +33,12 @@ internal class CurationsFilter {
 
 @Suppress("EqualsOrHashCode", "EqualsWithHashCodeExist") // The class is not supposed to be used with hashing.
 internal class ExcludesFilter {
-    override fun equals(other: Any?): Boolean =
-        if (other is Excludes) other.paths.isEmpty() && other.scopes.isEmpty() else false
+    override fun equals(other: Any?): Boolean = other is Excludes && other.paths.isEmpty() && other.scopes.isEmpty()
 }
 
 @Suppress("EqualsOrHashCode", "EqualsWithHashCodeExist") // The class is not supposed to be used with hashing.
 internal class LicenseChoicesFilter {
-    override fun equals(other: Any?): Boolean =
-        other is LicenseChoices && other.isEmpty()
+    override fun equals(other: Any?): Boolean = other is LicenseChoices && other.isEmpty()
 }
 
 /**
@@ -56,7 +54,7 @@ internal class PackageLinkageValueFilter {
 internal class ResolutionsFilter {
     override fun equals(other: Any?): Boolean =
         other is Resolutions &&
-                other.issues.isEmpty() &&
-                other.ruleViolations.isEmpty() &&
-                other.vulnerabilities.isEmpty()
+            other.issues.isEmpty() &&
+            other.ruleViolations.isEmpty() &&
+            other.vulnerabilities.isEmpty()
 }

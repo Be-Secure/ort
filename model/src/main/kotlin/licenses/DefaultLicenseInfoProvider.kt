@@ -27,16 +27,13 @@ import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Provenance
 import org.ossreviewtoolkit.model.config.LicenseFindingCuration
 import org.ossreviewtoolkit.model.config.PathExclude
-import org.ossreviewtoolkit.model.utils.PackageConfigurationProvider
+import org.ossreviewtoolkit.model.utils.filterByVcsPath
 import org.ossreviewtoolkit.utils.ort.ProcessedDeclaredLicense
 
 /**
  * The default [LicenseInfoProvider] that collects license information from an [ortResult].
  */
-class DefaultLicenseInfoProvider(
-    val ortResult: OrtResult,
-    private val packageConfigurationProvider: PackageConfigurationProvider
-) : LicenseInfoProvider {
+class DefaultLicenseInfoProvider(val ortResult: OrtResult) : LicenseInfoProvider {
     private val licenseInfo: ConcurrentMap<Identifier, LicenseInfo> = ConcurrentHashMap()
 
     override fun get(id: Identifier) = licenseInfo.getOrPut(id) { createLicenseInfo(id) }
@@ -82,37 +79,46 @@ class DefaultLicenseInfoProvider(
     private fun createDetectedLicenseInfo(id: Identifier): DetectedLicenseInfo {
         val findings = mutableListOf<Findings>()
 
-        ortResult.getScanResultsForId(id).forEach { (provenance, _, summary, _) ->
-            val (licenseFindingCurations, pathExcludes, relativeFindingsPath) = getConfiguration(id, provenance)
+        ortResult.getScanResultsForId(id).map {
+            // If a VCS path curation has been applied after the scanning stage, it is possible to apply that
+            // curation without re-scanning in case the new VCS path is a subdirectory of the scanned VCS path.
+            // So, filter by VCS path to enable the user to see the effect on the detected license with a shorter
+            // turn around time / without re-scanning.
+            it.filterByVcsPath(ortResult.getPackage(id)?.metadata?.vcsProcessed?.path.orEmpty())
+        }.forEach { (provenance, _, summary, _) ->
+            val config = getConfiguration(id, provenance)
 
             findings += Findings(
                 provenance = provenance,
                 licenses = summary.licenseFindings,
                 copyrights = summary.copyrightFindings,
-                licenseFindingCurations = licenseFindingCurations,
-                pathExcludes = pathExcludes,
-                relativeFindingsPath = relativeFindingsPath
+                licenseFindingCurations = config.licenseFindingCurations,
+                pathExcludes = config.pathExcludes,
+                relativeFindingsPath = config.relativeFindingsPath
             )
         }
 
         return DetectedLicenseInfo(findings)
     }
 
-    private fun getConfiguration(
-        id: Identifier,
-        provenance: Provenance
-    ): Triple<List<LicenseFindingCuration>, List<PathExclude>, String> =
+    private fun getConfiguration(id: Identifier, provenance: Provenance): Configuration =
         ortResult.getProject(id)?.let { project ->
-            Triple(
+            Configuration(
                 ortResult.repository.config.curations.licenseFindings,
                 ortResult.repository.config.excludes.paths,
                 ortResult.repository.getRelativePath(project.vcsProcessed).orEmpty()
             )
-        } ?: packageConfigurationProvider.getPackageConfigurations(id, provenance).let { packageConfigurations ->
-            Triple(
+        } ?: ortResult.getPackageConfigurations(id, provenance).let { packageConfigurations ->
+            Configuration(
                 packageConfigurations.flatMap { it.licenseFindingCurations },
                 packageConfigurations.flatMap { it.pathExcludes },
                 ""
             )
         }
 }
+
+private data class Configuration(
+    val licenseFindingCurations: List<LicenseFindingCuration>,
+    val pathExcludes: List<PathExclude>,
+    val relativeFindingsPath: String
+)

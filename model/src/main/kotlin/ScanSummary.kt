@@ -23,19 +23,24 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
+import com.fasterxml.jackson.databind.annotation.JsonSerialize
+import com.fasterxml.jackson.databind.util.StdConverter
 
 import java.time.Instant
-import java.util.SortedSet
 
 import org.ossreviewtoolkit.model.config.LicenseFilePatterns
+import org.ossreviewtoolkit.model.utils.CopyrightFindingSortedSetConverter
+import org.ossreviewtoolkit.model.utils.LicenseFindingSortedSetConverter
 import org.ossreviewtoolkit.model.utils.RootLicenseMatcher
+import org.ossreviewtoolkit.model.utils.SnippetFindingSortedSetConverter
 import org.ossreviewtoolkit.utils.common.FileMatcher
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
 
 /**
  * A short summary of the scan results.
  */
-@JsonIgnoreProperties("file_count")
+@JsonIgnoreProperties("file_count", "package_verification_code")
 data class ScanSummary(
     /**
      * The time when the scan started.
@@ -48,30 +53,35 @@ data class ScanSummary(
     val endTime: Instant,
 
     /**
-     * The [SPDX package verification code](https://spdx.dev/spdx_specification_2_0_html#h.2p2csry), calculated from all
-     * files in the package. Note that if the scanner is configured to ignore certain files they will still be included
-     * in the calculation of this code.
-     */
-    val packageVerificationCode: String,
-
-    /**
      * The detected license findings.
      */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JsonProperty("licenses")
-    val licenseFindings: SortedSet<LicenseFinding>,
+    @JsonSerialize(converter = LicenseFindingSortedSetConverter::class)
+    val licenseFindings: Set<LicenseFinding> = emptySet(),
 
     /**
      * The detected copyright findings.
      */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
     @JsonProperty("copyrights")
-    val copyrightFindings: SortedSet<CopyrightFinding>,
+    @JsonSerialize(converter = CopyrightFindingSortedSetConverter::class)
+    val copyrightFindings: Set<CopyrightFinding> = emptySet(),
+
+    /**
+     * The detected snippet findings.
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonProperty("snippets")
+    @JsonSerialize(converter = SnippetFindingSortedSetConverter::class)
+    val snippetFindings: Set<SnippetFinding> = emptySet(),
 
     /**
      * The list of issues that occurred during the scan. This property is not serialized if the list is empty to reduce
-     * the size of the result file. If there are no issues at all, [ScannerRun.hasIssues] already contains that
-     * information.
+     * the size of the result file.
      */
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonDeserialize(converter = IssueListConverter::class)
     val issues: List<Issue> = emptyList()
 ) {
     companion object {
@@ -81,37 +91,44 @@ data class ScanSummary(
         @JvmField
         val EMPTY = ScanSummary(
             startTime = Instant.EPOCH,
-            endTime = Instant.EPOCH,
-            packageVerificationCode = "",
-            licenseFindings = sortedSetOf(),
-            copyrightFindings = sortedSetOf()
+            endTime = Instant.EPOCH
         )
     }
 
     @get:JsonIgnore
-    val licenses: Set<SpdxExpression> = licenseFindings.mapTo(mutableSetOf()) { it.license }
+    val licenses: Set<SpdxExpression> by lazy { licenseFindings.mapTo(mutableSetOf()) { it.license } }
 
     /**
      * Filter all detected licenses and copyrights from this [ScanSummary] which are underneath [path]. Findings which
      * [RootLicenseMatcher] assigns as root license files for [path] are also kept.
      */
-    fun filterByPath(path: String): ScanSummary {
-        if (path.isBlank()) return this
+    fun filterByPath(path: String): ScanSummary = filterByPaths(listOf(path))
+
+    /**
+     * Filter all detected licenses and copyrights from this [ScanSummary] which are underneath the given [paths].
+     * Findings which [RootLicenseMatcher] assigns as root license files for path in [paths] are also kept.
+     */
+    fun filterByPaths(paths: Collection<String>): ScanSummary {
+        if (paths.any { it.isBlank() }) return this
 
         val rootLicenseMatcher = RootLicenseMatcher(LicenseFilePatterns.getInstance())
         val applicableLicenseFiles = rootLicenseMatcher.getApplicableRootLicenseFindingsForDirectories(
             licenseFindings = licenseFindings,
-            directories = listOf(path)
+            directories = paths
         ).values.flatten().mapTo(mutableSetOf()) { it.location.path }
 
-        fun TextLocation.matchesPath() = this.path.startsWith("$path/") || this.path in applicableLicenseFiles
+        fun String.matchesPaths() =
+            paths.any { filterPath ->
+                startsWith("$filterPath/") || this in applicableLicenseFiles
+            }
 
-        val licenseFindings = licenseFindings.filter { it.location.matchesPath() }.toSortedSet()
-        val copyrightFindings = copyrightFindings.filter { it.location.matchesPath() }.toSortedSet()
+        fun TextLocation.matchesPaths() = path.matchesPaths()
 
         return copy(
-            licenseFindings = licenseFindings,
-            copyrightFindings = copyrightFindings
+            licenseFindings = licenseFindings.filterTo(mutableSetOf()) { it.location.matchesPaths() },
+            copyrightFindings = copyrightFindings.filterTo(mutableSetOf()) { it.location.matchesPaths() },
+            snippetFindings = snippetFindings.filterTo(mutableSetOf()) { it.sourceLocation.matchesPaths() },
+            issues = issues.filter { it.affectedPath?.matchesPaths() ?: true }
         )
     }
 
@@ -123,8 +140,25 @@ data class ScanSummary(
         val matcher = FileMatcher(ignorePatterns)
 
         return copy(
-            licenseFindings = licenseFindings.filterTo(sortedSetOf()) { !matcher.matches(it.location.path) },
-            copyrightFindings = copyrightFindings.filterTo(sortedSetOf()) { !matcher.matches(it.location.path) }
+            licenseFindings = licenseFindings.filterTo(mutableSetOf()) { !matcher.matches(it.location.path) },
+            copyrightFindings = copyrightFindings.filterTo(mutableSetOf()) { !matcher.matches(it.location.path) },
+            snippetFindings = snippetFindings.filterTo(mutableSetOf()) { !matcher.matches(it.sourceLocation.path) },
+            issues = issues.filter { it.affectedPath == null || !matcher.matches(it.affectedPath) }
         )
     }
 }
+
+/**
+ * Set the `affectedPath` for scan timeout errors if it is null. This way scan results which have been created before
+ * the `affectedPath` was introduced will still have that property set.
+ */
+internal class IssueListConverter : StdConverter<List<Issue>, List<Issue>>() {
+    override fun convert(issues: List<Issue>): List<Issue> =
+        issues.map { issue ->
+            if (issue.affectedPath != null) return@map issue
+            val match = TIMEOUT_ERROR_REGEX.matchEntire(issue.message) ?: return@map issue
+            issue.copy(affectedPath = match.groups["file"]!!.value)
+        }
+}
+
+private val TIMEOUT_ERROR_REGEX = Regex("ERROR: Timeout after (\\d+) seconds while scanning file '(?<file>.+)'.")

@@ -21,17 +21,12 @@ package org.ossreviewtoolkit.analyzer
 
 import java.io.File
 import java.nio.file.FileSystems
-import java.nio.file.FileVisitResult
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.time.measureTime
 
-import org.apache.logging.log4j.kotlin.Logging
-import org.apache.maven.project.ProjectBuildingException
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.downloader.VcsHost
 import org.ossreviewtoolkit.downloader.VersionControlSystem
@@ -43,11 +38,10 @@ import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.Excludes
-import org.ossreviewtoolkit.model.config.Options
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
-import org.ossreviewtoolkit.utils.common.Plugin
+import org.ossreviewtoolkit.utils.common.Options
 import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.isSymbolicLink
@@ -56,6 +50,7 @@ import org.ossreviewtoolkit.utils.ort.normalizeVcsUrl
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
 typealias ManagedProjectFiles = Map<PackageManagerFactory, List<File>>
+typealias ProjectResults = Map<File, List<ProjectAnalyzerResult>>
 
 /**
  * A class representing a package manager that handles software dependencies. The package manager is referred to by its
@@ -68,13 +63,8 @@ abstract class PackageManager(
     val analyzerConfig: AnalyzerConfiguration,
     val repoConfig: RepositoryConfiguration
 ) {
-    companion object : Logging {
-        /**
-         * All [package manager factories][PackageManagerFactory] available in the classpath, associated by their names.
-         */
-        val ALL by lazy { Plugin.getAll<PackageManagerFactory>() }
-
-        private val PACKAGE_MANAGER_DIRECTORIES = listOf(
+    companion object {
+        private val PACKAGE_MANAGER_DIRECTORIES = setOf(
             // Ignore intermediate build system directories.
             ".gradle",
             ".yarn",
@@ -99,7 +89,7 @@ abstract class PackageManager(
          */
         fun findManagedFiles(
             directory: File,
-            packageManagers: Collection<PackageManagerFactory> = ALL.values,
+            packageManagers: Collection<PackageManagerFactory> = PackageManagerFactory.ENABLED_BY_DEFAULT,
             excludes: Excludes = Excludes.EMPTY
         ): ManagedProjectFiles {
             require(directory.isDirectory) {
@@ -110,63 +100,53 @@ abstract class PackageManager(
 
             val result = mutableMapOf<PackageManagerFactory, MutableList<File>>()
             val rootPath = directory.toPath()
+            val distinctPackageManagers = packageManagers.distinct()
 
-            Files.walkFileTree(
-                rootPath,
-                object : SimpleFileVisitor<Path>() {
-                    override fun preVisitDirectory(dir: Path, attributes: BasicFileAttributes): FileVisitResult {
-                        if (IGNORED_DIRECTORY_MATCHERS.any { it.matches(dir) }) {
-                            logger.info {
-                                "Not analyzing directory '$dir' as it is hard-coded to be ignored."
-                            }
+            directory.walk().onEnter { dir ->
+                val dirAsPath = dir.toPath()
 
-                            return FileVisitResult.SKIP_SUBTREE
-                        }
+                when {
+                    IGNORED_DIRECTORY_MATCHERS.any { it.matches(dirAsPath) } -> {
+                        logger.info { "Not analyzing directory '$dir' as it is hard-coded to be ignored." }
+                        false
+                    }
 
-                        if (excludes.isPathExcluded(rootPath, dir)) {
-                            logger.info {
-                                "Not analyzing directory '$dir' as it is excluded."
-                            }
+                    excludes.isPathExcluded(rootPath, dirAsPath) -> {
+                        logger.info { "Not analyzing directory '$dir' as it is excluded." }
+                        false
+                    }
 
-                            return FileVisitResult.SKIP_SUBTREE
-                        }
+                    dir.isSymbolicLink() -> {
+                        logger.info { "Not following symbolic link to directory '$dir'." }
+                        false
+                    }
 
-                        val dirAsFile = dir.toFile()
+                    else -> true
+                }
+            }.filter { it.isDirectory }.forEach { dir ->
+                val filesInCurrentDir = dir.walk().maxDepth(1).filter {
+                    it.isFile && !excludes.isPathExcluded(rootPath, it.toPath())
+                }.toList()
 
-                        // Note that although FileVisitOption.FOLLOW_LINKS is not set, this would still follow junctions
-                        // on Windows, so do a better check here.
-                        if (dirAsFile.isSymbolicLink()) {
-                            logger.info { "Not following symbolic link to directory '$dir'." }
-                            return FileVisitResult.SKIP_SUBTREE
-                        }
+                distinctPackageManagers.forEach { manager ->
+                    // Create a list of lists of matching files per glob.
+                    val matchesPerGlob = manager.matchersForDefinitionFiles.mapNotNull { glob ->
+                        // Create a list of files in the current directory that match the current glob.
+                        val filesMatchingGlob = filesInCurrentDir.filter { glob.matches(it.toPath()) }
+                        filesMatchingGlob.takeIf { it.isNotEmpty() }
+                    }
 
-                        val filesInDir = dirAsFile.walk().maxDepth(1).filter {
-                            it.isFile && !excludes.isPathExcluded(rootPath, it.toPath())
-                        }.toList()
-
-                        packageManagers.distinct().forEach { manager ->
-                            // Create a list of lists of matching files per glob.
-                            val matchesPerGlob = manager.matchersForDefinitionFiles.mapNotNull { glob ->
-                                // Create a list of files in the current directory that match the current glob.
-                                val filesMatchingGlob = filesInDir.filter { glob.matches(it.toPath()) }
-                                filesMatchingGlob.takeIf { it.isNotEmpty() }
-                            }
-
-                            if (matchesPerGlob.isNotEmpty()) {
-                                // Only consider all matches for the first glob that has matches. This is because globs
-                                // are defined in order of priority, and multiple globs may just be alternative ways to
-                                // detect the exact same project.
-                                // That is, at the example of a PIP project, if a directory contains all three files
-                                // "requirements-py2.txt", "requirements-py3.txt" and "setup.py", only consider the
-                                // former two as they match the glob with the highest priority, but ignore "setup.py".
-                                result.getOrPut(manager) { mutableListOf() } += matchesPerGlob.first()
-                            }
-                        }
-
-                        return FileVisitResult.CONTINUE
+                    if (matchesPerGlob.isNotEmpty()) {
+                        // Only consider all matches for the first glob that has matches. This is because globs
+                        // are defined in order of priority, and multiple globs may just be alternative ways to
+                        // detect the exact same project.
+                        // That is, at the example of a PIP project, if a directory contains all three files
+                        // "requirements-py2.txt", "requirements-py3.txt" and "setup.py", only consider the
+                        // former two as they match the glob with the highest priority, but ignore "setup.py".
+                        result.getOrPut(manager) { mutableListOf() } += matchesPerGlob.first()
                     }
                 }
-            )
+            }
 
             return result
         }
@@ -283,8 +263,7 @@ abstract class PackageManager(
      * definition files that have been processed. It can be overridden by subclasses to add additional data to the
      * result. This base implementation produces a result that contains only the passed in map with project results.
      */
-    protected open fun createPackageManagerResult(projectResults: Map<File, List<ProjectAnalyzerResult>>):
-            PackageManagerResult = PackageManagerResult(projectResults)
+    protected open fun createPackageManagerResult(projectResults: ProjectResults) = PackageManagerResult(projectResults)
 
     /**
      * Return a tree of resolved dependencies (not necessarily declared dependencies, in case conflicts were resolved)
@@ -307,7 +286,7 @@ abstract class PackageManager(
         definitionFiles.forEach { definitionFile ->
             val relativePath = definitionFile.relativeTo(analysisRoot).invariantSeparatorsPath.ifEmpty { "." }
 
-            logger.info { "Resolving $managerName dependencies for path '$relativePath'..." }
+            logger.info { "Using $managerName to resolve dependencies for path '$relativePath'..." }
 
             val duration = measureTime {
                 runCatching {
@@ -315,26 +294,21 @@ abstract class PackageManager(
                 }.onFailure {
                     it.showStackTrace()
 
-                    // In case of Maven we might be able to do better than inferring the name from the path.
-                    val id = if (it is ProjectBuildingException && it.projectId?.isEmpty() == false) {
-                        Identifier("Maven:${it.projectId}")
-                    } else {
-                        Identifier.EMPTY.copy(type = managerName, name = relativePath)
-                    }
+                    val id = Identifier.EMPTY.copy(type = managerName, name = relativePath)
 
                     val projectWithIssues = Project.EMPTY.copy(
                         id = id,
                         definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
                         vcsProcessed = processProjectVcs(definitionFile.parentFile),
                         scopeDependencies = null,
-                        scopeNames = sortedSetOf()
+                        scopeNames = emptySet()
                     )
 
                     val issues = listOf(
                         createAndLogIssue(
                             source = managerName,
-                            message = "Resolving $managerName dependencies for path '$relativePath' failed with: " +
-                                    it.collectMessages()
+                            message = "$managerName failed to resolve dependencies for path '$relativePath': " +
+                                it.collectMessages()
                         )
                     )
 
@@ -342,7 +316,7 @@ abstract class PackageManager(
                 }
             }
 
-            logger.info { "Resolving $managerName dependencies for path '$relativePath' took $duration." }
+            logger.info { "$managerName resolved dependencies for path '$relativePath' in $duration." }
         }
 
         afterResolution(definitionFiles)
@@ -364,15 +338,14 @@ abstract class PackageManager(
                 .takeUnless { it.isEmpty() } ?: "."
 
             "No lockfile found in '$relativePathString'. This potentially results in unstable versions of " +
-                    "dependencies. To support this, enable the 'allowDynamicVersions' option in '$ORT_CONFIG_FILENAME'."
+                "dependencies. To support this, enable the 'allowDynamicVersions' option in '$ORT_CONFIG_FILENAME'."
         }
     }
 
     /**
      * Remove all packages from the contained [ProjectAnalyzerResult]s which are also projects.
      */
-    protected fun Map<File, List<ProjectAnalyzerResult>>.filterProjectPackages():
-            Map<File, List<ProjectAnalyzerResult>> {
+    protected fun ProjectResults.filterProjectPackages(): ProjectResults {
         val projectIds = flatMapTo(mutableSetOf()) { (_, projectResult) -> projectResult.map { it.project.id } }
 
         return mapValues { entry ->

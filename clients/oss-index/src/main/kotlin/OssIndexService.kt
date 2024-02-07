@@ -49,11 +49,11 @@ interface OssIndexService {
 
         /**
          * Create an OSS Index service instance for communicating with a server running at the given [url], optionally
-         * using [user] and [password] for basic authentication, and / or a pre-built OkHttp [client].
+         * using [username] and [password] for basic authentication, and / or a pre-built OkHttp [client].
          */
         fun create(
             url: String? = null,
-            user: String? = null,
+            username: String? = null,
             password: String? = null,
             client: OkHttpClient? = null
         ): OssIndexService {
@@ -61,8 +61,8 @@ interface OssIndexService {
                 val request = chain.request()
                 val requestBuilder = request.newBuilder()
 
-                if (user != null && password != null) {
-                    requestBuilder.header("Authorization", Credentials.basic(user, password))
+                if (username != null && password != null) {
+                    requestBuilder.header("Authorization", Credentials.basic(username, password))
                 }
 
                 chain.proceed(requestBuilder.build())
@@ -139,8 +139,14 @@ interface OssIndexService {
     )
 
     /**
-     * Request vulnerability reports for [components].
+     * Request vulnerability reports for [components] (does not require authentication; rate limits apply).
      */
     @POST("api/v3/component-report")
     suspend fun getComponentReport(@Body components: ComponentReportRequest): List<ComponentReport>
+
+    /**
+     * Request vulnerability reports for [components] (requires basic authentication; rate limits are relaxed).
+     */
+    @POST("api/v3/authorized/component-report")
+    suspend fun getAuthorizedComponentReport(@Body components: ComponentReportRequest): List<ComponentReport>
 }

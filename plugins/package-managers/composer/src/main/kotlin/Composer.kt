@@ -24,9 +24,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 
 import java.io.File
 import java.io.IOException
-import java.util.SortedSet
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
@@ -62,12 +61,6 @@ import org.semver4j.Semver
 const val COMPOSER_PHAR_BINARY = "composer.phar"
 const val COMPOSER_LOCK_FILE = "composer.lock"
 
-private val EXCLUDED_PACKAGES = setOf(
-    "php", // Exclude the PHP runtime itself.
-    "composer-plugin-api", // Exclude the package to specify the supported composer plugin versions.
-    "composer-runtime-api" // Exclude the package to specify the supported composer versions for additional features.
-)
-
 /**
  * The [Composer](https://getcomposer.org/) package manager for PHP.
  */
@@ -78,8 +71,6 @@ class Composer(
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig), CommandLineTool {
-    companion object : Logging
-
     class Factory : AbstractPackageManagerFactory<Composer>("Composer") {
         override val globsForDefinitionFiles = listOf("composer.json")
 
@@ -130,7 +121,7 @@ class Composer(
         }
 
         if (!hasDependencies) {
-            val project = parseProject(definitionFile, scopes = sortedSetOf())
+            val project = parseProject(definitionFile, scopes = emptySet())
             val result = ProjectAnalyzerResult(project, packages = emptySet())
 
             return listOf(result)
@@ -151,7 +142,7 @@ class Composer(
         // the "replacing" package.
         val virtualPackages = parseVirtualPackageNames(packages, manifest, json)
 
-        val scopes = sortedSetOf(
+        val scopes = setOf(
             parseScope("require", manifest, json, packages, virtualPackages),
             parseScope("require-dev", manifest, json, packages, virtualPackages)
         )
@@ -163,7 +154,10 @@ class Composer(
     }
 
     private fun parseScope(
-        scopeName: String, manifest: JsonNode, lockFile: JsonNode, packages: Map<String, Package>,
+        scopeName: String,
+        manifest: JsonNode,
+        lockFile: JsonNode,
+        packages: Map<String, Package>,
         virtualPackages: Set<String>
     ): Scope {
         val requiredPackages = manifest[scopeName].fieldNamesOrEmpty().asSequence()
@@ -177,13 +171,11 @@ class Composer(
         packages: Map<String, Package>,
         virtualPackages: Set<String>,
         dependencyBranch: List<String> = emptyList()
-    ): SortedSet<PackageReference> {
+    ): Set<PackageReference> {
         val packageReferences = mutableSetOf<PackageReference>()
 
         dependencies.filterNot { packageName ->
-            packageName in EXCLUDED_PACKAGES
-                    || packageName.startsWith("ext-") // Exclude extensions to PHP itself.
-                    || packageName in virtualPackages // Exclude virtual packages as they have no metadata.
+            packageName.isPlatformDependency() || packageName in virtualPackages // Virtual packages have no metadata.
         }.forEach { packageName ->
             val packageInfo = packages[packageName]
                 ?: throw IOException("Could not find package info for $packageName")
@@ -191,7 +183,7 @@ class Composer(
             if (packageName in dependencyBranch) {
                 logger.debug {
                     "Not adding circular dependency '$packageName' to the tree, it is already on this branch of the " +
-                            "dependency tree: ${dependencyBranch.joinToString(" -> ")}."
+                        "dependency tree: ${dependencyBranch.joinToString(" -> ")}."
                 }
 
                 return@forEach
@@ -217,22 +209,24 @@ class Composer(
             }
         }
 
-        return packageReferences.toSortedSet()
+        return packageReferences
     }
 
-    private fun parseProject(definitionFile: File, scopes: SortedSet<Scope>): Project {
+    private fun parseProject(definitionFile: File, scopes: Set<Scope>): Project {
         logger.info { "Parsing project metadata from '$definitionFile'..." }
 
         val json = definitionFile.readTree()
         val homepageUrl = json["homepage"].textValueOrEmpty()
         val vcs = parseVcsInfo(json)
-        val rawName = json["name"]?.textValue() ?: definitionFile.parentFile.name
+        val rawName = json["name"]?.textValue()
+        val namespace = rawName?.substringBefore("/", missingDelimiterValue = "").orEmpty()
+        val name = rawName?.substringAfter("/") ?: getFallbackProjectName(analysisRoot, definitionFile)
 
         return Project(
             id = Identifier(
                 type = managerName,
-                namespace = rawName.substringBefore('/'),
-                name = rawName.substringAfter('/'),
+                namespace = namespace,
+                name = name,
                 version = json["version"].textValueOrEmpty()
             ),
             definitionFilePath = VersionControlSystem.getPathInfo(definitionFile).path,
@@ -282,78 +276,6 @@ class Composer(
         return packages
     }
 
-    /**
-     * Get all names of "virtual" (replaced or provided) packages in the package or lock file.
-     *
-     * While Composer also takes the versions of the virtual packages into account, we simply use priorities here. Since
-     * Composer can't handle the same package in multiple version, we can assume that as soon as a package is found in
-     * 'composer.lock' we can ignore any virtual package with the same name. Since the code later depends on the virtual
-     * packages not accidentally containing a package which is actually installed, we make sure to only return virtual
-     * packages for which are not in the installed package map.
-     */
-    private fun parseVirtualPackageNames(packages: Map<String, Package>, manifest: JsonNode, lockFile: JsonNode):
-            Set<String> {
-        val replacedNames = mutableSetOf<String>()
-
-        // The contents of the manifest file, which can also define replacements, is not included in the lock file, so
-        // we parse the manifest file as well.
-        replacedNames += parseVirtualNames(manifest)
-
-        listOf("packages", "packages-dev").forEach { type ->
-            lockFile[type]?.flatMap { pkgInfo ->
-                parseVirtualNames(pkgInfo)
-            }?.let {
-                replacedNames += it
-            }
-        }
-        return replacedNames - packages.keys
-    }
-
-    private fun parseVirtualNames(packageInfo: JsonNode) =
-        listOf("replace", "provide").flatMap {
-            packageInfo[it]?.fieldNames()?.asSequence()?.toSet().orEmpty()
-        }.toSet()
-
-    private fun parseAuthors(packageInfo: JsonNode): Set<String> =
-        mutableSetOf<String>().also { authors ->
-            packageInfo["authors"]?.mapNotNullTo(authors) { it["name"]?.textValue() }
-        }
-
-    private fun parseDeclaredLicenses(packageInfo: JsonNode): Set<String> =
-        mutableSetOf<String>().also { licenses ->
-            packageInfo["license"]?.mapNotNullTo(licenses) { it.textValue() }
-        }
-
-    private fun parseVcsInfo(packageInfo: JsonNode): VcsInfo =
-        packageInfo["source"]?.let {
-            VcsInfo(
-                type = VcsType.forName(it["type"].textValueOrEmpty()),
-                url = it["url"].textValueOrEmpty(),
-                revision = it["reference"].textValueOrEmpty()
-            )
-        }.orEmpty()
-
-    private fun parseArtifact(packageInfo: JsonNode) =
-        packageInfo["dist"]?.let {
-            val shasum = it["shasum"].textValueOrEmpty()
-            RemoteArtifact(it["url"].textValueOrEmpty(), Hash.create(shasum))
-        }.orEmpty()
-
-    private fun getRuntimeDependencies(packageName: String, lockFile: JsonNode): Sequence<String> {
-        listOf("packages", "packages-dev").forEach {
-            lockFile[it]?.forEach { packageInfo ->
-                if (packageInfo["name"].textValueOrEmpty() == packageName) {
-                    val requiredPackages = packageInfo["require"]
-                    if (requiredPackages != null && requiredPackages.isObject) {
-                        return (requiredPackages as ObjectNode).fieldNames().asSequence()
-                    }
-                }
-            }
-        }
-
-        return emptySequence()
-    }
-
     private fun ensureLockFile(workingDir: File): File {
         val lockFile = workingDir.resolve(COMPOSER_LOCK_FILE)
 
@@ -373,3 +295,84 @@ class Composer(
         return lockFile
     }
 }
+
+/**
+ * Return whether this String denotes a type of platform dependency, see
+ * https://getcomposer.org/doc/articles/composer-platform-dependencies.md#different-types-of-platform-packages.
+ */
+private fun String.isPlatformDependency(): Boolean =
+    this in (COMPOSER_PLATFORM_TYPES + PHP_PLATFORM_TYPES) || startsWith("ext-") || startsWith("lib-")
+
+private val COMPOSER_PLATFORM_TYPES = setOf("composer", "composer-plugin-api", "composer-runtime-api")
+private val PHP_PLATFORM_TYPES = setOf("php", "php-64bit", "php-ipv6", "php-zts", "php-debug")
+
+private fun getRuntimeDependencies(packageName: String, lockFile: JsonNode): Sequence<String> {
+    listOf("packages", "packages-dev").forEach {
+        lockFile[it]?.forEach { packageInfo ->
+            if (packageInfo["name"].textValueOrEmpty() == packageName) {
+                val requiredPackages = packageInfo["require"]
+                if (requiredPackages != null && requiredPackages.isObject) {
+                    return (requiredPackages as ObjectNode).fieldNames().asSequence()
+                }
+            }
+        }
+    }
+
+    return emptySequence()
+}
+
+private fun parseArtifact(packageInfo: JsonNode): RemoteArtifact =
+    packageInfo["dist"]?.let {
+        val shasum = it["shasum"].textValueOrEmpty()
+        RemoteArtifact(it["url"].textValueOrEmpty(), Hash.create(shasum))
+    }.orEmpty()
+
+private fun parseAuthors(packageInfo: JsonNode): Set<String> =
+    packageInfo["authors"]?.mapNotNullTo(mutableSetOf()) { it["name"]?.textValue() }.orEmpty()
+
+private fun parseDeclaredLicenses(packageInfo: JsonNode): Set<String> =
+    packageInfo["license"]?.mapNotNullTo(mutableSetOf()) { it.textValue() }.orEmpty()
+
+private fun parseVcsInfo(packageInfo: JsonNode): VcsInfo =
+    packageInfo["source"]?.let {
+        VcsInfo(
+            type = VcsType.forName(it["type"].textValueOrEmpty()),
+            url = it["url"].textValueOrEmpty(),
+            revision = it["reference"].textValueOrEmpty()
+        )
+    }.orEmpty()
+
+/**
+ * Get all names of "virtual" (replaced or provided) packages in the package or lock file.
+ *
+ * While Composer also takes the versions of the virtual packages into account, we simply use priorities here. Since
+ * Composer can't handle the same package in multiple version, we can assume that as soon as a package is found in
+ * 'composer.lock' we can ignore any virtual package with the same name. Since the code later depends on the virtual
+ * packages not accidentally containing a package which is actually installed, we make sure to only return virtual
+ * packages for which are not in the installed package map.
+ */
+private fun parseVirtualPackageNames(
+    packages: Map<String, Package>,
+    manifest: JsonNode,
+    lockFile: JsonNode
+): Set<String> {
+    val replacedNames = mutableSetOf<String>()
+
+    // The contents of the manifest file, which can also define replacements, is not included in the lock file, so
+    // we parse the manifest file as well.
+    replacedNames += parseVirtualNames(manifest)
+
+    listOf("packages", "packages-dev").forEach { type ->
+        lockFile[type]?.flatMap { pkgInfo ->
+            parseVirtualNames(pkgInfo)
+        }?.let {
+            replacedNames += it
+        }
+    }
+    return replacedNames - packages.keys
+}
+
+private fun parseVirtualNames(packageInfo: JsonNode): Set<String> =
+    listOf("replace", "provide").flatMapTo(mutableSetOf()) {
+        packageInfo[it]?.fieldNames()?.asSequence().orEmpty()
+    }

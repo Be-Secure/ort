@@ -20,7 +20,6 @@
 package org.ossreviewtoolkit.plugins.packagemanagers.bundler
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.module.kotlin.readValue
 
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -30,7 +29,7 @@ import java.net.HttpURLConnection
 
 import kotlin.time.measureTime
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.jruby.embed.LocalContextScope
 import org.jruby.embed.PathType
@@ -54,12 +53,16 @@ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.createAndLogIssue
+import org.ossreviewtoolkit.model.fromYaml
+import org.ossreviewtoolkit.model.orEmpty
 import org.ossreviewtoolkit.model.yamlMapper
 import org.ossreviewtoolkit.utils.common.AlphaNumericComparator
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.common.textValueOrEmpty
 import org.ossreviewtoolkit.utils.ort.HttpDownloadError
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
+import org.ossreviewtoolkit.utils.ort.downloadText
+import org.ossreviewtoolkit.utils.ort.okHttpClient
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
 /**
@@ -135,7 +138,7 @@ class Bundler(
     analyzerConfig: AnalyzerConfiguration,
     repoConfig: RepositoryConfiguration
 ) : PackageManager(name, analysisRoot, analyzerConfig, repoConfig) {
-    companion object : Logging {
+    companion object {
         /**
          * The name of the option to specify the Bundler version.
          */
@@ -220,7 +223,7 @@ class Bundler(
                 vcs = VcsInfo.EMPTY,
                 vcsProcessed = processProjectVcs(workingDir, VcsInfo.EMPTY, homepageUrl),
                 homepageUrl = homepageUrl,
-                scopeDependencies = scopes.toSortedSet()
+                scopeDependencies = scopes
             )
 
             val allProjectDeps = groupedDeps.values.flatten().toSet()
@@ -235,12 +238,17 @@ class Bundler(
     }
 
     private fun parseScope(
-        workingDir: File, projectId: Identifier, groupName: String, dependencyList: List<String>,
-        scopes: MutableSet<Scope>, gemSpecs: MutableMap<String, GemSpec>, issues: MutableList<Issue>
+        workingDir: File,
+        projectId: Identifier,
+        groupName: String,
+        dependencyList: List<String>,
+        scopes: MutableSet<Scope>,
+        gemSpecs: MutableMap<String, GemSpec>,
+        issues: MutableList<Issue>
     ) {
         logger.debug {
             "Parsing scope '$groupName' with top-level dependencies $dependencyList for project " +
-                    "'${projectId.toCoordinates()}' in '$workingDir'."
+                "'${projectId.toCoordinates()}' in '$workingDir'."
         }
 
         val scopeDependencies = mutableSetOf<PackageReference>()
@@ -249,12 +257,16 @@ class Bundler(
             parseDependency(workingDir, projectId, it, gemSpecs, scopeDependencies, issues)
         }
 
-        scopes += Scope(groupName, scopeDependencies.toSortedSet())
+        scopes += Scope(groupName, scopeDependencies)
     }
 
     private fun parseDependency(
-        workingDir: File, projectId: Identifier, gemName: String, gemSpecs: MutableMap<String, GemSpec>,
-        scopeDependencies: MutableSet<PackageReference>, issues: MutableList<Issue>
+        workingDir: File,
+        projectId: Identifier,
+        gemName: String,
+        gemSpecs: MutableMap<String, GemSpec>,
+        scopeDependencies: MutableSet<PackageReference>,
+        issues: MutableList<Issue>
     ) {
         logger.debug { "Parsing dependency '$gemName'." }
 
@@ -280,7 +292,7 @@ class Bundler(
                     parseDependency(workingDir, projectId, it, gemSpecs, transitiveDependencies, issues)
                 }
 
-                scopeDependencies += PackageReference(gemId, dependencies = transitiveDependencies.toSortedSet())
+                scopeDependencies += PackageReference(gemId, dependencies = transitiveDependencies)
             }
         }.onFailure {
             it.showStackTrace()
@@ -288,13 +300,13 @@ class Bundler(
             issues += createAndLogIssue(
                 source = managerName,
                 message = "Failed to parse dependency '$gemName' of project '${projectId.toCoordinates()}' in " +
-                        "'$workingDir': ${it.collectMessages()}"
+                    "'$workingDir': ${it.collectMessages()}"
             )
         }
     }
 
     private fun getDependencyGroups(workingDir: File): Map<String, List<String>> =
-        yamlMapper.readValue(runScriptResource(ROOT_DEPENDENCIES_SCRIPT, workingDir))
+        runScriptResource(ROOT_DEPENDENCIES_SCRIPT, workingDir).fromYaml()
 
     private fun resolveGemsMetadata(workingDir: File): MutableMap<String, GemSpec> {
         val stdout = runScriptResource(RESOLVE_DEPENDENCIES_SCRIPT, workingDir)
@@ -349,7 +361,7 @@ class Bundler(
         // See http://guides.rubygems.org/rubygems-org-api-v2/.
         val url = "https://rubygems.org/api/v2/rubygems/$name/versions/$version.yaml"
 
-        return OkHttpClientHelper.downloadText(url).mapCatching {
+        return okHttpClient.downloadText(url).mapCatching {
             GemSpec.createFromGem(yamlMapper.readTree(it))
         }.onFailure {
             val error = (it as? HttpDownloadError) ?: run {
@@ -363,7 +375,7 @@ class Bundler(
                 OkHttpClientHelper.HTTP_TOO_MANY_REQUESTS -> {
                     throw IOException(
                         "RubyGems reported too many requests when requesting metadata for gem '$name', see " +
-                                "https://guides.rubygems.org/rubygems-org-api/#rate-limits."
+                            "https://guides.rubygems.org/rubygems-org-api/#rate-limits."
                     )
                 }
 
@@ -425,11 +437,11 @@ internal data class GemSpec(
                 dependency["name"]?.textValue()
             }?.toSet()
 
-            val vcs = when {
-                node.hasNonNull("source_code_uri") -> VcsHost.parseUrl(node["source_code_uri"].textValue())
-                node.hasNonNull("homepage_uri") -> VcsHost.parseUrl(node["homepage_uri"].textValue())
-                else -> VcsInfo.EMPTY
-            }
+            val vcs = sequenceOf(node["source_code_uri"], node["homepage_uri"]).mapNotNull { uri ->
+                uri?.textValue()?.takeIf { it.isNotEmpty() }
+            }.firstOrNull()?.let {
+                VcsHost.parseUrl(it)
+            }.orEmpty()
 
             val artifact = if (node.hasNonNull("gem_uri") && node.hasNonNull("sha")) {
                 val sha = node["sha"].textValue()

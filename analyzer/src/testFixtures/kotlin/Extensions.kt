@@ -19,22 +19,36 @@
 
 package org.ossreviewtoolkit.analyzer.managers
 
+import io.kotest.core.spec.Spec
+import io.kotest.inspectors.forAll
 import io.kotest.matchers.collections.haveSize
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 
 import java.io.File
+import java.time.Instant
 
+import org.ossreviewtoolkit.analyzer.Analyzer
 import org.ossreviewtoolkit.analyzer.AnalyzerResultBuilder
 import org.ossreviewtoolkit.analyzer.PackageManager
+import org.ossreviewtoolkit.analyzer.PackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManagerResult
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.DependencyTreeNavigator
+import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.Package
+import org.ossreviewtoolkit.model.PackageReference
 import org.ossreviewtoolkit.model.Project
 import org.ossreviewtoolkit.model.ProjectAnalyzerResult
+import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
+import org.ossreviewtoolkit.model.config.Excludes
+import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
+import org.ossreviewtoolkit.model.config.RepositoryConfiguration
+import org.ossreviewtoolkit.model.config.ScopeExclude
+import org.ossreviewtoolkit.model.config.ScopeExcludeReason
+import org.ossreviewtoolkit.utils.test.USER_DIR
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
 
 fun PackageManager.resolveSingleProject(definitionFile: File, resolveScopes: Boolean = false): ProjectAnalyzerResult {
@@ -50,19 +64,21 @@ fun PackageManager.resolveSingleProject(definitionFile: File, resolveScopes: Boo
 }
 
 /**
- * Resolve the dependencies of a [definitionFile] which should create at least one project. All created projects will be
- * collated in an [AnalyzerResult] with their dependency graph.
+ * Resolve the dependencies of all [definitionFiles] which should create at least one project. All created projects will
+ * be collated in an [AnalyzerResult] with their dependency graph.
  */
-fun PackageManager.collateMultipleProjects(definitionFile: File): AnalyzerResult {
-    val managerResult = resolveDependencies(listOf(definitionFile), emptyMap())
+fun PackageManager.collateMultipleProjects(vararg definitionFiles: File): AnalyzerResult {
+    val managerResult = resolveDependencies(definitionFiles.asList(), emptyMap())
 
     val builder = AnalyzerResultBuilder()
     managerResult.dependencyGraph?.let {
         builder.addDependencyGraph(managerName, it).addPackages(managerResult.sharedPackages)
     }
-    managerResult.projectResults[definitionFile].shouldNotBeNull {
-        this shouldHaveAtLeastSize 1
-        forEach { builder.addResult(it) }
+    definitionFiles.forAll { definitionFile ->
+        managerResult.projectResults[definitionFile].shouldNotBeNull {
+            this shouldHaveAtLeastSize 1
+            forEach { builder.addResult(it) }
+        }
     }
 
     return builder.build()
@@ -92,3 +108,58 @@ private fun Project.filterReferencedPackages(allPackages: Set<Package>): Set<Pac
     val projectDependencies = DependencyTreeNavigator.projectDependencies(this)
     return allPackages.filterTo(mutableSetOf()) { it.id in projectDependencies }
 }
+
+fun Collection<PackageReference>.withInvariantIssues(): Set<PackageReference> = mapTo(mutableSetOf()) { ref ->
+    ref.copy(
+        dependencies = ref.dependencies.withInvariantIssues(),
+        issues = ref.issues.map { it.copy(timestamp = Instant.EPOCH) }
+    )
+}
+
+fun ProjectAnalyzerResult.withInvariantIssues() = copy(
+    project = project.copy(
+        scopeDependencies = project.scopeDependencies?.mapTo(mutableSetOf()) { scope ->
+            scope.copy(dependencies = scope.dependencies.withInvariantIssues())
+        }
+    ),
+    issues = issues.sortedBy { it.message }.map { it.copy(timestamp = Instant.EPOCH) }
+)
+
+fun Spec.analyze(
+    projectDir: File,
+    allowDynamicVersions: Boolean = false,
+    packageManagers: Collection<PackageManagerFactory> = PackageManagerFactory.ENABLED_BY_DEFAULT
+): OrtResult {
+    val config = AnalyzerConfiguration(allowDynamicVersions)
+    val analyzer = Analyzer(config)
+    val managedFiles = analyzer.findManagedFiles(projectDir, packageManagers)
+
+    return analyzer.analyze(managedFiles).withResolvedScopes()
+}
+
+fun Spec.create(
+    managerName: String,
+    analyzerConfig: AnalyzerConfiguration,
+    repoConfig: RepositoryConfiguration = RepositoryConfiguration()
+) = PackageManagerFactory.ALL.getValue(managerName).create(USER_DIR, analyzerConfig, repoConfig)
+
+fun Spec.create(
+    managerName: String,
+    vararg options: Pair<String, String>,
+    allowDynamicVersions: Boolean = false,
+    excludedScopes: Collection<String> = emptySet()
+) = create(
+    managerName = managerName,
+    analyzerConfig = AnalyzerConfiguration(
+        allowDynamicVersions = allowDynamicVersions,
+        skipExcluded = excludedScopes.isNotEmpty(),
+        packageManagers = mapOf(
+            managerName to PackageManagerConfiguration(options = mapOf(*options))
+        )
+    ),
+    repoConfig = RepositoryConfiguration(
+        excludes = Excludes(
+            scopes = excludedScopes.map { ScopeExclude(it, ScopeExcludeReason.TEST_DEPENDENCY_OF) }
+        )
+    )
+)

@@ -20,9 +20,9 @@
 package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.annotation.JsonPropertyOrder
 
-import java.util.SortedMap
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
 
 /**
  * Type alias for a function that allows filtering of [AdvisorResult]s.
@@ -32,12 +32,12 @@ typealias AdvisorResultFilter = (AdvisorResult) -> Boolean
 /**
  * A record of a single run of the advisor tool, containing the input and the [Vulnerability] for every checked package.
  */
-@JsonIgnoreProperties(value = ["has_issues"], allowGetters = true)
 data class AdvisorRecord(
     /**
      * The [AdvisorResult]s for all [Package]s.
      */
-    val advisorResults: SortedMap<Identifier, List<AdvisorResult>>
+    @JsonPropertyOrder(alphabetic = true)
+    val advisorResults: Map<Identifier, List<AdvisorResult>>
 ) {
     companion object {
         /**
@@ -60,31 +60,25 @@ data class AdvisorRecord(
         fun resultsWithIssues(
             minSeverity: Severity = Severity.HINT,
             capability: AdvisorCapability? = null
-        ): AdvisorResultFilter = { result ->
-            (capability == null || capability in result.advisor.capabilities) && result.summary.issues.any {
-                it.severity >= minSeverity
+        ): AdvisorResultFilter =
+            { result ->
+                (capability == null || capability in result.advisor.capabilities) && result.summary.issues.any {
+                    it.severity >= minSeverity
+                }
             }
-        }
     }
 
-    fun collectIssues(): Map<Identifier, Set<Issue>> {
-        val collectedIssues = mutableMapOf<Identifier, MutableSet<Issue>>()
-
-        advisorResults.forEach { (id, results) ->
-            results.forEach { result ->
-                if (result.summary.issues.isNotEmpty()) {
-                    collectedIssues.getOrPut(id) { mutableSetOf() } += result.summary.issues
+    @JsonIgnore
+    fun getIssues(): Map<Identifier, Set<Issue>> =
+        buildMap<Identifier, MutableSet<Issue>> {
+            advisorResults.forEach { (id, results) ->
+                results.forEach { result ->
+                    if (result.summary.issues.isNotEmpty()) {
+                        getOrPut(id) { mutableSetOf() } += result.summary.issues
+                    }
                 }
             }
         }
-
-        return collectedIssues
-    }
-
-    /**
-     * True if any of the [advisorResults] contain [Issue]s.
-     */
-    val hasIssues by lazy { collectIssues().isNotEmpty() }
 
     /**
      * Return a map of all [Package]s and the associated [Vulnerabilities][Vulnerability].
@@ -129,8 +123,8 @@ data class AdvisorRecord(
 }
 
 /**
- * Merge this list of [Vulnerability] objects by combining vulnerabilities with the same ID and merging their
- * references.
+ * Merge this collection of [Vulnerability] objects by combining vulnerabilities with the same ID and merging their
+ * references. Other [Vulnerability] properties are taken from the first object which has any such property set.
  */
 private fun Collection<Vulnerability>.mergeVulnerabilities(): List<Vulnerability> {
     val vulnerabilitiesById = groupByTo(sortedMapOf()) { it.id }
@@ -138,10 +132,12 @@ private fun Collection<Vulnerability>.mergeVulnerabilities(): List<Vulnerability
 }
 
 /**
- * Merge this (non-empty) list of [Vulnerability] objects (which are expected to have the same ID) by to a single
- * [Vulnerability] that contains all the references from the source vulnerabilities (with duplicates removed).
+ * Merge this (non-empty) collection of [Vulnerability] objects (which are expected to have the same ID) to a single
+ * [Vulnerability] that contains all the references from the original vulnerabilities (with duplicates removed). Other
+ * [Vulnerability] properties are taken from the first object which has any such property set.
  */
 private fun Collection<Vulnerability>.mergeReferences(): Vulnerability {
     val references = flatMapTo(mutableSetOf()) { it.references }
-    return Vulnerability(id = first().id, references = references.toList())
+    val entry = find { it.summary != null || it.description != null } ?: first()
+    return entry.copy(references = references.toList())
 }

@@ -34,10 +34,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.analyzer.PackageManager.Companion.excludes
-import org.ossreviewtoolkit.analyzer.managers.Unmanaged
 import org.ossreviewtoolkit.downloader.VersionControlSystem
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.AnalyzerRun
@@ -47,9 +46,9 @@ import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.Excludes
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
 import org.ossreviewtoolkit.model.orEmpty
-import org.ossreviewtoolkit.model.utils.ConfigurationResolver
+import org.ossreviewtoolkit.model.toYaml
 import org.ossreviewtoolkit.model.utils.PackageCurationProvider
-import org.ossreviewtoolkit.model.yamlMapper
+import org.ossreviewtoolkit.model.utils.setPackageCurations
 import org.ossreviewtoolkit.utils.common.CommandLineTool
 import org.ossreviewtoolkit.utils.common.VCS_DIRECTORIES
 import org.ossreviewtoolkit.utils.ort.Environment
@@ -58,24 +57,27 @@ import org.ossreviewtoolkit.utils.ort.Environment
  * The class to run the analysis. The signatures of public functions in this class define the library API.
  */
 class Analyzer(private val config: AnalyzerConfiguration, private val labels: Map<String, String> = emptyMap()) {
-    companion object : Logging
-
     data class ManagedFileInfo(
         val absoluteProjectPath: File,
         val managedFiles: Map<PackageManager, List<File>>,
         val repositoryConfiguration: RepositoryConfiguration
     )
 
+    /**
+     * Find files recognized by any of [packageManagers] inside [absoluteProjectPath]. The [repositoryConfiguration] is
+     * taken into account, e.g. for path excludes and packaga manager options. Instantiate only those package managers
+     * that have matching files and return the latter as part of [ManagedFileInfo].
+     */
     @JvmOverloads
     fun findManagedFiles(
         absoluteProjectPath: File,
-        packageManagers: Collection<PackageManagerFactory> = PackageManager.ALL.values,
+        packageManagers: Collection<PackageManagerFactory> = PackageManagerFactory.ENABLED_BY_DEFAULT,
         repositoryConfiguration: RepositoryConfiguration = RepositoryConfiguration()
     ): ManagedFileInfo {
         require(absoluteProjectPath.isAbsolute)
 
         logger.debug {
-            "Using the following configuration settings:\n${yamlMapper.writeValueAsString(repositoryConfiguration)}"
+            "Using the following configuration settings:\n${repositoryConfiguration.toYaml()}"
         }
 
         val distinctPackageManagers = packageManagers.distinct()
@@ -109,22 +111,23 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
         }
 
         if (!hasOnlyManagedDirs) {
-            distinctPackageManagers.find { it is Unmanaged.Factory }
+            val unmanagedPackageManagerFactory = PackageManagerFactory.ALL["Unmanaged"]
+            distinctPackageManagers.find { it == unmanagedPackageManagerFactory }
                 ?.create(absoluteProjectPath, config, repositoryConfiguration)
-                ?.run { managedFiles[this] = listOf(absoluteProjectPath) }
+                ?.also { managedFiles[it] = listOf(absoluteProjectPath) }
         }
 
         return ManagedFileInfo(absoluteProjectPath, managedFiles, repositoryConfiguration)
     }
 
     /**
-     * Return the result of analyzing the given [managed file][info]. The given [curationProviders] must be ordered
-     * highest-priority-first.
+     * Return the result of analyzing the given [managed file][info]. The given [packageCurationProviders] must be
+     * ordered highest-priority-first.
      */
     @JvmOverloads
     fun analyze(
         info: ManagedFileInfo,
-        curationProviders: List<Pair<String, PackageCurationProvider>> = emptyList()
+        packageCurationProviders: List<Pair<String, PackageCurationProvider>> = emptyList()
     ): OrtResult {
         val startTime = Instant.now()
 
@@ -150,13 +153,8 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
         }
 
         val run = AnalyzerRun(startTime, endTime, Environment(toolVersions = toolVersions), config, analyzerResult)
-        val resolvedConfiguration = ConfigurationResolver.resolveConfiguration(analyzerResult, curationProviders)
 
-        return OrtResult(
-            repository = repository,
-            analyzer = run,
-            resolvedConfiguration = resolvedConfiguration
-        )
+        return OrtResult(repository = repository, analyzer = run).setPackageCurations(packageCurationProviders)
     }
 
     private fun analyzeInParallel(managedFiles: Map<PackageManager, List<File>>): AnalyzerResult {
@@ -207,7 +205,7 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
                 if (managerForName == null) {
                     logger.debug {
                         "Ignoring that ${packageManager.managerName} must run after $name, because there are no " +
-                                "definition files for $name."
+                            "definition files for $name."
                     }
                 } else {
                     result.getOrPut(packageManager) { mutableSetOf() } += name
@@ -223,7 +221,7 @@ class Analyzer(private val config: AnalyzerConfiguration, private val labels: Ma
                 if (managerForName == null) {
                     logger.debug {
                         "Ignoring that ${packageManager.managerName} must run before $name, because there are no " +
-                                "definition files for $name."
+                            "definition files for $name."
                     }
                 } else {
                     result.getOrPut(managerForName) { mutableSetOf() } += packageManager.managerName
@@ -245,22 +243,6 @@ private class AnalyzerState {
 
     fun addResult(manager: PackageManager, result: PackageManagerResult) {
         scope.launch {
-            // By convention, project ids must be of the type of the respective package manager. An exception
-            // for this is Pub with Flutter, which internally calls Gradle.
-            result.projectResults.forEach { (_, result) ->
-                val invalidProjects = result.filterNot {
-                    val projectType = it.project.id.type
-
-                    projectType == manager.managerName ||
-                            (manager.managerName == "Pub" && projectType == "Gradle")
-                }
-
-                require(invalidProjects.isEmpty()) {
-                    val projectString = invalidProjects.joinToString { "'${it.project.id.toCoordinates()}'" }
-                    "Projects $projectString must be of type '${manager.managerName}'."
-                }
-            }
-
             addMutex.withLock {
                 result.projectResults.values.flatten().forEach { builder.addResult(it) }
                 result.dependencyGraph?.let {
@@ -319,9 +301,9 @@ private class PackageManagerRunner(
                 val remaining = mustRunAfter - finishedPackageManagers
 
                 if (remaining.isNotEmpty()) {
-                    Analyzer.logger.info {
+                    logger.info {
                         "${manager.managerName} is waiting for the following package managers to complete: " +
-                                remaining.joinToString(postfix = ".")
+                            remaining.joinToString(postfix = ".")
                     }
                 }
 
@@ -333,12 +315,12 @@ private class PackageManagerRunner(
     }
 
     private suspend fun run() {
-        Analyzer.logger.info { "Starting ${manager.managerName} analysis." }
+        logger.info { "Starting ${manager.managerName} analysis." }
 
         withContext(Dispatchers.IO) {
             val result = manager.resolveDependencies(definitionFiles, labels)
 
-            Analyzer.logger.info { "Finished ${manager.managerName} analysis." }
+            logger.info { "Finished ${manager.managerName} analysis." }
 
             onResult(result)
         }

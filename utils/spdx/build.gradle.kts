@@ -21,44 +21,80 @@ import de.undercouch.gradle.tasks.download.Download
 
 import groovy.json.JsonSlurper
 
-import java.net.URL
-
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.net.Authenticator
+import java.net.PasswordAuthentication
+import java.net.URI
 
 val spdxLicenseListVersion: String by project
 
-@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
+    // Apply core plugins.
     antlr
-    `java-library`
 
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
+
+    // Apply third-party plugins.
     alias(libs.plugins.download)
 }
 
 tasks.withType<AntlrTask>().configureEach {
     arguments = arguments + listOf("-visitor")
+
+    doLast {
+        // Work around https://github.com/antlr/antlr4/issues/4128.
+        outputDirectory.walk()
+            .filter { it.isFile && it.extension == "java" }
+            .forEach { javaFile ->
+                val lines = javaFile.readLines()
+
+                val text = buildString {
+                    lines.mapIndexed { index, line ->
+                        val patchedLine = when {
+                            index == 0 && line.startsWith("// Generated from ") -> line.replace('\\', '/')
+                            else -> line
+                        }
+
+                        appendLine(patchedLine)
+                    }
+                }
+
+                javaFile.writeText(text)
+            }
+    }
 }
 
-tasks.withType<KotlinCompile>().configureEach {
-    // Ensure "generateGrammarSource" is called before "compileKotlin".
-    dependsOn(tasks.withType<AntlrTask>())
-}
-
-tasks.withType<Jar>().configureEach {
-    // Ensure "generateGrammarSource" is called before "sourcesJar".
-    dependsOn(tasks.withType<AntlrTask>())
+sourceSets.configureEach {
+    val generateGrammarSource = tasks.named(getTaskName("generate", "GrammarSource"))
+    java.srcDir(generateGrammarSource.map { files() })
 }
 
 dependencies {
     antlr(libs.antlr)
 
-    api(libs.jacksonDatabind)
+    api(libs.jackson.databind)
 
-    implementation(project(":utils:common-utils"))
+    implementation(projects.utils.commonUtils)
 
-    implementation(libs.jacksonDataformatYaml)
-    implementation(libs.jacksonDatatypeJsr310)
-    implementation(libs.jacksonModuleKotlin)
+    implementation(libs.jackson.dataformat.yaml)
+    implementation(libs.jackson.datatype.jsr310)
+    implementation(libs.jackson.module.kotlin)
+
+    testImplementation(libs.kotest.assertions.json)
+}
+
+if (Authenticator.getDefault() == null) {
+    Authenticator.setDefault(object : Authenticator() {
+        override fun getPasswordAuthentication(): PasswordAuthentication {
+            if (requestorType != RequestorType.PROXY) return super.getPasswordAuthentication()
+
+            val proxyUser = System.getProperty("$requestingProtocol.proxyUser")
+            val proxyPassword = System.getProperty("$requestingProtocol.proxyPassword")
+            if (proxyUser == null || proxyPassword == null) return super.getPasswordAuthentication()
+
+            return PasswordAuthentication(proxyUser, proxyPassword.toCharArray())
+        }
+    })
 }
 
 data class LicenseInfo(
@@ -69,7 +105,7 @@ data class LicenseInfo(
 )
 
 fun interface SpdxLicenseTextProvider {
-    fun getLicenseUrl(info: LicenseInfo): URL?
+    fun getLicenseUrl(info: LicenseInfo): URI?
 }
 
 class ScanCodeLicenseTextProvider : SpdxLicenseTextProvider {
@@ -77,10 +113,11 @@ class ScanCodeLicenseTextProvider : SpdxLicenseTextProvider {
 
     private val spdxIdToScanCodeKeyMap: Map<String, String> by lazy {
         val jsonSlurper = JsonSlurper()
-        val url = URL("https://scancode-licensedb.aboutcode.org/index.json")
+        val url = URI.create("https://scancode-licensedb.aboutcode.org/index.json").toURL()
 
         logger.quiet("Downloading ScanCode license index...")
 
+        @Suppress("UNCHECKED_CAST")
         val json = jsonSlurper.parse(url, "UTF-8") as List<Map<String, Any?>>
 
         logger.quiet("Found ${json.size} ScanCode license entries.")
@@ -90,18 +127,18 @@ class ScanCodeLicenseTextProvider : SpdxLicenseTextProvider {
         }.toMap()
     }
 
-    override fun getLicenseUrl(info: LicenseInfo): URL? {
+    override fun getLicenseUrl(info: LicenseInfo): URI? {
         val key = spdxIdToScanCodeKeyMap[info.id] ?: return null
-        return URL("$url/$key.LICENSE")
+        return URI("$url/$key.LICENSE")
     }
 }
 
 class SpdxLicenseListDataProvider : SpdxLicenseTextProvider {
     private val url = "https://raw.githubusercontent.com/spdx/license-list-data/v$spdxLicenseListVersion"
 
-    override fun getLicenseUrl(info: LicenseInfo): URL? {
+    override fun getLicenseUrl(info: LicenseInfo): URI {
         val prefix = "deprecated_".takeIf { info.isDeprecated && !info.isException }.orEmpty()
-        return URL("$url/text/$prefix${info.id}.txt")
+        return URI("$url/text/$prefix${info.id}.txt")
     }
 }
 
@@ -150,16 +187,23 @@ fun licenseToEnumEntry(info: LicenseInfo): String {
 }
 
 fun getLicenseInfo(
-    jsonUrl: String, description: String, listKeyName: String, idKeyName: String, isException: Boolean
+    jsonUrl: String,
+    description: String,
+    listKeyName: String,
+    idKeyName: String,
+    isException: Boolean
 ): List<LicenseInfo> {
     logger.quiet("Downloading SPDX $description list...")
 
     val jsonSlurper = JsonSlurper()
-    val json = jsonSlurper.parse(URL(jsonUrl), "UTF-8") as Map<String, Any>
+
+    @Suppress("UNCHECKED_CAST")
+    val json = jsonSlurper.parse(URI(jsonUrl).toURL(), "UTF-8") as Map<String, Any>
 
     val licenseListVersion = json["licenseListVersion"] as String
     logger.quiet("Found SPDX $description list version $licenseListVersion.")
 
+    @Suppress("UNCHECKED_CAST")
     return (json[listKeyName] as List<Map<String, Any>>).map {
         val id = it[idKeyName] as String
         LicenseInfo(id, it["name"] as String, it["isDeprecatedLicenseId"] as Boolean, isException = isException)
@@ -167,7 +211,10 @@ fun getLicenseInfo(
 }
 
 fun Task.generateEnumClass(
-    className: String, description: String, info: List<LicenseInfo>, resourcePath: String
+    className: String,
+    description: String,
+    info: List<LicenseInfo>,
+    resourcePath: String
 ): List<LicenseInfo> {
     logger.quiet("Collected ${info.size} SPDX $description identifiers.")
 
@@ -275,7 +322,7 @@ fun Task.generateEnumClass(
         |        @JsonCreator(mode = JsonCreator.Mode.DELEGATING)
         |        @JvmStatic
         |        fun forId(id: String) =
-        |            values().find { id.equals(it.id, ignoreCase = true) || id.equals(it.fullName, ignoreCase = true) }
+        |            entries.find { id.equals(it.id, ignoreCase = true) || id.equals(it.fullName, ignoreCase = true) }
         |    }
         |
         |
@@ -334,7 +381,7 @@ val generateSpdxLicenseEnum by tasks.registering(Download::class) {
 
     src(licenseUrlMap.keys.sortedBy { it.toString().lowercase() })
     dest("src/main/resources/$licensesResourcePath")
-    eachFile { name = licenseUrlMap[sourceURL] }
+    eachFile { name = licenseUrlMap[sourceURL.toURI()] }
 
     doLast {
         generateEnumClass(
@@ -367,7 +414,7 @@ val generateSpdxLicenseExceptionEnum by tasks.registering(Download::class) {
 
     src(licenseExceptionUrlMap.keys.sortedBy { it.toString().lowercase() })
     dest("src/main/resources/$exceptionsResourcePath")
-    eachFile { name = licenseExceptionUrlMap[sourceURL] }
+    eachFile { name = licenseExceptionUrlMap[sourceURL.toURI()] }
 
     doLast {
         generateEnumClass(

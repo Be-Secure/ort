@@ -1,6 +1,6 @@
 ---
 projects:
-- id: "Pub:flutter_example:flutter_example:1.0.0+1"
+- id: "Pub::flutter_example:1.0.0+1"
   definition_file_path: "plugins/package-managers/pub/src/funTest/assets/projects/synthetic/flutter-project-with-android-and-cocoapods/pubspec.yaml"
   declared_licenses: []
   declared_licenses_processed: {}
@@ -11,7 +11,7 @@ projects:
     path: ""
   vcs_processed:
     type: "Git"
-    url: "<REPLACE_URL>"
+    url: "<REPLACE_URL_PROCESSED>"
     revision: "<REPLACE_REVISION>"
     path: "plugins/package-managers/pub/src/funTest/assets/projects/synthetic/flutter-project-with-android-and-cocoapods"
   homepage_url: ""
@@ -23,9 +23,9 @@ projects:
     - id: "Gradle:android:app:"
       linkage: "PROJECT_STATIC"
       dependencies:
-      - id: "Maven:io.flutter:arm64_v8a_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
-      - id: "Maven:io.flutter:armeabi_v7a_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
-      - id: "Maven:io.flutter:flutter_embedding_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
+      - id: "Maven:io.flutter:arm64_v8a_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
+      - id: "Maven:io.flutter:armeabi_v7a_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
+      - id: "Maven:io.flutter:flutter_embedding_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
         dependencies:
         - id: "Maven:androidx.annotation:annotation:1.2.0"
         - id: "Maven:androidx.core:core:1.6.0"
@@ -291,7 +291,7 @@ projects:
                     dependencies:
                     - id: "Maven:org.jetbrains:annotations:13.0"
                     - id: "Maven:org.jetbrains.kotlin:kotlin-stdlib-common:1.5.31"
-      - id: "Maven:io.flutter:x86_64_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
+      - id: "Maven:io.flutter:x86_64_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
       - id: "Maven:org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.5.30"
         dependencies:
         - id: "Maven:org.jetbrains.kotlin:kotlin-stdlib:1.5.31"
@@ -300,12 +300,12 @@ projects:
           - id: "Maven:org.jetbrains.kotlin:kotlin-stdlib-common:1.5.31"
   - name: "dependencies"
     dependencies:
-    - id: "Pub:cupertino_icons:cupertino_icons:1.0.3"
+    - id: "Pub::cupertino_icons:1.0.3"
   - name: "dev_dependencies"
     dependencies:
-    - id: "Pub:flutter_lints:flutter_lints:1.0.4"
+    - id: "Pub::flutter_lints:1.0.4"
       dependencies:
-      - id: "Pub:lints:lints:1.0.1"
+      - id: "Pub::lints:1.0.1"
 packages:
 - id: "Maven:androidx.activity:activity:1.0.0"
   purl: "pkg:maven/androidx.activity/activity@1.0.0"
@@ -1034,14 +1034,14 @@ packages:
     url: "https://android.googlesource.com/platform/frameworks/support"
     revision: ""
     path: ""
-- id: "Maven:io.flutter:arm64_v8a_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
-  purl: "pkg:maven/io.flutter/arm64_v8a_release@1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
+- id: "Maven:io.flutter:arm64_v8a_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
+  purl: "pkg:maven/io.flutter/arm64_v8a_release@1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
   declared_licenses: []
   declared_licenses_processed: {}
   description: ""
   homepage_url: ""
   binary_artifact:
-    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/arm64_v8a_release/1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25/arm64_v8a_release-1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25.jar"
+    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/arm64_v8a_release/1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b/arm64_v8a_release-1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b.jar"
     hash:
       value: ""
       algorithm: ""
@@ -1060,14 +1060,14 @@ packages:
     url: ""
     revision: ""
     path: ""
-- id: "Maven:io.flutter:armeabi_v7a_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
-  purl: "pkg:maven/io.flutter/armeabi_v7a_release@1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
+- id: "Maven:io.flutter:armeabi_v7a_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
+  purl: "pkg:maven/io.flutter/armeabi_v7a_release@1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
   declared_licenses: []
   declared_licenses_processed: {}
   description: ""
   homepage_url: ""
   binary_artifact:
-    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/armeabi_v7a_release/1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25/armeabi_v7a_release-1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25.jar"
+    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/armeabi_v7a_release/1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b/armeabi_v7a_release-1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b.jar"
     hash:
       value: ""
       algorithm: ""
@@ -1086,19 +1086,19 @@ packages:
     url: ""
     revision: ""
     path: ""
-- id: "Maven:io.flutter:flutter_embedding_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
-  purl: "pkg:maven/io.flutter/flutter_embedding_release@1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
+- id: "Maven:io.flutter:flutter_embedding_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
+  purl: "pkg:maven/io.flutter/flutter_embedding_release@1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
   declared_licenses: []
   declared_licenses_processed: {}
   description: ""
   homepage_url: ""
   binary_artifact:
-    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25/flutter_embedding_release-1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25.jar"
+    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b/flutter_embedding_release-1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b.jar"
     hash:
       value: ""
       algorithm: ""
   source_artifact:
-    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25/flutter_embedding_release-1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25-sources.jar"
+    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b/flutter_embedding_release-1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b-sources.jar"
     hash:
       value: ""
       algorithm: ""
@@ -1112,14 +1112,14 @@ packages:
     url: ""
     revision: ""
     path: ""
-- id: "Maven:io.flutter:x86_64_release:1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
-  purl: "pkg:maven/io.flutter/x86_64_release@1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25"
+- id: "Maven:io.flutter:x86_64_release:1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
+  purl: "pkg:maven/io.flutter/x86_64_release@1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b"
   declared_licenses: []
   declared_licenses_processed: {}
   description: ""
   homepage_url: ""
   binary_artifact:
-    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/x86_64_release/1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25/x86_64_release-1.0.0-857bd6b74c5eb56151bfafe91e7fa6a82b6fee25.jar"
+    url: "https://storage.googleapis.com/download.flutter.io/io/flutter/x86_64_release/1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b/x86_64_release-1.0.0-a794cf2681c6c9fe7b260e0e84de96298dc9c18b.jar"
     hash:
       value: ""
       algorithm: ""
@@ -1362,7 +1362,6 @@ packages:
     url: "https://github.com/Kotlin/kotlinx.coroutines.git"
     revision: ""
     path: ""
-  is_metadata_only: true
 - id: "Maven:org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.5.2"
   purl: "pkg:maven/org.jetbrains.kotlinx/kotlinx-coroutines-core-jvm@1.5.2"
   authors:
@@ -1395,8 +1394,8 @@ packages:
     url: "https://github.com/Kotlin/kotlinx.coroutines.git"
     revision: ""
     path: ""
-- id: "Pub:cupertino_icons:cupertino_icons:1.0.3"
-  purl: "pkg:pub/cupertino_icons/cupertino_icons@1.0.3"
+- id: "Pub::cupertino_icons:1.0.3"
+  purl: "pkg:pub/cupertino_icons@1.0.3"
   declared_licenses: []
   declared_licenses_processed: {}
   description: "Default icons asset for Cupertino widgets based on Apple styled icons"
@@ -1407,10 +1406,10 @@ packages:
       value: ""
       algorithm: ""
   source_artifact:
-    url: ""
+    url: "https://pub.dev/packages/cupertino_icons/versions/1.0.3.tar.gz"
     hash:
-      value: ""
-      algorithm: ""
+      value: "486b7bc707424572cdf7bd7e812a0c146de3fd47ecadf070254cc60383f21dd8"
+      algorithm: "SHA-256"
   vcs:
     type: ""
     url: ""
@@ -1421,8 +1420,8 @@ packages:
     url: "https://github.com/flutter/packages.git"
     revision: "master"
     path: "third_party/packages/cupertino_icons"
-- id: "Pub:flutter_lints:flutter_lints:1.0.4"
-  purl: "pkg:pub/flutter_lints/flutter_lints@1.0.4"
+- id: "Pub::flutter_lints:1.0.4"
+  purl: "pkg:pub/flutter_lints@1.0.4"
   declared_licenses: []
   declared_licenses_processed: {}
   description: "Recommended lints for Flutter apps, packages, and plugins to encourage\
@@ -1434,22 +1433,22 @@ packages:
       value: ""
       algorithm: ""
   source_artifact:
-    url: ""
+    url: "https://pub.dev/packages/flutter_lints/versions/1.0.4.tar.gz"
     hash:
-      value: ""
-      algorithm: ""
+      value: "b543301ad291598523947dc534aaddc5aaad597b709d2426d3a0e0d44c5cb493"
+      algorithm: "SHA-256"
   vcs:
     type: "Git"
     url: "https://github.com/flutter/packages.git"
-    revision: "master"
+    revision: ""
     path: "packages/flutter_lints"
   vcs_processed:
     type: "Git"
     url: "https://github.com/flutter/packages.git"
-    revision: "master"
+    revision: ""
     path: "packages/flutter_lints"
-- id: "Pub:lints:lints:1.0.1"
-  purl: "pkg:pub/lints/lints@1.0.1"
+- id: "Pub::lints:1.0.1"
+  purl: "pkg:pub/lints@1.0.1"
   declared_licenses: []
   declared_licenses_processed: {}
   description: "Official Dart lint rules. Defines the 'core' and 'recommended' set\
@@ -1461,10 +1460,10 @@ packages:
       value: ""
       algorithm: ""
   source_artifact:
-    url: ""
+    url: "https://pub.dev/packages/lints/versions/1.0.1.tar.gz"
     hash:
-      value: ""
-      algorithm: ""
+      value: "a2c3d198cb5ea2e179926622d433331d8b58374ab8f29cdda6e863bd62fd369c"
+      algorithm: "SHA-256"
   vcs:
     type: "Git"
     url: "https://github.com/dart-lang/lints.git"
@@ -1475,4 +1474,3 @@ packages:
     url: "https://github.com/dart-lang/lints.git"
     revision: ""
     path: ""
-has_issues: false

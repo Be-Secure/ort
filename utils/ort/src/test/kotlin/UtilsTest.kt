@@ -36,7 +36,7 @@ import io.mockk.verify
 
 import java.net.Authenticator
 import java.net.PasswordAuthentication
-import java.net.URL
+import java.net.URI
 import java.nio.file.Paths
 
 import org.ossreviewtoolkit.utils.test.shouldNotBeNull
@@ -253,6 +253,16 @@ class UtilsTest : WordSpec({
 
             filterVersionNames("3.9.0.99", names).shouldContainExactly("3.9.0.99-a3d9827", "sdk-3.9.0.99", "v3.9.0.99")
         }
+
+        "find names that match the version without an ignorable suffix" {
+            val names = listOf(
+                "6.2.8",
+                "6.2.9",
+                "6.2.10"
+            )
+
+            filterVersionNames("6.2.9.Final", names).shouldContainExactly("6.2.9")
+        }
     }
 
     "normalizeVcsUrl" should {
@@ -263,11 +273,11 @@ class UtilsTest : WordSpec({
         "handle anonymous Git / HTTPS URL schemes" {
             val packages = mapOf(
                 "git://github.com/cheeriojs/cheerio.git"
-                        to "https://github.com/cheeriojs/cheerio.git",
+                    to "https://github.com/cheeriojs/cheerio.git",
                 "git+https://github.com/fb55/boolbase.git"
-                        to "https://github.com/fb55/boolbase.git",
+                    to "https://github.com/fb55/boolbase.git",
                 "https://www.github.com/DefinitelyTyped/DefinitelyTyped.git"
-                        to "https://github.com/DefinitelyTyped/DefinitelyTyped.git"
+                    to "https://github.com/DefinitelyTyped/DefinitelyTyped.git"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -278,11 +288,11 @@ class UtilsTest : WordSpec({
         "handle authenticated SSH URL schemes" {
             val packages = mapOf(
                 "git+ssh://git@github.com/logicalparadox/idris.git"
-                        to "ssh://git@github.com/logicalparadox/idris.git",
+                    to "ssh://git@github.com/logicalparadox/idris.git",
                 "git@github.com:oss-review-toolkit/ort.git"
-                        to "ssh://git@github.com/oss-review-toolkit/ort.git",
+                    to "ssh://git@github.com/oss-review-toolkit/ort.git",
                 "ssh://user@gerrit.server.com:29418/parent/project"
-                        to "ssh://user@gerrit.server.com:29418/parent/project"
+                    to "ssh://user@gerrit.server.com:29418/parent/project"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -293,7 +303,7 @@ class UtilsTest : WordSpec({
         "add missing https:// for GitHub URLs" {
             val packages = mapOf(
                 "github.com/leanovate/play-mockws"
-                        to "https://github.com/leanovate/play-mockws.git"
+                    to "https://github.com/leanovate/play-mockws.git"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -304,9 +314,9 @@ class UtilsTest : WordSpec({
         "add missing .git for GitHub URLs" {
             val packages = mapOf(
                 "https://github.com/fb55/nth-check"
-                        to "https://github.com/fb55/nth-check.git",
+                    to "https://github.com/fb55/nth-check.git",
                 "git://github.com/isaacs/inherits"
-                        to "https://github.com/isaacs/inherits.git"
+                    to "https://github.com/isaacs/inherits.git"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -317,9 +327,9 @@ class UtilsTest : WordSpec({
         "add missing git@ for GitHub SSH URLs" {
             val packages = mapOf(
                 "ssh://github.com/heremaps/here-aaa-java-sdk.git"
-                        to "ssh://git@github.com/heremaps/here-aaa-java-sdk.git",
+                    to "ssh://git@github.com/heremaps/here-aaa-java-sdk.git",
                 "ssh://github.com/heremaps/here-aaa-java-sdk"
-                        to "ssh://git@github.com/heremaps/here-aaa-java-sdk.git"
+                    to "ssh://git@github.com/heremaps/here-aaa-java-sdk.git"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -330,9 +340,9 @@ class UtilsTest : WordSpec({
         "handle a trailing slash correctly" {
             val packages = mapOf(
                 "https://github.com/kilian/electron-to-chromium/"
-                        to "https://github.com/kilian/electron-to-chromium.git",
+                    to "https://github.com/kilian/electron-to-chromium.git",
                 "git://github.com/isaacs/inherits.git/"
-                        to "https://github.com/isaacs/inherits.git"
+                    to "https://github.com/isaacs/inherits.git"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -354,13 +364,13 @@ class UtilsTest : WordSpec({
 
             val packages = mapOf(
                 "relative/path/to/local/file"
-                        to "file://$userDir/relative/path/to/local/file",
+                    to "file://$userDir/relative/path/to/local/file",
                 "relative/path/to/local/dir/"
-                        to "file://$userDir/relative/path/to/local/dir",
+                    to "file://$userDir/relative/path/to/local/dir",
                 "/absolute/path/to/local/file"
-                        to "file://${userRoot}absolute/path/to/local/file",
+                    to "file://${userRoot}absolute/path/to/local/file",
                 "/absolute/path/to/local/dir/"
-                        to "file://${userRoot}absolute/path/to/local/dir"
+                    to "file://${userRoot}absolute/path/to/local/dir"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -371,9 +381,9 @@ class UtilsTest : WordSpec({
         "convert git to https for GitHub URLs" {
             val packages = mapOf(
                 "git://github.com:ccavanaugh/jgnash.git"
-                        to "https://github.com/ccavanaugh/jgnash.git",
+                    to "https://github.com/ccavanaugh/jgnash.git",
                 "git://github.com/netty/netty.git/netty-buffer"
-                        to "https://github.com/netty/netty.git/netty-buffer"
+                    to "https://github.com/netty/netty.git/netty-buffer"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -384,7 +394,7 @@ class UtilsTest : WordSpec({
         "not strip svn+ prefix from Subversion URLs" {
             val packages = mapOf(
                 "svn+ssh://svn.code.sf.net/p/stddecimal/code/trunk"
-                        to "svn+ssh://svn.code.sf.net/p/stddecimal/code/trunk"
+                    to "svn+ssh://svn.code.sf.net/p/stddecimal/code/trunk"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -395,9 +405,9 @@ class UtilsTest : WordSpec({
         "fixup crazy URLs" {
             val packages = mapOf(
                 "git@github.com/cisco/node-jose.git"
-                        to "ssh://git@github.com/cisco/node-jose.git",
+                    to "ssh://git@github.com/cisco/node-jose.git",
                 "https://git@github.com:hacksparrow/node-easyimage.git"
-                        to "https://github.com/hacksparrow/node-easyimage.git"
+                    to "https://github.com/hacksparrow/node-easyimage.git"
             )
 
             packages.entries.forAll { (actualUrl, expectedUrl) ->
@@ -444,7 +454,7 @@ class UtilsTest : WordSpec({
             val host = "www.example.org"
             val port = 442
             val scheme = "https"
-            val url = URL("https://foo:bar@www.example.org")
+            val url = URI.create("https://foo:bar@www.example.org").toURL()
 
             val auth = OrtAuthenticator().requestPasswordAuthenticationInstance(
                 host,

@@ -20,30 +20,49 @@
 package org.ossreviewtoolkit.cli
 
 import io.kotest.core.spec.style.WordSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.concurrent.shouldCompleteWithin
-import io.kotest.matchers.shouldBe
+import io.kotest.matchers.should
 
 import java.util.concurrent.TimeUnit
 
 import org.ossreviewtoolkit.analyzer.Analyzer
-import org.ossreviewtoolkit.analyzer.PackageManager
-import org.ossreviewtoolkit.downloader.vcs.GitRepo
+import org.ossreviewtoolkit.analyzer.PackageManagerFactory
+import org.ossreviewtoolkit.analyzer.managers.analyze
 import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.PackageManagerConfiguration
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
-import org.ossreviewtoolkit.utils.test.createTestTempDir
+import org.ossreviewtoolkit.model.toYaml
+import org.ossreviewtoolkit.plugins.versioncontrolsystems.git.GitRepo
 import org.ossreviewtoolkit.utils.test.getAssetFile
+import org.ossreviewtoolkit.utils.test.matchExpectedResult
 import org.ossreviewtoolkit.utils.test.patchActualResult
-import org.ossreviewtoolkit.utils.test.patchExpectedResult
-import org.ossreviewtoolkit.utils.test.toYaml
 
 class AnalyzerFunTest : WordSpec({
+    "An analysis" should {
+        "correctly report VcsInfo for git-repo projects" {
+            val expectedResultFile = getAssetFile("git-repo-expected-output.yml")
+            val pkg = Package.EMPTY.copy(
+                vcsProcessed = VcsInfo(
+                    type = VcsType.GIT_REPO,
+                    url = "https://github.com/oss-review-toolkit/ort-test-data-git-repo?manifest=manifest.xml",
+                    revision = "31588aa8f8555474e1c3c66a359ec99e4cd4b1fa"
+                )
+            )
+            val outputDir = tempdir().also { GitRepo().download(pkg, it) }
+
+            val result = analyze(outputDir, packageManagers = emptySet()).toYaml()
+
+            patchActualResult(result, patchStartAndEndTime = true) should matchExpectedResult(expectedResultFile)
+        }
+    }
+
     "A globally configured 'mustRunAfter'" should {
         "not block when depending on a package manager for which no definition files have been found" {
-            val inputDir = createTestTempDir()
+            val inputDir = tempdir()
             val gradleDefinitionFile = inputDir.resolve("gradle.build").apply { writeText("// Dummy file") }
 
             val gradleConfig = PackageManagerConfiguration(mustRunAfter = listOf("NPM"))
@@ -51,7 +70,7 @@ class AnalyzerFunTest : WordSpec({
             val repoConfig = RepositoryConfiguration()
 
             val analyzer = Analyzer(analyzerConfig)
-            val gradleFactory = PackageManager.ALL.getValue("Gradle")
+            val gradleFactory = PackageManagerFactory.ALL.getValue("Gradle")
             val gradle = gradleFactory.create(inputDir, analyzerConfig, repoConfig)
             val info = Analyzer.ManagedFileInfo(
                 inputDir,
@@ -62,32 +81,6 @@ class AnalyzerFunTest : WordSpec({
             shouldCompleteWithin(120, TimeUnit.SECONDS) {
                 analyzer.analyze(info)
             }
-        }
-    }
-
-    "VcsInfo for git-repo projects" should {
-        "be correctly reported" {
-            val url = "https://github.com/oss-review-toolkit/ort-test-data-git-repo?manifest=manifest.xml"
-            val revision = "31588aa8f8555474e1c3c66a359ec99e4cd4b1fa"
-            val vcs = VcsInfo(VcsType.GIT_REPO, url, revision)
-            val pkg = Package.EMPTY.copy(vcsProcessed = vcs)
-            val outputDir = createTestTempDir()
-
-            GitRepo().download(pkg, outputDir)
-
-            val expectedResult = patchExpectedResult(
-                getAssetFile("git-repo-expected-output.yml"),
-                revision = revision,
-                path = outputDir.invariantSeparatorsPath
-            )
-
-            val ortResult = Analyzer(AnalyzerConfiguration()).run {
-                analyze(findManagedFiles(outputDir))
-            }
-
-            val actualResult = ortResult.withResolvedScopes().toYaml()
-
-            patchActualResult(actualResult, patchStartAndEndTime = true) shouldBe expectedResult
         }
     }
 })

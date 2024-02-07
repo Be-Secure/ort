@@ -18,35 +18,23 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
-}
-
-repositories {
-    exclusiveContent {
-        forRepository {
-            maven("https://packages.atlassian.com/maven-external")
-        }
-
-        filter {
-            includeGroupByRegex("com\\.atlassian\\..*")
-            includeVersionByRegex("log4j", "log4j", ".*-atlassian-.*")
-        }
-    }
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":model"))
-    api(project(":utils:scripting-utils"))
+    api(projects.model)
+    api(projects.utils.scriptingUtils)
 
-    implementation(project(":utils:ort-utils"))
+    implementation(projects.utils.ortUtils)
 
     implementation("org.jetbrains.kotlin:kotlin-scripting-common")
     implementation("org.jetbrains.kotlin:kotlin-scripting-jvm-host")
     implementation(libs.jakartaMail)
-    implementation(libs.jiraRestClientApi)
-    implementation(libs.jiraRestClientApp) {
+    implementation(libs.jiraRestClient.api)
+    implementation(libs.jiraRestClient.app) {
         exclude("org.slf4j", "slf4j-log4j12")
+            .because("the SLF4J implementation from Log4j 2 is used")
     }
 
     testImplementation(libs.greenmail)

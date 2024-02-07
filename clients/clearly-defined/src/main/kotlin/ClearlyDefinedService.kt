@@ -29,7 +29,6 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 
 import okhttp3.MediaType.Companion.toMediaType
@@ -64,11 +63,15 @@ interface ClearlyDefinedService {
         val JSON = Json { encodeDefaults = false }
 
         /**
+         * The JSON (de-)serialization object used by this service for errors.
+         */
+        val JSON_FOR_ERRORS = Json(JSON) { ignoreUnknownKeys = true }
+
+        /**
          * Create a ClearlyDefined service instance for communicating with the given [server], optionally using a
          * pre-built OkHttp [client].
          */
-        fun create(server: Server, client: OkHttpClient? = null): ClearlyDefinedService =
-            create(server.apiUrl, client)
+        fun create(server: Server, client: OkHttpClient? = null): ClearlyDefinedService = create(server.apiUrl, client)
 
         /**
          * Create a ClearlyDefined service instance for communicating with a server running at the given [url],
@@ -213,24 +216,18 @@ interface ClearlyDefinedService {
      * https://api.clearlydefined.io/api-docs/#/definitions/get_definitions. This function represents the part of
      * the definition's endpoint that allows searching for package coordinates based on a pattern. The pattern string
      * should contain the parts of the coordinates (typically namespace, name, and version) relevant for the search.
-     * Result is a list with the ClearlyDefined URIs to all the definitions that are matched by the pattern.
+     * The result is a list with the ClearlyDefined URIs to all the definitions that are matched by the pattern.
      */
     @GET("definitions")
     suspend fun searchDefinitions(@Query("pattern") pattern: String): List<String>
 
     /**
-     * Get the curation for the component described by [type], [provider], [namespace] (use "-" if not applicable),
-     * [name] and [revision], see
+     * Get the curation for the component with the given [coordinates]. If the [revision][Coordinates.revision] is
+     * empty, the latest revision will be used (if that makes sense for the provider), see
      * https://api.clearlydefined.io/api-docs/#/curations/get_curations__type___provider___namespace___name___revision_.
      */
-    @GET("curations/{type}/{provider}/{namespace}/{name}/{revision}")
-    suspend fun getCuration(
-        @Path("type") type: ComponentType,
-        @Path("provider") provider: Provider,
-        @Path("namespace") namespace: String,
-        @Path("name") name: String,
-        @Path("revision") revision: String
-    ): Curation
+    @GET("curations/{coordinates}")
+    suspend fun getCuration(@Path("coordinates", encoded = true) coordinates: Coordinates): Curation
 
     /**
      * Return a batch of curations for the components given as [coordinates], see
@@ -253,32 +250,23 @@ interface ClearlyDefinedService {
     suspend fun harvest(@Body request: Collection<HarvestRequest>): String
 
     /**
-     * Get information about the harvest tools that have produced data for the component described by [type],
-     * [provider], [namespace] (use "-" if not applicable), [name], and [revision], see
+     * Get information about the harvest tools that have produced data for the component with the given [coordinates].
+     * If the [revision][Coordinates.revision] is empty, the latest revision will be used (if that makes sense for the
+     * provider), see
      * https://api.clearlydefined.io/api-docs/#/harvest/get_harvest__type___provider___namespace___name___revision_.
-     * This can be used to quickly find out whether results of a specific tool are already available.
      */
-    @GET("harvest/{type}/{provider}/{namespace}/{name}/{revision}?form=list")
-    suspend fun harvestTools(
-        @Path("type") type: ComponentType,
-        @Path("provider") provider: Provider,
-        @Path("namespace") namespace: String,
-        @Path("name") name: String,
-        @Path("revision") revision: String
-    ): List<String>
+    @GET("harvest/{coordinates}?form=list")
+    suspend fun harvestTools(@Path("coordinates", encoded = true) coordinates: Coordinates): List<String>
 
     /**
-     * Get the harvested data for the component described by [type], [provider], [namespace] (use "-" if not
-     * applicable), [name], and [revision] that was produced by [tool] with version [toolVersion], see
+     * Get the harvested data for the component with the given [coordinates] that was produced by [tool] with version
+     * [toolVersion]. If the [revision][Coordinates.revision] is empty, the latest revision will be used (if that makes
+     * sense for the provider), see
      * https://api.clearlydefined.io/api-docs/#/harvest/get_harvest__type___provider___namespace___name___revision___tool___toolVersion_
      */
-    @GET("harvest/{type}/{provider}/{namespace}/{name}/{revision}/{tool}/{toolVersion}?form=streamed")
+    @GET("harvest/{coordinates}/{tool}/{toolVersion}?form=streamed")
     suspend fun harvestToolData(
-        @Path("type") type: ComponentType,
-        @Path("provider") provider: Provider,
-        @Path("namespace") namespace: String,
-        @Path("name") name: String,
-        @Path("revision") revision: String,
+        @Path("coordinates", encoded = true) coordinates: Coordinates,
         @Path("tool") tool: String,
         @Path("toolVersion") toolVersion: String
     ): ResponseBody
@@ -289,10 +277,10 @@ suspend fun <T> ClearlyDefinedService.call(block: suspend ClearlyDefinedService.
         block()
     } catch (e: HttpException) {
         val errorMessage = e.response()?.errorBody()?.let {
-            val errorResponse = ClearlyDefinedService.JSON.decodeFromString<ErrorResponse>(it.string())
+            val errorResponse = ClearlyDefinedService.JSON_FOR_ERRORS.decodeFromString<ErrorResponse>(it.string())
             val innerError = errorResponse.error.innererror
 
-            "The ClearlyDefined service call failed with: ${innerError.message}"
+            "The ClearlyDefined service call failed. ${innerError.name}: ${innerError.message}"
         } ?: "The ClearlyDefined service call failed with code ${e.code()}: ${e.message()}"
 
         throw IOException(errorMessage, e)

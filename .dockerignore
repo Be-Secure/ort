@@ -1,13 +1,26 @@
-# Ignore the Docker files themselves to avoid that all layers are invalidated if
-# the Docker files are changed during development.
+# Ignore Docker-related files to avoid the cache being invalidated if the files are changed during development.
 .dockerignore
-Dockerfile
-docker/legacy/Dockerfile
+Dockerfile*
 scripts/docker_*.sh
 
-# Ignore the Jenkinsfile to avoid that all layers are invalidated if the
-# Jenkinsfile is changed during development.
+# Ignore GitHub configuration to avoid the cache being invalidated if the files are changed during development.
+.github/
+
+# Ignore the Jenkinsfile to avoid the cache being invalidated if the file is changed during development.
 integrations/jenkins/Jenkinsfile
+
+# Ignore miscellaneous top-level configuration files that do not have an impact on ORT's build.
+.codecov.yml
+.commitlintrc.yml
+.editorconfig
+.jitpack.yml
+.mailmap
+.markdownlint-cli2.yaml
+.markdownlint.yaml
+.ort.yml
+mlc_config.json
+qodana.yml
+renovate.json
 
 # Ignore Git entries.
 .git/
@@ -23,7 +36,7 @@ integrations/jenkins/Jenkinsfile
 **/build/
 !docker/build
 **/out/
-reporter-web-app/node_modules/
+plugins/reporters/web-app-template/node_modules/
 
 # Ignore the logos as we do not need them to run ORT.
 logos/

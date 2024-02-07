@@ -24,7 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 
 import java.nio.file.Path
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.eclipse.sw360.clients.adapter.AttachmentUploadRequest
 import org.eclipse.sw360.clients.adapter.SW360Connection
@@ -37,6 +37,7 @@ import org.eclipse.sw360.http.HttpClientFactoryImpl
 import org.eclipse.sw360.http.config.HttpClientConfig
 
 import org.ossreviewtoolkit.model.Identifier
+import org.ossreviewtoolkit.model.Package
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.config.Sw360StorageConfiguration
 import org.ossreviewtoolkit.model.jsonMapper
@@ -55,7 +56,7 @@ import org.ossreviewtoolkit.utils.ort.createOrtTempDir
 class Sw360Storage(
     configuration: Sw360StorageConfiguration
 ) : ScanResultsStorage() {
-    companion object : Logging {
+    companion object {
         val JSON_MAPPER: ObjectMapper = jsonMapper.copy()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
 
@@ -85,11 +86,11 @@ class Sw360Storage(
     private val connectionFactory = createConnection(configuration)
     private val releaseClient = connectionFactory.releaseAdapter
 
-    override fun readInternal(id: Identifier): Result<List<ScanResult>> {
-        val tempScanResultFile = createTempFileForUpload(id)
+    override fun readInternal(pkg: Package): Result<List<ScanResult>> {
+        val tempScanResultFile = createTempFileForUpload(pkg.id)
 
         val result = runCatching {
-            releaseClient.getSparseReleaseByNameAndVersion(createReleaseName(id), id.version)
+            releaseClient.getSparseReleaseByNameAndVersion(createReleaseName(pkg.id), pkg.id.version)
                 .flatMap { releaseClient.getReleaseById(it.releaseId) }
                 .map { getScanResultOfRelease(it, tempScanResultFile.toPath()) }
                 .orElse(emptyList())
@@ -97,7 +98,7 @@ class Sw360Storage(
                     path.toFile().readValue<ScanResult>()
                 }
         }.recoverCatching {
-            val message = "Could not read scan results for '${id.toCoordinates()}' in SW360: ${it.message}"
+            val message = "Could not read scan results for '${pkg.id.toCoordinates()}' in SW360: ${it.message}"
 
             logger.info { message }
 
@@ -128,7 +129,7 @@ class Sw360Storage(
             }
         }.recoverCatching {
             val message = "Failed to add scan results for '${id.toCoordinates()}' to SW360: " +
-                    it.collectMessages()
+                it.collectMessages()
 
             logger.info { message }
 
@@ -156,7 +157,7 @@ class Sw360Storage(
 
 private fun isAttachmentAScanResult(attachment: SW360SparseAttachment) =
     attachment.attachmentType == SW360AttachmentType.SCAN_RESULT_REPORT
-            && attachment.filename == SCAN_RESULTS_FILE_NAME
+        && attachment.filename == SCAN_RESULTS_FILE_NAME
 
 private fun createReleaseName(id: Identifier) = "${id.namespace}/${id.name}"
 

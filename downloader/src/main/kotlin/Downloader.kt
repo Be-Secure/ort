@@ -21,11 +21,12 @@ package org.ossreviewtoolkit.downloader
 
 import java.io.File
 import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.URI
 
 import kotlin.time.TimeSource
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.ArtifactProvenance
 import org.ossreviewtoolkit.model.HashAlgorithm
@@ -44,15 +45,15 @@ import org.ossreviewtoolkit.utils.common.safeDeleteRecursively
 import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.common.unpack
 import org.ossreviewtoolkit.utils.common.unpackTryAllTypes
-import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 import org.ossreviewtoolkit.utils.ort.createOrtTempDir
+import org.ossreviewtoolkit.utils.ort.downloadFile
+import org.ossreviewtoolkit.utils.ort.okHttpClient
+import org.ossreviewtoolkit.utils.ort.ping
 
 /**
  * The class to download source code. The signatures of public functions in this class define the library API.
  */
 class Downloader(private val config: DownloaderConfiguration) {
-    companion object : Logging
-
     private fun verifyOutputDirectory(outputDirectory: File) {
         require(!outputDirectory.exists() || outputDirectory.list().isEmpty()) {
             "The output directory '$outputDirectory' must not contain any files yet."
@@ -62,10 +63,11 @@ class Downloader(private val config: DownloaderConfiguration) {
     }
 
     /**
-     * Download the source code of the [package][pkg] to the [outputDirectory]. A [Provenance] is returned on success or
-     * a [DownloadException] is thrown in case of failure.
+     * Download the source code of the [package][pkg] to the [outputDirectory]. If [dryRun] is `true`, no actual
+     * download happens but the source code is only checked to be available. A [Provenance] is returned on success or a
+     * [DownloadException] is thrown in case of failure.
      */
-    fun download(pkg: Package, outputDirectory: File): Provenance {
+    fun download(pkg: Package, outputDirectory: File, dryRun: Boolean = false): Provenance {
         verifyOutputDirectory(outputDirectory)
 
         if (pkg.isMetadataOnly) return UnknownProvenance
@@ -74,8 +76,8 @@ class Downloader(private val config: DownloaderConfiguration) {
 
         config.sourceCodeOrigins.forEach { origin ->
             val provenance = when (origin) {
-                SourceCodeOrigin.VCS -> handleVcsDownload(pkg, outputDirectory, exception)
-                SourceCodeOrigin.ARTIFACT -> handleSourceArtifactDownload(pkg, outputDirectory, exception)
+                SourceCodeOrigin.VCS -> handleVcsDownload(pkg, outputDirectory, dryRun, exception)
+                SourceCodeOrigin.ARTIFACT -> handleSourceArtifactDownload(pkg, outputDirectory, dryRun, exception)
             }
 
             if (provenance != null) return provenance
@@ -91,8 +93,9 @@ class Downloader(private val config: DownloaderConfiguration) {
     private fun handleVcsDownload(
         pkg: Package,
         outputDirectory: File,
+        dryRun: Boolean,
         exception: DownloadException
-    ): Provenance? {
+    ): RepositoryProvenance? {
         val vcsMark = TimeSource.Monotonic.markNow()
 
         try {
@@ -101,28 +104,30 @@ class Downloader(private val config: DownloaderConfiguration) {
             val isCargoPackageWithSourceArtifact = pkg.id.type == "Cargo" && pkg.sourceArtifact != RemoteArtifact.EMPTY
 
             if (!isCargoPackageWithSourceArtifact) {
-                val result = downloadFromVcs(pkg, outputDirectory)
-                val vcsInfo = (result as RepositoryProvenance).vcsInfo
+                val result = downloadFromVcs(pkg, outputDirectory, dryRun = dryRun)
 
                 logger.info {
-                    "Downloaded source code for '${pkg.id.toCoordinates()}' from $vcsInfo in ${vcsMark.elapsedNow()}."
+                    "Downloaded source code for '${pkg.id.toCoordinates()}' from ${result.vcsInfo} in " +
+                        "${vcsMark.elapsedNow()}."
                 }
 
                 return result
             } else {
-                logger.info { "Skipping VCS download for Cargo package '${pkg.id.toCoordinates()}'." }
+                logger.info {
+                    "Skipping VCS download for Cargo package '${pkg.id.toCoordinates()}' as it has a source artifact " +
+                        "at ${pkg.sourceArtifact}."
+                }
             }
         } catch (e: DownloadException) {
             logger.debug { "VCS download failed for '${pkg.id.toCoordinates()}': ${e.collectMessages()}" }
 
             logger.info {
                 "Failed attempt to download source code for '${pkg.id.toCoordinates()}' from ${pkg.vcsProcessed} " +
-                        "took ${vcsMark.elapsedNow()}."
+                    "took ${vcsMark.elapsedNow()}."
             }
 
             // Clean up any left-over files (force to delete read-only files in ".git" directories on Windows).
-            outputDirectory.safeDeleteRecursively(force = true)
-            outputDirectory.safeMkdirs()
+            outputDirectory.safeDeleteRecursively(force = true, baseDirectory = outputDirectory)
 
             exception.addSuppressed(e)
         }
@@ -137,16 +142,17 @@ class Downloader(private val config: DownloaderConfiguration) {
     private fun handleSourceArtifactDownload(
         pkg: Package,
         outputDirectory: File,
+        dryRun: Boolean,
         exception: DownloadException
-    ): Provenance? {
+    ): ArtifactProvenance? {
         val sourceArtifactMark = TimeSource.Monotonic.markNow()
 
         try {
-            val result = downloadSourceArtifact(pkg.sourceArtifact, outputDirectory)
+            val result = downloadSourceArtifact(pkg.sourceArtifact, outputDirectory, dryRun)
 
             logger.info {
                 "Downloaded source code for '${pkg.id.toCoordinates()}' from ${pkg.sourceArtifact} in " +
-                        "${sourceArtifactMark.elapsedNow()}."
+                    "${sourceArtifactMark.elapsedNow()}."
             }
 
             return result
@@ -157,12 +163,11 @@ class Downloader(private val config: DownloaderConfiguration) {
 
             logger.info {
                 "Failed attempt to download source code for '${pkg.id.toCoordinates()}' from ${pkg.sourceArtifact} " +
-                        "took ${sourceArtifactMark.elapsedNow()}."
+                    "took ${sourceArtifactMark.elapsedNow()}."
             }
 
             // Clean up any left-over files.
-            outputDirectory.safeDeleteRecursively()
-            outputDirectory.safeMkdirs()
+            outputDirectory.safeDeleteRecursively(force = true, baseDirectory = outputDirectory)
 
             exception.addSuppressed(e)
         }
@@ -172,46 +177,48 @@ class Downloader(private val config: DownloaderConfiguration) {
 
     /**
      * Download the source code of the [package][pkg] to the [outputDirectory] using its VCS information. If [recursive]
-     * is `true`, any nested repositories (like Git submodules or Mercurial subrepositories) are downloaded, too. A
-     * [Provenance] is returned on success or a [DownloadException] is thrown in case of failure.
+     * is `true`, any nested repositories (like Git submodules or Mercurial subrepositories) are downloaded, too. If
+     * [dryRun] is `true`, no actual download happens but the source code is only checked to be available. A
+     * [RepositoryProvenance] is returned on success or a [DownloadException] is thrown in case of failure.
      */
     @JvmOverloads
     fun downloadFromVcs(
         pkg: Package,
         outputDirectory: File,
-        recursive: Boolean = true
-    ): Provenance {
-        verifyOutputDirectory(outputDirectory)
-
-        logger.info {
-            "Trying to download '${pkg.id.toCoordinates()}' sources to '${outputDirectory.absolutePath}' from VCS..."
-        }
-
+        recursive: Boolean = true,
+        dryRun: Boolean = false
+    ): RepositoryProvenance {
         if (pkg.vcsProcessed.url.isBlank()) {
             val hint = when (pkg.id.type) {
                 "Bundler", "Gem" ->
                     " Please define the \"source_code_uri\" in the \"metadata\" of the Gemspec, see: " +
-                            "https://guides.rubygems.org/specification-reference/#metadata"
+                        "https://guides.rubygems.org/specification-reference/#metadata"
                 "Gradle" ->
                     " Please make sure the published POM file includes the SCM connection, see: " +
-                            "https://docs.gradle.org/current/userguide/publishing_maven.html#" +
-                            "sec:modifying_the_generated_pom"
+                        "https://docs.gradle.org/current/userguide/publishing_maven.html#" +
+                        "sec:modifying_the_generated_pom"
                 "Maven" ->
                     " Please define the \"connection\" tag within the \"scm\" tag in the POM file, see: " +
-                            "https://maven.apache.org/pom.html#SCM"
+                        "https://maven.apache.org/pom.html#SCM"
                 "NPM" ->
                     " Please define the \"repository\" in the package.json file, see: " +
-                            "https://docs.npmjs.com/cli/v7/configuring-npm/package-json#repository"
+                        "https://docs.npmjs.com/cli/v7/configuring-npm/package-json#repository"
                 "PIP", "PyPI" ->
                     " Please make sure the setup.py defines the 'Source' attribute in 'project_urls', see: " +
-                            "https://packaging.python.org/guides/distributing-packages-using-setuptools/#project-urls"
+                        "https://packaging.python.org/guides/distributing-packages-using-setuptools/#project-urls"
                 "SBT" ->
                     " Please make sure the published POM file includes the SCM connection, see: " +
-                            "https://maven.apache.org/pom.html#SCM"
+                        "https://maven.apache.org/pom.html#SCM"
                 else -> ""
             }
 
             throw DownloadException("No VCS URL provided for '${pkg.id.toCoordinates()}'.$hint")
+        }
+
+        verifyOutputDirectory(outputDirectory)
+
+        logger.info {
+            "Trying to download '${pkg.id.toCoordinates()}' sources to '${outputDirectory.absolutePath}' from VCS..."
         }
 
         if (pkg.vcsProcessed != pkg.vcs) {
@@ -235,13 +242,30 @@ class Downloader(private val config: DownloaderConfiguration) {
             applicableVcs = VersionControlSystem.forUrl(pkg.vcsProcessed.url)
             logger.info {
                 applicableVcs?.let {
-                    "Detected VCS type '${it.type}' from URL '${pkg.vcsProcessed.url}'."
-                } ?: "Could not detect VCS type from URL '${pkg.vcsProcessed.url}'."
+                    "Detected VCS type '${it.type}' from URL ${pkg.vcsProcessed.url}."
+                } ?: "Could not detect VCS type from URL ${pkg.vcsProcessed.url}."
             }
         }
 
         if (applicableVcs == null) {
             throw DownloadException("Unsupported VCS type '${pkg.vcsProcessed.type}'.")
+        }
+
+        if (dryRun) {
+            // TODO: For performance reasons, the current check only works if the VCS revision is present (does not have
+            //       to be guessed) and if the VCS host is recognized. The trick is to do a HTTP HEAD request on the
+            //       archive download URL instead of implementing existence checks for all supported VCS. While this
+            //       does not cover all cases, it works for many cases and is quite fast.
+            val url = VcsHost.fromUrl(pkg.vcsProcessed.url)?.toArchiveDownloadUrl(pkg.vcsProcessed)
+                ?: throw DownloadException("Unhandled VCS URL ${pkg.vcsProcessed.url}.")
+
+            val response = okHttpClient.ping(url)
+
+            if (response.code != HttpURLConnection.HTTP_OK) {
+                throw DownloadException("Cannot verify existence of ${pkg.vcsProcessed}.")
+            }
+
+            return RepositoryProvenance(pkg.vcsProcessed, pkg.vcsProcessed.revision)
         }
 
         val workingTree = try {
@@ -257,8 +281,7 @@ class Downloader(private val config: DownloaderConfiguration) {
                 }
 
                 // Clean up any files left from the failed VCS download (i.e. a ".git" directory).
-                outputDirectory.safeDeleteRecursively(force = true)
-                outputDirectory.safeMkdirs()
+                outputDirectory.safeDeleteRecursively(force = true, baseDirectory = outputDirectory)
 
                 val fallbackPkg = pkg.copy(vcsProcessed = pkg.vcsProcessed.copy(url = vcsUrlNoCredentials))
                 applicableVcs.download(fallbackPkg, outputDirectory, config.allowMovingRevisions, recursive)
@@ -276,10 +299,15 @@ class Downloader(private val config: DownloaderConfiguration) {
     }
 
     /**
-     * Download the [sourceArtifact] and unpack it to the [outputDirectory]. A [Provenance] is returned on success or a
+     * Download the [sourceArtifact] and unpack it to the [outputDirectory]. If [dryRun] is `true`, no actual download
+     * happens but the source code is only checked to be available. An [ArtifactProvenance] is returned on success or a
      * [DownloadException] is thrown in case of failure.
      */
-    fun downloadSourceArtifact(sourceArtifact: RemoteArtifact, outputDirectory: File): Provenance {
+    fun downloadSourceArtifact(
+        sourceArtifact: RemoteArtifact,
+        outputDirectory: File,
+        dryRun: Boolean = false
+    ): ArtifactProvenance {
         if (sourceArtifact.url.isBlank()) {
             throw DownloadException("No source artifact URL provided.")
         }
@@ -299,10 +327,22 @@ class Downloader(private val config: DownloaderConfiguration) {
             File(URI(sourceArtifact.url))
         } else {
             tempDir = createOrtTempDir()
-            OkHttpClientHelper.downloadFile(sourceArtifact.url, tempDir).getOrElse {
+            okHttpClient.downloadFile(sourceArtifact.url, tempDir).getOrElse {
                 tempDir.safeDeleteRecursively(force = true)
-                throw DownloadException("Failed to download source artifact.", it)
+                throw DownloadException("Failed to download source artifact from ${sourceArtifact.url}.", it)
             }
+        }
+
+        if (dryRun) {
+            if (sourceArchive.isFile) return ArtifactProvenance(sourceArtifact)
+
+            val response = okHttpClient.ping(sourceArtifact.url)
+
+            if (response.code != HttpURLConnection.HTTP_OK) {
+                throw DownloadException("Cannot verify existence of ${sourceArtifact.url}.")
+            }
+
+            return ArtifactProvenance(sourceArtifact)
         }
 
         if (sourceArtifact.hash.algorithm != HashAlgorithm.NONE) {

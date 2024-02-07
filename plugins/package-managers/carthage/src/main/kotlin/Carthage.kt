@@ -22,7 +22,7 @@ package org.ossreviewtoolkit.plugins.packagemanagers.carthage
 import com.fasterxml.jackson.module.kotlin.readValue
 
 import java.io.File
-import java.net.URL
+import java.net.URI
 
 import org.ossreviewtoolkit.analyzer.AbstractPackageManagerFactory
 import org.ossreviewtoolkit.analyzer.PackageManager
@@ -85,7 +85,7 @@ class Carthage(
                     declaredLicenses = emptySet(),
                     vcs = VcsInfo.EMPTY,
                     vcsProcessed = processProjectVcs(workingDir, VcsInfo.EMPTY),
-                    scopeDependencies = sortedSetOf(),
+                    scopeDependencies = emptySet(),
                     homepageUrl = ""
                 ),
                 packages = parseCarthageDependencies(definitionFile)
@@ -168,7 +168,7 @@ class Carthage(
                     }
                     binarySpecFile.readText()
                 } else {
-                    URL(id).readText()
+                    URI(id).toURL().readText()
                 }
 
                 val binarySpec = jsonMapper.readValue<Map<String, String>>(binarySpecString)

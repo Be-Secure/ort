@@ -29,8 +29,7 @@ infix fun SpdxLicense.and(other: SpdxLicense) = this and other.toExpression()
 /**
  * Create an [SpdxExpression] by concatenating [this][SpdxLicense] and [other] using [SpdxOperator.AND].
  */
-infix fun SpdxLicense.and(other: SpdxExpression) =
-    SpdxCompoundExpression(toExpression(), SpdxOperator.AND, other)
+infix fun SpdxLicense.and(other: SpdxExpression) = SpdxCompoundExpression(toExpression(), SpdxOperator.AND, other)
 
 /**
  * Create an [SpdxExpression] by concatenating [this][SpdxLicense] and [other] using [SpdxOperator.OR].
@@ -40,8 +39,7 @@ infix fun SpdxLicense.or(other: SpdxLicense) = this or other.toExpression()
 /**
  * Create an [SpdxExpression] by concatenating [this][SpdxLicense] and [other] using [SpdxOperator.OR].
  */
-infix fun SpdxLicense.or(other: SpdxExpression) =
-    SpdxCompoundExpression(toExpression(), SpdxOperator.OR, other)
+infix fun SpdxLicense.or(other: SpdxExpression) = SpdxCompoundExpression(toExpression(), SpdxOperator.OR, other)
 
 /**
  * Create an [SpdxExpression] by concatenating [this][SpdxLicense] and [exception] using [SpdxExpression.WITH].
@@ -68,21 +66,21 @@ fun SpdxLicense.toExpression(): SpdxLicenseIdExpression {
 }
 
 /**
- * Return true if and only if this String can be successfully parsed to a [SpdxExpression].
+ * Return true if and only if this string can be successfully parsed to a [SpdxExpression] of the given [strictness].
  */
-fun String.isSpdxExpression(): Boolean =
-    runCatching { SpdxExpression.parse(this, Strictness.ALLOW_DEPRECATED) }.isSuccess
+fun String.isSpdxExpression(strictness: Strictness = Strictness.ALLOW_DEPRECATED): Boolean =
+    runCatching { SpdxExpression.parse(this, strictness) }.isSuccess
 
 /**
- * Return true if and only if this String can be successfully parsed to an [SpdxExpression] or if it equals
- * [SpdxConstants.NONE] or [SpdxConstants.NOASSERTION].
+ * Return true if and only if this String can be successfully parsed to an [SpdxExpression] with the given [strictness],
+ * or if it equals [SpdxConstants.NONE] or [SpdxConstants.NOASSERTION].
  */
-fun String.isSpdxExpressionOrNotPresent(): Boolean =
-    SpdxConstants.isNotPresent(this) || isSpdxExpression()
+fun String.isSpdxExpressionOrNotPresent(strictness: Strictness = Strictness.ALLOW_DEPRECATED): Boolean =
+    SpdxConstants.isNotPresent(this) || isSpdxExpression(strictness)
 
 /**
- * Parses the string as an [SpdxExpression] and returns the result.
- * @throws SpdxException if the string is not a valid representation of an SPDX expression.
+ * Parses the string as an [SpdxExpression] of the given [strictness] and returns the result on success, or throws an
+ * [SpdxException] if the string cannot be parsed.
  */
 fun String.toSpdx(strictness: Strictness = Strictness.ALLOW_ANY): SpdxExpression =
     SpdxExpression.parse(this, strictness)
@@ -93,21 +91,22 @@ fun String.toSpdx(strictness: Strictness = Strictness.ALLOW_ANY): SpdxExpression
  */
 fun String.toSpdxId(allowPlusSuffix: Boolean = false): String {
     val hasPlusSuffix = endsWith('+')
-    val special = listOf('-', '.')
+    val specialValid = setOf('-', '.')
+    val specialInvalid = setOf(':', '_')
 
     val converted = buildString {
         var lastChar: Char? = null
 
         this@toSpdxId.forEach { c ->
-            when (c) {
+            when {
                 // Take allowed chars as-is.
-                in special, in '0'..'9', in 'A'..'Z', in 'a'..'z' -> c
+                c.isLetterOrDigit() || c in specialValid -> c
 
                 // Replace colons and underscores with dashes. Do not allow consecutive special chars for readability.
-                ':', '_' -> '-'.takeUnless { lastChar in special }
+                c in specialInvalid -> '-'.takeUnless { lastChar in specialValid }
 
                 // Replace anything else with dots. Do not allow consecutive special chars for readability.
-                else -> '.'.takeUnless { lastChar in special }
+                else -> '.'.takeUnless { lastChar in specialValid }
             }?.let {
                 append(it)
                 lastChar = it
@@ -116,7 +115,7 @@ fun String.toSpdxId(allowPlusSuffix: Boolean = false): String {
     }
 
     // Do not allow leading or trailing special chars for readability.
-    val trimmed = converted.trim { it in special }
+    val trimmed = converted.trim { it in specialValid }
 
     return trimmed.takeUnless { hasPlusSuffix && allowPlusSuffix } ?: "$trimmed+"
 }

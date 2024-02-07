@@ -22,10 +22,11 @@ package org.ossreviewtoolkit.utils.ort
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.shouldBe
 
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.URI
 
 import org.ossreviewtoolkit.utils.common.temporaryProperties
-import org.ossreviewtoolkit.utils.test.toGenericString
 
 class OrtProxySelectorTest : WordSpec({
     "An added HTTP proxy" should {
@@ -111,7 +112,10 @@ class OrtProxySelectorTest : WordSpec({
 
 private fun createProxySelector(protocol: String): OrtProxySelector {
     // Using a non-null assertion is fine here as we know the URL to be parsable.
-    val proxy = determineProxyFromURL("http://fake-proxy:8080")!!
+    val proxy = determineProxyFromUrl("http://fake-proxy:8080")!!
 
     return OrtProxySelector().removeAllProxies().addProxy("test", protocol, proxy)
 }
+
+private fun Proxy.toGenericString() =
+    (address() as? InetSocketAddress)?.let { address -> "${type()} @ ${address.hostString}:${address.port}" }

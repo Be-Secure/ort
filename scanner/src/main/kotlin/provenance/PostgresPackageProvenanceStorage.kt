@@ -29,7 +29,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.select
+import org.jetbrains.exposed.sql.selectAll
 
 import org.ossreviewtoolkit.model.Identifier
 import org.ossreviewtoolkit.model.RemoteArtifact
@@ -68,27 +68,27 @@ class PostgresPackageProvenanceStorage(
 
     override fun readProvenance(id: Identifier, sourceArtifact: RemoteArtifact): PackageProvenanceResolutionResult? =
         database.transaction {
-            table.select {
+            table.selectAll().where {
                 table.identifier eq id.toCoordinates() and
-                        (table.artifactUrl eq sourceArtifact.url) and
-                        (table.artifactHash eq sourceArtifact.hash.value)
+                    (table.artifactUrl eq sourceArtifact.url) and
+                    (table.artifactHash eq sourceArtifact.hash.value)
             }.map { it[table.result] }.firstOrNull()
         }
 
     override fun readProvenance(id: Identifier, vcs: VcsInfo): PackageProvenanceResolutionResult? =
         database.transaction {
-            table.select {
+            table.selectAll().where {
                 table.identifier eq id.toCoordinates() and
-                        (table.vcsType eq vcs.type.toString()) and
-                        (table.vcsUrl eq vcs.url) and
-                        (table.vcsRevision eq vcs.revision) and
-                        (table.vcsPath eq vcs.path)
+                    (table.vcsType eq vcs.type.toString()) and
+                    (table.vcsUrl eq vcs.url) and
+                    (table.vcsRevision eq vcs.revision) and
+                    (table.vcsPath eq vcs.path)
             }.map { it[table.result] }.firstOrNull()
         }
 
     override fun readProvenances(id: Identifier): List<PackageProvenanceResolutionResult> =
         database.transaction {
-            table.select {
+            table.selectAll().where {
                 table.identifier eq id.toCoordinates()
             }.map { it[table.result] }
         }
@@ -101,8 +101,8 @@ class PostgresPackageProvenanceStorage(
         database.transaction {
             table.deleteWhere {
                 table.identifier eq id.toCoordinates() and
-                        (table.artifactUrl eq sourceArtifact.url) and
-                        (table.artifactHash eq sourceArtifact.hash.value)
+                    (table.artifactUrl eq sourceArtifact.url) and
+                    (table.artifactHash eq sourceArtifact.hash.value)
             }
 
             table.insert {
@@ -118,10 +118,10 @@ class PostgresPackageProvenanceStorage(
         database.transaction {
             table.deleteWhere {
                 table.identifier eq id.toCoordinates() and
-                        (table.vcsType eq vcs.type.toString()) and
-                        (table.vcsUrl eq vcs.url) and
-                        (table.vcsRevision eq vcs.revision) and
-                        (table.vcsPath eq vcs.path)
+                    (table.vcsType eq vcs.type.toString()) and
+                    (table.vcsUrl eq vcs.url) and
+                    (table.vcsRevision eq vcs.revision) and
+                    (table.vcsPath eq vcs.path)
             }
 
             table.insert {
@@ -144,7 +144,7 @@ private class PackageProvenances(tableName: String) : IntIdTable(tableName) {
     val vcsUrl = text("vcs_url").nullable()
     val vcsRevision = text("vcs_revision").nullable()
     val vcsPath = text("vcs_path").nullable()
-    val result = jsonb("result", PackageProvenanceResolutionResult::class)
+    val result = jsonb<PackageProvenanceResolutionResult>("result")
 
     init {
         // Indices to prevent duplicate entries.

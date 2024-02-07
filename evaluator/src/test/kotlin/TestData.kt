@@ -22,6 +22,7 @@ package org.ossreviewtoolkit.evaluator
 import java.net.URI
 import java.time.Instant
 
+import org.ossreviewtoolkit.model.AdvisorCapability
 import org.ossreviewtoolkit.model.AdvisorDetails
 import org.ossreviewtoolkit.model.AdvisorRecord
 import org.ossreviewtoolkit.model.AdvisorResult
@@ -39,13 +40,10 @@ import org.ossreviewtoolkit.model.Repository
 import org.ossreviewtoolkit.model.ScanResult
 import org.ossreviewtoolkit.model.ScanSummary
 import org.ossreviewtoolkit.model.ScannerDetails
-import org.ossreviewtoolkit.model.ScannerRun
 import org.ossreviewtoolkit.model.Scope
 import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.UnknownProvenance
 import org.ossreviewtoolkit.model.VcsInfo
-import org.ossreviewtoolkit.model.Vulnerability
-import org.ossreviewtoolkit.model.VulnerabilityReference
 import org.ossreviewtoolkit.model.config.AdvisorConfiguration
 import org.ossreviewtoolkit.model.config.AnalyzerConfiguration
 import org.ossreviewtoolkit.model.config.Excludes
@@ -54,11 +52,15 @@ import org.ossreviewtoolkit.model.config.PackageLicenseChoice
 import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.PathExcludeReason
 import org.ossreviewtoolkit.model.config.RepositoryConfiguration
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
+import org.ossreviewtoolkit.model.vulnerabilities.VulnerabilityReference
+import org.ossreviewtoolkit.utils.common.enumSetOf
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.ort.Environment
 import org.ossreviewtoolkit.utils.spdx.SpdxConstants
-import org.ossreviewtoolkit.utils.spdx.model.SpdxLicenseChoice
+import org.ossreviewtoolkit.utils.spdx.SpdxLicenseChoice
 import org.ossreviewtoolkit.utils.spdx.toSpdx
+import org.ossreviewtoolkit.utils.test.scannerRunOf
 
 val concludedLicense = "LicenseRef-a OR LicenseRef-b OR LicenseRef-c or LicenseRef-d".toSpdx()
 val declaredLicenses = setOf("Apache-2.0", "MIT")
@@ -137,7 +139,7 @@ val allPackages = setOf(
 
 val scopeExcluded = Scope(
     name = "compile",
-    dependencies = sortedSetOf(
+    dependencies = setOf(
         packageExcluded.toReference()
     )
 )
@@ -145,7 +147,7 @@ val scopeExcluded = Scope(
 val projectExcluded = Project.EMPTY.copy(
     id = Identifier("Maven:org.ossreviewtoolkit:project-excluded:1.0"),
     definitionFilePath = "excluded/pom.xml",
-    scopeDependencies = sortedSetOf(scopeExcluded)
+    scopeDependencies = setOf(scopeExcluded)
 )
 
 val packageRefDynamicallyLinked = packageDynamicallyLinked.toReference(PackageLinkage.DYNAMIC)
@@ -153,11 +155,11 @@ val packageRefStaticallyLinked = packageStaticallyLinked.toReference(PackageLink
 
 val scopeIncluded = Scope(
     name = "compile",
-    dependencies = sortedSetOf(
+    dependencies = setOf(
         packageWithoutLicense.toReference(),
         packageWithNotPresentLicense.toReference(),
         packageWithOnlyConcludedLicense.toReference(),
-        packageWithOnlyDeclaredLicense.toReference(dependencies = sortedSetOf(packageDependency.toReference())),
+        packageWithOnlyDeclaredLicense.toReference(dependencies = setOf(packageDependency.toReference())),
         packageWithConcludedAndDeclaredLicense.toReference(),
         packageRefDynamicallyLinked,
         packageRefStaticallyLinked,
@@ -168,7 +170,7 @@ val scopeIncluded = Scope(
 val projectIncluded = Project.EMPTY.copy(
     id = Identifier("Maven:org.ossreviewtoolkit:project-included:1.0"),
     definitionFilePath = "included/pom.xml",
-    scopeDependencies = sortedSetOf(scopeIncluded)
+    scopeDependencies = setOf(scopeIncluded)
 )
 
 val allProjects = setOf(
@@ -220,10 +222,10 @@ val ortResult = OrtResult(
         environment = Environment(),
         config = AdvisorConfiguration(),
         results = AdvisorRecord(
-            advisorResults = sortedMapOf(
+            advisorResults = mapOf(
                 packageWithVulnerabilities.id to listOf(
                     AdvisorResult(
-                        advisor = AdvisorDetails.EMPTY,
+                        advisor = AdvisorDetails("Advisor", enumSetOf(AdvisorCapability.VULNERABILITIES)),
                         summary = AdvisorSummary(startTime = Instant.EPOCH, endTime = Instant.EPOCH),
                         vulnerabilities = listOf(
                             Vulnerability(
@@ -252,17 +254,15 @@ val ortResult = OrtResult(
             )
         )
     ),
-    scanner = ScannerRun.EMPTY.copy(
-        scanResults = sortedMapOf(
-            Identifier("Maven:org.ossreviewtoolkit:package-with-only-detected-license:1.0") to listOf(
-                ScanResult(
-                    provenance = UnknownProvenance,
-                    scanner = ScannerDetails.EMPTY,
-                    summary = ScanSummary.EMPTY.copy(
-                        licenseFindings = sortedSetOf(
-                            LicenseFinding("LicenseRef-a", TextLocation("LICENSE", 1)),
-                            LicenseFinding("LicenseRef-b", TextLocation("LICENSE", 2))
-                        )
+    scanner = scannerRunOf(
+        Identifier("Maven:org.ossreviewtoolkit:package-with-only-detected-license:1.0") to listOf(
+            ScanResult(
+                provenance = UnknownProvenance,
+                scanner = ScannerDetails.EMPTY,
+                summary = ScanSummary.EMPTY.copy(
+                    licenseFindings = setOf(
+                        LicenseFinding("LicenseRef-a", TextLocation("LICENSE", 1)),
+                        LicenseFinding("LicenseRef-b", TextLocation("LICENSE", 2))
                     )
                 )
             )

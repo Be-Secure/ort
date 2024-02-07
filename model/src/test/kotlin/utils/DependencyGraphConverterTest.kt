@@ -34,7 +34,6 @@ import io.kotest.matchers.shouldNot
 import io.kotest.matchers.types.beTheSameInstanceAs
 
 import java.io.File
-import java.util.SortedSet
 
 import org.ossreviewtoolkit.model.AnalyzerResult
 import org.ossreviewtoolkit.model.DependencyGraphNode
@@ -168,7 +167,7 @@ class DependencyGraphConverterTest : WordSpec({
 
         "not override a dependency graph for an empty project" {
             val gradleProject = createProject("Gradle", index = 1)
-            val gradleEmptyProject = createProject("Gradle", index = 2).copy(scopeDependencies = sortedSetOf())
+            val gradleEmptyProject = createProject("Gradle", index = 2).copy(scopeDependencies = emptySet())
 
             val orgResult = createAnalyzerResult(gradleProject.createResult())
             val resultWithGraph = DependencyGraphConverter.convert(orgResult)
@@ -201,7 +200,7 @@ private fun createProject(managerName: String, index: Int): Project {
 
     return Project.EMPTY.copy(
         id = createIdentifier(managerName, index, forProject = true),
-        scopeDependencies = sortedSetOf(mainScope, testScope)
+        scopeDependencies = setOf(mainScope, testScope)
     )
 }
 
@@ -221,8 +220,8 @@ private fun createIdentifier(managerName: String, index: Int, forProject: Boolea
  * Create a set of [PackageReference]s with the size of [count] simulating the dependencies of a project. Use
  * [managerName], [startIndex] to generate identifiers.
  */
-private fun createDependencies(managerName: String, startIndex: Int, count: Int): SortedSet<PackageReference> =
-    (startIndex..(startIndex + count)).mapTo(sortedSetOf()) { index ->
+private fun createDependencies(managerName: String, startIndex: Int, count: Int): Set<PackageReference> =
+    (startIndex..(startIndex + count)).mapTo(mutableSetOf()) { index ->
         PackageReference(createIdentifier(managerName, index, forProject = false), issues = createIssues(index))
     }
 

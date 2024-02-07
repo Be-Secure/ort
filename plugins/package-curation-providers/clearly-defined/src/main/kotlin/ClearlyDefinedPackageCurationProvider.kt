@@ -19,13 +19,11 @@
 
 package org.ossreviewtoolkit.plugins.packagecurationproviders.clearlydefined
 
-import com.fasterxml.jackson.databind.JsonMappingException
-
 import java.net.HttpURLConnection
 
 import okhttp3.OkHttpClient
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService
 import org.ossreviewtoolkit.clients.clearlydefined.ClearlyDefinedService.Server
@@ -45,6 +43,7 @@ import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.utils.PackageCurationProvider
 import org.ossreviewtoolkit.model.utils.toClearlyDefinedCoordinates
 import org.ossreviewtoolkit.plugins.packagecurationproviders.api.PackageCurationProviderFactory
+import org.ossreviewtoolkit.utils.common.Options
 import org.ossreviewtoolkit.utils.common.collectMessages
 import org.ossreviewtoolkit.utils.ort.OkHttpClientHelper
 import org.ossreviewtoolkit.utils.ort.showStackTrace
@@ -53,9 +52,9 @@ import org.ossreviewtoolkit.utils.spdx.toSpdx
 
 import retrofit2.HttpException
 
-class ClearlyDefinedPackageCurationProviderConfig(
+data class ClearlyDefinedPackageCurationProviderConfig(
     /**
-     * The URL of the ClearlyDefined server to use. If null, uses the [production server][Server.PRODUCTION.apiUrl].
+     * The URL of the ClearlyDefined server to use.
      */
     val serverUrl: String,
 
@@ -72,10 +71,10 @@ class ClearlyDefinedPackageCurationProviderFactory :
     override fun create(config: ClearlyDefinedPackageCurationProviderConfig) =
         ClearlyDefinedPackageCurationProvider(config)
 
-    override fun parseConfig(config: Map<String, String>) =
+    override fun parseConfig(options: Options, secrets: Options) =
         ClearlyDefinedPackageCurationProviderConfig(
-            serverUrl = config["serverUrl"] ?: Server.PRODUCTION.apiUrl,
-            minTotalLicenseScore = config["minTotalLicenseScore"]?.toInt() ?: 0
+            serverUrl = options["serverUrl"] ?: Server.PRODUCTION.apiUrl,
+            minTotalLicenseScore = options["minTotalLicenseScore"]?.toInt() ?: 0
         )
 }
 
@@ -86,8 +85,6 @@ class ClearlyDefinedPackageCurationProvider(
     private val config: ClearlyDefinedPackageCurationProviderConfig,
     client: OkHttpClient? = null
 ) : PackageCurationProvider {
-    companion object : Logging
-
     constructor(serverUrl: String, client: OkHttpClient? = null) : this(
         ClearlyDefinedPackageCurationProviderConfig(serverUrl, minTotalLicenseScore = 0), client
     )
@@ -106,7 +103,7 @@ class ClearlyDefinedPackageCurationProvider(
             if (coordinates != null) {
                 coordinatesToIds[coordinates] = pkg.id
             } else {
-                logger.warn { "Unable to create ClearlyDefined coordinates for $pkg." }
+                logger.warn { "Unable to create ClearlyDefined coordinates for '${pkg.id.toCoordinates()}'." }
             }
         }
 
@@ -125,11 +122,6 @@ class ClearlyDefinedPackageCurationProvider(
                             "Getting curations failed with code ${e.code()}: $message"
                         }
                     }
-                }
-
-                is JsonMappingException -> {
-                    e.showStackTrace()
-                    logger.warn { "Deserializing the curations failed: ${e.collectMessages()}" }
                 }
 
                 else -> {
@@ -173,12 +165,8 @@ class ClearlyDefinedPackageCurationProvider(
                 vcs = sourceLocation as? VcsInfoCurationData
             )
 
-            if (data != PackageCurationData()) {
-                pkgCurations += PackageCuration(
-                    id = pkgId,
-                    data = data.copy(comment = "Provided by ClearlyDefined.")
-                )
-            }
+            // Add the curation if it is non-empty.
+            if (data != PackageCurationData()) pkgCurations += PackageCuration(pkgId, data)
         }
 
         return pkgCurations

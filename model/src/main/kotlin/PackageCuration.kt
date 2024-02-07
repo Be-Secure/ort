@@ -21,7 +21,7 @@ package org.ossreviewtoolkit.model
 
 import com.fasterxml.jackson.annotation.JsonProperty
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.utils.ort.showStackTrace
 
@@ -53,16 +53,14 @@ data class PackageCuration(
     @JsonProperty("curations")
     val data: PackageCurationData
 ) {
-    companion object : Logging
-
     /**
      * Return true if this [PackageCuration] is applicable to the package with the given [identifier][pkgId],
      * disregarding the version.
      */
     private fun isApplicableDisregardingVersion(pkgId: Identifier) =
         id.type.equals(pkgId.type, ignoreCase = true)
-                && id.namespace == pkgId.namespace
-                && id.name.equalsOrIsBlank(pkgId.name)
+            && id.namespace == pkgId.namespace
+            && id.name.equalsOrIsBlank(pkgId.name)
 
     /**
      * Return true if the version of this [PackageCuration] interpreted as an Ivy version matcher is applicable to the
@@ -80,14 +78,14 @@ data class PackageCuration(
                     "'${id.version}' is not a valid version range."
                 }
 
-                return Semver.coerce(pkgId.version).satisfies(range)
+                return Semver.coerce(pkgId.version)?.satisfies(range) == true
             }
 
             return false
         }.onFailure {
             logger.warn {
                 "Failed to check if package curation version '${id.version}' is applicable to package version " +
-                        "'${pkgId.version}' of package '${pkgId.toCoordinates()}'."
+                    "'${pkgId.version}' of package '${pkgId.toCoordinates()}'."
             }
 
             it.showStackTrace()
@@ -102,7 +100,7 @@ data class PackageCuration(
      */
     fun isApplicable(pkgId: Identifier): Boolean =
         isApplicableDisregardingVersion(pkgId)
-                && (id.version.equalsOrIsBlank(pkgId.version) || isApplicableIvyVersion(pkgId))
+            && (id.version.equalsOrIsBlank(pkgId.version) || isApplicableIvyVersion(pkgId))
 
     /**
      * Apply the curation [data] to the provided [targetPackage].
@@ -112,7 +110,7 @@ data class PackageCuration(
     fun apply(targetPackage: CuratedPackage): CuratedPackage {
         require(isApplicable(targetPackage.metadata.id)) {
             "Package curation identifier '${id.toCoordinates()}' does not match package identifier " +
-                    "'${targetPackage.metadata.id.toCoordinates()}'."
+                "'${targetPackage.metadata.id.toCoordinates()}'."
         }
 
         return data.apply(targetPackage)

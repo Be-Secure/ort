@@ -20,9 +20,8 @@
 package org.ossreviewtoolkit.model.utils
 
 import java.util.LinkedList
-import java.util.SortedSet
 
-import org.apache.logging.log4j.kotlin.Logging
+import org.apache.logging.log4j.kotlin.logger
 
 import org.ossreviewtoolkit.model.DependencyGraph
 import org.ossreviewtoolkit.model.DependencyGraphEdge
@@ -65,7 +64,7 @@ private sealed interface DependencyGraphSearchResult {
      * tree. In this case, a new fragment has to be added to the graph to host this special variant of this
      * dependency.
      */
-    object Incompatible : DependencyGraphSearchResult
+    data object Incompatible : DependencyGraphSearchResult
 }
 
 /**
@@ -105,8 +104,6 @@ class DependencyGraphBuilder<D>(
      */
     private val dependencyHandler: DependencyHandler<D>
 ) {
-    companion object : Logging
-
     /**
      * A list storing the identifiers of all dependencies added to this builder. This list is then used to resolve
      * dependencies based on their indices.
@@ -197,7 +194,7 @@ class DependencyGraphBuilder<D>(
     private fun checkReferences() {
         require(resolvedPackages.keys.containsAll(validPackageDependencies)) {
             "The following references do not actually refer to packages: " +
-                    "${validPackageDependencies - resolvedPackages.keys}."
+                "${validPackageDependencies - resolvedPackages.keys}."
         }
 
         val packageReferencesKeysWithMultipleDistinctPackageReferences = references.groupBy { it.key }.filter {
@@ -219,10 +216,11 @@ class DependencyGraphBuilder<D>(
      * Return a set of all the scope names known to this builder that start with the given [prefix]. If [unqualify] is
      * *true*, remove this prefix from the returned scope names.
      */
-    fun scopesFor(prefix: String, unqualify: Boolean = true): SortedSet<String> {
-        val qualifiedScopes = scopeMapping.keys.filter { it.startsWith(prefix) }
-        val scopes = qualifiedScopes.takeUnless { unqualify } ?: qualifiedScopes.map { it.substring(prefix.length) }
-        return scopes.toSortedSet()
+    fun scopesFor(prefix: String, unqualify: Boolean = true): Set<String> {
+        val qualifiedScopes = scopeMapping.keys.filterTo(mutableSetOf()) { it.startsWith(prefix) }
+
+        return qualifiedScopes.takeUnless { unqualify }
+            ?: qualifiedScopes.mapTo(mutableSetOf()) { it.substring(prefix.length) }
     }
 
     /**
@@ -231,7 +229,7 @@ class DependencyGraphBuilder<D>(
      * shared between multiple projects, scope names are given a project-specific prefix to make them unique. Using
      * this function, the scope names of a specific project can be retrieved.
      */
-    fun scopesFor(projectId: Identifier, unqualify: Boolean = true): SortedSet<String> =
+    fun scopesFor(projectId: Identifier, unqualify: Boolean = true): Set<String> =
         scopesFor(DependencyGraph.qualifyScope(projectId, ""), unqualify)
 
     /**
@@ -417,7 +415,9 @@ class DependencyGraphBuilder<D>(
      * The scope mapping records all the direct dependencies of scopes.
      */
     private fun updateScopeMapping(
-        scopeName: String, ref: DependencyReference?, transitive: Boolean
+        scopeName: String,
+        ref: DependencyReference?,
+        transitive: Boolean
     ): DependencyReference? {
         if (!transitive && ref != null) {
             val index = RootDependencyIndex(ref.pkg, ref.fragment)

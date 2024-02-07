@@ -21,6 +21,7 @@ package org.ossreviewtoolkit.model.utils
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.core.test.TestCase
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.file.aFile
 import io.kotest.matchers.file.exist
 import io.kotest.matchers.file.shouldContainNFiles
@@ -32,10 +33,10 @@ import java.io.File
 import org.ossreviewtoolkit.model.RepositoryProvenance
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
+import org.ossreviewtoolkit.model.config.FileArchiverConfiguration
 import org.ossreviewtoolkit.utils.common.safeMkdirs
 import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
 import org.ossreviewtoolkit.utils.test.createDefault
-import org.ossreviewtoolkit.utils.test.createTestTempDir
 
 private val PROVENANCE = RepositoryProvenance(
     vcsInfo = VcsInfo(
@@ -50,13 +51,13 @@ class FileArchiverTest : StringSpec() {
     private lateinit var workingDir: File
     private lateinit var storageDir: File
     private lateinit var targetDir: File
-    private lateinit var storage: LocalFileStorage
+    private lateinit var storage: FileProvenanceFileStorage
 
     override suspend fun beforeTest(testCase: TestCase) {
-        workingDir = createTestTempDir("workingDir")
-        storageDir = createTestTempDir("storageDir")
-        targetDir = createTestTempDir("targetDir")
-        storage = LocalFileStorage(storageDir)
+        workingDir = tempdir("workingDir")
+        storageDir = tempdir("storageDir")
+        targetDir = tempdir("targetDir")
+        storage = FileProvenanceFileStorage(LocalFileStorage(storageDir), FileArchiverConfiguration.ARCHIVE_FILENAME)
     }
 
     private fun createFile(path: String) {

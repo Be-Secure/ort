@@ -20,13 +20,11 @@
 package org.ossreviewtoolkit.model.utils
 
 import org.ossreviewtoolkit.model.Issue
-import org.ossreviewtoolkit.model.OrtResult
 import org.ossreviewtoolkit.model.RuleViolation
-import org.ossreviewtoolkit.model.Vulnerability
 import org.ossreviewtoolkit.model.config.IssueResolution
-import org.ossreviewtoolkit.model.config.Resolutions
 import org.ossreviewtoolkit.model.config.RuleViolationResolution
 import org.ossreviewtoolkit.model.config.VulnerabilityResolution
+import org.ossreviewtoolkit.model.vulnerabilities.Vulnerability
 
 /**
  * An interface to provide resolutions for [Issue]s, [RuleViolation]s and [Vulnerability]s .
@@ -35,36 +33,30 @@ interface ResolutionProvider {
     /**
      * Get all issue resolutions that match [issue].
      */
-    fun getIssueResolutionsFor(issue: Issue): List<IssueResolution>
+    fun getResolutionsFor(issue: Issue): List<IssueResolution>
 
     /**
      * Get all rule violation resolutions that match [violation].
      */
-    fun getRuleViolationResolutionsFor(violation: RuleViolation): List<RuleViolationResolution>
+    fun getResolutionsFor(violation: RuleViolation): List<RuleViolationResolution>
 
     /**
      * Get all vulnerability resolutions that match [vulnerability].
      */
-    fun getVulnerabilityResolutionsFor(vulnerability: Vulnerability): List<VulnerabilityResolution>
-
-    /**
-     * Get a [Resolutions] object that contains all resolutions which apply to [Issue]s or [RuleViolation]s contained
-     * in [ortResult].
-     */
-    fun getResolutionsFor(ortResult: OrtResult): Resolutions
+    fun getResolutionsFor(vulnerability: Vulnerability): List<VulnerabilityResolution>
 
     /**
      * Return true if there is at least one issue resolution that matches [issue].
      */
-    fun isResolved(issue: Issue): Boolean = getIssueResolutionsFor(issue).isNotEmpty()
+    fun isResolved(issue: Issue): Boolean = getResolutionsFor(issue).isNotEmpty()
 
     /**
      * Return true if there is at least one rule violation resolution that matches [violation].
      */
-    fun isResolved(violation: RuleViolation): Boolean = getRuleViolationResolutionsFor(violation).isNotEmpty()
+    fun isResolved(violation: RuleViolation): Boolean = getResolutionsFor(violation).isNotEmpty()
 
     /**
      * Return true if there is at least one vulnerability resolution that matches [vulnerability].
      */
-    fun isResolved(vulnerability: Vulnerability): Boolean = getVulnerabilityResolutionsFor(vulnerability).isNotEmpty()
+    fun isResolved(vulnerability: Vulnerability): Boolean = getResolutionsFor(vulnerability).isNotEmpty()
 }

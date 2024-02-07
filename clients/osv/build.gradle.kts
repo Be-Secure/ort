@@ -19,22 +19,23 @@
 
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-@Suppress("DSL_SCOPE_VIOLATION") // See https://youtrack.jetbrains.com/issue/KTIJ-19369.
 plugins {
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 
     // Apply third-party plugins.
     alias(libs.plugins.kotlinSerialization)
 }
 
 dependencies {
+    api(libs.okhttp)
     api(libs.retrofit)
 
     implementation(libs.bundles.kotlinxSerialization)
-    implementation(libs.retrofitConverterKotlinxSerialization)
-    implementation(libs.retrofitConverterScalars)
+    implementation(libs.retrofit.converter.kotlinxSerialization)
+    implementation(libs.retrofit.converter.scalars)
 
-    testImplementation(libs.kotestAssertionsJson)
+    testImplementation(libs.kotest.assertions.json)
 }
 
 tasks.withType<KotlinCompile>().configureEach {
@@ -42,7 +43,7 @@ tasks.withType<KotlinCompile>().configureEach {
         "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
     )
 
-    kotlinOptions {
-        freeCompilerArgs = freeCompilerArgs + customCompilerArgs
+    compilerOptions {
+        freeCompilerArgs.addAll(customCompilerArgs)
     }
 }

@@ -21,9 +21,10 @@ package org.ossreviewtoolkit.clients.vulnerablecode
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNames
+import kotlinx.serialization.json.JsonNamingStrategy
 
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -43,7 +44,10 @@ interface VulnerableCodeService {
         /**
          * The JSON (de-)serialization object used by this service.
          */
-        val JSON = Json { ignoreUnknownKeys = true }
+        val JSON = Json {
+            ignoreUnknownKeys = true
+            namingStrategy = JsonNamingStrategy.SnakeCase
+        }
 
         /**
          * Create a new service instance that connects to the [url] specified and uses the optionally provided [client].
@@ -79,7 +83,6 @@ interface VulnerableCodeService {
     @Serializable
     data class Score(
         /** The name of the scoring system. */
-        @SerialName("scoring_system")
         val scoringSystem: String,
 
         /**
@@ -113,7 +116,6 @@ interface VulnerableCodeService {
     @Serializable
     data class Vulnerability(
         /** The VulnerableCode-specific identifier for this vulnerability. */
-        @SerialName("vulnerability_id")
         val vulnerabilityId: String,
 
         /** A list with [VulnerabilityReference]s pointing to sources of information about this vulnerability. */
@@ -138,12 +140,12 @@ interface VulnerableCodeService {
         val purl: String,
 
         /** An optional list with vulnerabilities that have not yet been resolved. */
-        @SerialName("unresolved_vulnerabilities")
-        val unresolvedVulnerabilities: List<Vulnerability> = emptyList(),
+        @JsonNames("unresolved_vulnerabilities")
+        val affectedByVulnerabilities: List<Vulnerability> = emptyList(),
 
         /** An optional list with vulnerabilities that have already been resolved. */
-        @SerialName("resolved_vulnerabilities")
-        val resolvedVulnerabilities: List<Vulnerability> = emptyList()
+        @JsonNames("resolved_vulnerabilities")
+        val fixingVulnerabilities: List<Vulnerability> = emptyList()
     )
 
     /**

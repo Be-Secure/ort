@@ -19,7 +19,6 @@
 
 package org.ossreviewtoolkit.model.licenses
 
-import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.WordSpec
 import io.kotest.matchers.Matcher
 import io.kotest.matchers.be
@@ -32,7 +31,6 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.neverNullMatcher
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.types.shouldBeTypeOf
 
 import java.io.File
 import java.lang.IllegalArgumentException
@@ -51,6 +49,7 @@ import org.ossreviewtoolkit.model.TextLocation
 import org.ossreviewtoolkit.model.VcsInfo
 import org.ossreviewtoolkit.model.VcsType
 import org.ossreviewtoolkit.model.config.CopyrightGarbage
+import org.ossreviewtoolkit.model.config.FileArchiverConfiguration
 import org.ossreviewtoolkit.model.config.LicenseFilePatterns
 import org.ossreviewtoolkit.model.config.LicenseFindingCuration
 import org.ossreviewtoolkit.model.config.LicenseFindingCurationReason
@@ -58,8 +57,7 @@ import org.ossreviewtoolkit.model.config.PathExclude
 import org.ossreviewtoolkit.model.config.PathExcludeReason
 import org.ossreviewtoolkit.model.licenses.TestUtils.containLicensesExactly
 import org.ossreviewtoolkit.model.utils.FileArchiver
-import org.ossreviewtoolkit.model.utils.FileArchiverFileStorage
-import org.ossreviewtoolkit.model.utils.getArchivePath
+import org.ossreviewtoolkit.model.utils.FileProvenanceFileStorage
 import org.ossreviewtoolkit.utils.ort.DeclaredLicenseProcessor
 import org.ossreviewtoolkit.utils.ort.storage.LocalFileStorage
 import org.ossreviewtoolkit.utils.spdx.SpdxExpression
@@ -624,17 +622,14 @@ class LicenseInfoResolverTest : WordSpec({
             val archiveDir = File("src/test/assets/archive")
             val archiver = FileArchiver(
                 patterns = LicenseFilePatterns.DEFAULT.licenseFilenames,
-                storage = LocalFileStorage(archiveDir)
+                storage = FileProvenanceFileStorage(
+                    LocalFileStorage(archiveDir),
+                    FileArchiverConfiguration.ARCHIVE_FILENAME
+                )
             )
             val resolver = createResolver(licenseInfos, archiver = archiver)
 
             val result = resolver.resolveLicenseFiles(pkgId)
-
-            archiver.storage.shouldBeTypeOf<FileArchiverFileStorage>()
-
-            withClue(archiveDir.resolve(getArchivePath(provenance))) {
-                archiver.storage.hasArchive(provenance) shouldBe true
-            }
 
             result.id shouldBe pkgId
             result.files should haveSize(1)
@@ -678,23 +673,22 @@ private fun createLicenseInfo(
     declaredLicenses: Set<String> = emptySet(),
     detectedLicenses: List<Findings> = emptyList(),
     concludedLicense: SpdxExpression? = null
-) =
-    LicenseInfo(
-        id = id,
-        declaredLicenseInfo = DeclaredLicenseInfo(
-            authors = authors,
-            licenses = declaredLicenses,
-            processed = DeclaredLicenseProcessor.process(declaredLicenses),
-            appliedCurations = emptyList()
-        ),
-        detectedLicenseInfo = DetectedLicenseInfo(
-            findings = detectedLicenses
-        ),
-        concludedLicenseInfo = ConcludedLicenseInfo(
-            concludedLicense = concludedLicense,
-            appliedCurations = emptyList()
-        )
+) = LicenseInfo(
+    id = id,
+    declaredLicenseInfo = DeclaredLicenseInfo(
+        authors = authors,
+        licenses = declaredLicenses,
+        processed = DeclaredLicenseProcessor.process(declaredLicenses),
+        appliedCurations = emptyList()
+    ),
+    detectedLicenseInfo = DetectedLicenseInfo(
+        findings = detectedLicenses
+    ),
+    concludedLicenseInfo = ConcludedLicenseInfo(
+        concludedLicense = concludedLicense,
+        appliedCurations = emptyList()
     )
+)
 
 private class SimpleLicenseInfoProvider(licenseInfo: List<LicenseInfo>) : LicenseInfoProvider {
     private val licenseInfoById = licenseInfo.associateBy { it.id }
@@ -820,20 +814,18 @@ private fun ResolvedLicenseInfo.pathExcludesForLicense(
     license: String,
     provenance: Provenance,
     location: TextLocation
-) =
-    find { it.license == SpdxSingleLicenseExpression.parse(license) }
-        ?.locations
-        ?.find { it.provenance == provenance && it.location == location }
-        ?.matchingPathExcludes
-        ?.toSet().orEmpty()
+) = find { it.license == SpdxSingleLicenseExpression.parse(license) }
+    ?.locations
+    ?.find { it.provenance == provenance && it.location == location }
+    ?.matchingPathExcludes
+    ?.toSet().orEmpty()
 
 private fun ResolvedLicenseInfo.pathExcludesForCopyright(
     copyright: String,
     provenance: Provenance,
     location: TextLocation
-) =
-    flatMap { license -> license.locations.filter { it.provenance == provenance } }
-        .flatMap { it.copyrights }
-        .find { it.statement == copyright && it.location == location }
-        ?.matchingPathExcludes
-        ?.toSet().orEmpty()
+) = flatMap { license -> license.locations.filter { it.provenance == provenance } }
+    .flatMap { it.copyrights }
+    .find { it.statement == copyright && it.location == location }
+    ?.matchingPathExcludes
+    ?.toSet().orEmpty()

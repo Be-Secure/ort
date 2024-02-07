@@ -18,14 +18,26 @@
  */
 
 plugins {
-    // Apply core plugins.
-    `java-library`
+    // Apply precompiled plugins.
+    id("ort-library-conventions")
 }
 
 dependencies {
-    api(project(":analyzer"))
+    api(projects.analyzer)
+    api(projects.model)
+    api(projects.utils.commonUtils) {
+        because("This is a CommandLineTool.")
+    }
 
-    implementation(project(":downloader"))
+    api(libs.semver4j) {
+        because("This is a CommandLineTool.")
+    }
 
-    funTestImplementation(testFixtures(project(":analyzer")))
+    implementation(projects.downloader)
+    implementation(projects.utils.ortUtils)
+    implementation(projects.utils.spdxUtils)
+
+    implementation(libs.jackson.databind)
+
+    funTestImplementation(testFixtures(projects.analyzer))
 }

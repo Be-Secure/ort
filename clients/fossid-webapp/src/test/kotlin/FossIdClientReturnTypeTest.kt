@@ -17,31 +17,21 @@
  * License-Filename: LICENSE
  */
 
+package org.ossreviewtoolkit.clients.fossid
+
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.beEmpty
-import io.kotest.matchers.maps.beEmpty as beEmptyMap
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNot
 import io.kotest.matchers.types.shouldBeTypeOf
 
-import org.ossreviewtoolkit.clients.fossid.FossIdRestService
-import org.ossreviewtoolkit.clients.fossid.checkResponse
-import org.ossreviewtoolkit.clients.fossid.deleteScan
-import org.ossreviewtoolkit.clients.fossid.getScan
-import org.ossreviewtoolkit.clients.fossid.listIdentifiedFiles
-import org.ossreviewtoolkit.clients.fossid.listIgnoredFiles
-import org.ossreviewtoolkit.clients.fossid.listMarkedAsIdentifiedFiles
-import org.ossreviewtoolkit.clients.fossid.listMatchedLines
-import org.ossreviewtoolkit.clients.fossid.listPendingFiles
-import org.ossreviewtoolkit.clients.fossid.listScanResults
-import org.ossreviewtoolkit.clients.fossid.listScansForProject
-import org.ossreviewtoolkit.clients.fossid.listSnippets
 import org.ossreviewtoolkit.clients.fossid.model.Scan
+import org.ossreviewtoolkit.clients.fossid.model.identification.common.LicenseMatchType
 import org.ossreviewtoolkit.clients.fossid.model.identification.identifiedFiles.IdentifiedFile
 import org.ossreviewtoolkit.clients.fossid.model.identification.ignored.IgnoredFile
 import org.ossreviewtoolkit.clients.fossid.model.identification.markedAsIdentified.MarkedAsIdentifiedFile
@@ -151,6 +141,23 @@ class FossIdClientReturnTypeTest : StringSpec({
         }
     }
 
+    "Ignored snippets can be mapped" {
+        service.listSnippets(
+            "",
+            "",
+            SCAN_CODE_1,
+            "src/main/java/com/vdurmont/semver4j/Requirement.java"
+        ).shouldNotBeNull().run {
+            checkResponse("list snippets")
+            data.shouldNotBeNull().run {
+                this shouldNot beEmpty()
+                forEach {
+                    it.shouldBeTypeOf<Snippet>()
+                }
+            }
+        }
+    }
+
     "Matched lines can be listed" {
         service.listMatchedLines(
             "",
@@ -161,8 +168,8 @@ class FossIdClientReturnTypeTest : StringSpec({
         ).shouldNotBeNull().run {
             checkResponse("list matched lines")
             data.shouldNotBeNull().run {
-                localFile shouldNot beEmptyMap()
-                mirrorFile shouldNot beEmptyMap()
+                localFile shouldNot beEmpty()
+                mirrorFile shouldNot beEmpty()
             }
         }
     }
@@ -246,6 +253,71 @@ class FossIdClientReturnTypeTest : StringSpec({
     "When the scan to delete does not exist, no exception is thrown" {
         service.deleteScan("", "", SCAN_CODE_1).shouldNotBeNull().run {
             error shouldBe "Classes.TableRepository.row_not_found"
+        }
+    }
+
+    "A file can be marked as identified" {
+        service.markAsIdentified(
+            "",
+            "",
+            SCAN_CODE_1,
+            "src/main/java/com/vdurmont/semver4j/Range.java",
+            false
+        ).shouldNotBeNull().run {
+            checkResponse("mark file as identified")
+        }
+    }
+
+    "A file can be unmarked as identified" {
+        service.unmarkAsIdentified(
+            "",
+            "",
+            SCAN_CODE_1,
+            "src/main/java/com/vdurmont/semver4j/Range.java",
+            false
+        ).shouldNotBeNull().run {
+            checkResponse("unmark file as identified")
+        }
+    }
+
+    "A license identification can be added to a file" {
+        service.addLicenseIdentification(
+            "",
+            "",
+            SCAN_CODE_1,
+            "src/main/java/com/vdurmont/semver4j/Range.java",
+            "Apache-2.0",
+            LicenseMatchType.SNIPPET,
+            false
+        ).shouldNotBeNull().run {
+            checkResponse("add license identification")
+        }
+    }
+
+    "A component identification can be added to a file" {
+        service.addComponentIdentification(
+            "",
+            "",
+            SCAN_CODE_1,
+            "src/main/java/com/vdurmont/semver4j/Range.java",
+            "semver4j",
+            "3.0.0",
+            isDirectory = false,
+            preserveExistingIdentifications = false
+        ).shouldNotBeNull().run {
+            checkResponse("add component identification")
+        }
+    }
+
+    "A comment can be added to a file" {
+        service.addFileComment(
+            "",
+            "",
+            SCAN_CODE_1,
+            "src/main/java/com/vdurmont/semver4j/Range.java",
+            "TestORT"
+        ).shouldNotBeNull().run {
+            checkResponse("add file comment")
         }
     }
 })
