@@ -24,7 +24,7 @@ jobs:
 
       - name: Create CBOM
         uses: PQCA/cbomkit-action@v1.1.0
-        id: cbom
+        id: ort-cbom
         continue-on-error: true
 
       - name: Create and publish CBOM artifact
